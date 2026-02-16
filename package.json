@@ -1,20 +1,17 @@
-{
-  "name": "miniapp",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "next": "14.2.3",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  },
-  "devDependencies": {
-    "typescript": "5.4.5",
-    "@types/node": "20.11.30",
-    "@types/react": "18.2.66"
-  }
+export default function ProfilePage() {
+  return (
+    <div
+      style={{
+        background: "#000",
+        color: "#fff",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 24
+      }}
+    >
+      Профиль (заглушка)
+    </div>
+  );
 }
