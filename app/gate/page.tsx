@@ -3,32 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type GateOkResponse = {
-  ok: true;
-  allowed: true;
-  user: {
-    id: number;
-    username?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-  };
-};
-
-type GateFailResponse =
-  | { ok: false; error: "NOT_IN_TELEGRAM" }
-  | { ok: false; error: "MISSING_INITDATA" }
-  | { ok: false; error: "BAD_INITDATA" }
-  | { ok: false; error: "NOT_SUBSCRIBED"; inviteUrl?: string | null }
-  | { ok: false; error: "SERVER_MISCONFIGURED" }
-  | { ok: false; error: "UNKNOWN"; message?: string };
-
-type GateResponse = GateOkResponse | GateFailResponse;
-
 export default function GatePage() {
   const router = useRouter();
-  const [status, setStatus] = useState<
-    "loading" | "need_subscribe" | "not_in_telegram" | "error"
-  >("loading");
+  const [status, setStatus] = useState<"loading" | "need_subscribe" | "not_in_telegram" | "error">(
+    "loading"
+  );
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [errText, setErrText] = useState<string>("");
 
@@ -60,7 +39,7 @@ export default function GatePage() {
         body: JSON.stringify({ initData }),
       });
 
-      const json = (await res.json().catch(() => null)) as GateResponse | null;
+      const json: any = await res.json().catch(() => null);
 
       if (!json) {
         setStatus("error");
@@ -68,46 +47,47 @@ export default function GatePage() {
         return;
       }
 
-      // ✅ сначала разделяем по ok
-      if (json.ok) {
-        // ok:true значит доступ разрешён
+      // успех
+      if (json.ok === true && json.allowed === true) {
         router.replace("/home");
         return;
       }
 
-      // ok:false => тут точно есть json.error
-      if (json.error === "NOT_SUBSCRIBED") {
-        setInviteUrl(json.inviteUrl ?? null);
+      // неуспех
+      const errorCode = json.error as string | undefined;
+
+      if (errorCode === "NOT_SUBSCRIBED") {
+        setInviteUrl((json.inviteUrl as string | null) ?? null);
         setStatus("need_subscribe");
         return;
       }
 
-      if (json.error === "NOT_IN_TELEGRAM") {
+      if (errorCode === "NOT_IN_TELEGRAM") {
         setStatus("not_in_telegram");
         setErrText("Открой приложение внутри Telegram.");
         return;
       }
 
-      if (json.error === "SERVER_MISCONFIGURED") {
+      if (errorCode === "SERVER_MISCONFIGURED") {
         setStatus("error");
         setErrText("Сервер не настроен (env).");
         return;
       }
 
-      if (json.error === "BAD_INITDATA") {
+      if (errorCode === "BAD_INITDATA") {
         setStatus("error");
         setErrText("initData не прошёл проверку подписи.");
         return;
       }
 
-      if (json.error === "MISSING_INITDATA") {
+      if (errorCode === "MISSING_INITDATA") {
         setStatus("error");
         setErrText("Не пришёл initData.");
         return;
       }
 
       setStatus("error");
-      setErrText(json.message || "Неизвестная ошибка.");
+      setErrText(String(json.message || "Неизвестная ошибка."));
     } catch (e: any) {
       setStatus("error");
       setErrText(e?.message || "Ошибка сети/кода.");
@@ -121,7 +101,6 @@ export default function GatePage() {
 
   const openChannel = () => {
     if (!inviteUrl) return;
-
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(inviteUrl);
       else window.open(inviteUrl, "_blank", "noopener,noreferrer");
