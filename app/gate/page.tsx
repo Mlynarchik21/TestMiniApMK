@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 type GateOkResponse = {
   ok: true;
   allowed: true;
-  user: { id: number; username?: string | null; first_name?: string | null; last_name?: string | null };
+  user: {
+    id: number;
+    username?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  };
 };
 
 type GateFailResponse =
@@ -63,12 +68,14 @@ export default function GatePage() {
         return;
       }
 
-      if (json.ok && json.allowed) {
+      // ✅ сначала разделяем по ok
+      if (json.ok) {
+        // ok:true значит доступ разрешён
         router.replace("/home");
         return;
       }
 
-      // fail cases
+      // ok:false => тут точно есть json.error
       if (json.error === "NOT_SUBSCRIBED") {
         setInviteUrl(json.inviteUrl ?? null);
         setStatus("need_subscribe");
@@ -115,13 +122,9 @@ export default function GatePage() {
   const openChannel = () => {
     if (!inviteUrl) return;
 
-    // В Telegram лучше открывать через openTelegramLink, если доступно
     try {
-      if (tg?.openTelegramLink) {
-        tg.openTelegramLink(inviteUrl);
-      } else {
-        window.open(inviteUrl, "_blank", "noopener,noreferrer");
-      }
+      if (tg?.openTelegramLink) tg.openTelegramLink(inviteUrl);
+      else window.open(inviteUrl, "_blank", "noopener,noreferrer");
     } catch {
       window.open(inviteUrl, "_blank", "noopener,noreferrer");
     }
