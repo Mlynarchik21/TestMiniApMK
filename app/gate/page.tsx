@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function GatePage() {
@@ -11,11 +11,12 @@ export default function GatePage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [errText, setErrText] = useState<string>("");
 
-  const tg = useMemo(() => (window as any).Telegram?.WebApp, []);
-
   async function runGateCheck() {
     setStatus("loading");
     setErrText("");
+
+    // ✅ window используем только внутри функции, которая вызывается из useEffect/клиента
+    const tg = (globalThis as any)?.Telegram?.WebApp;
 
     if (!tg) {
       setStatus("not_in_telegram");
@@ -47,13 +48,11 @@ export default function GatePage() {
         return;
       }
 
-      // успех
       if (json.ok === true && json.allowed === true) {
         router.replace("/home");
         return;
       }
 
-      // неуспех
       const errorCode = json.error as string | undefined;
 
       if (errorCode === "NOT_SUBSCRIBED") {
@@ -68,26 +67,8 @@ export default function GatePage() {
         return;
       }
 
-      if (errorCode === "SERVER_MISCONFIGURED") {
-        setStatus("error");
-        setErrText("Сервер не настроен (env).");
-        return;
-      }
-
-      if (errorCode === "BAD_INITDATA") {
-        setStatus("error");
-        setErrText("initData не прошёл проверку подписи.");
-        return;
-      }
-
-      if (errorCode === "MISSING_INITDATA") {
-        setStatus("error");
-        setErrText("Не пришёл initData.");
-        return;
-      }
-
       setStatus("error");
-      setErrText(String(json.message || "Неизвестная ошибка."));
+      setErrText(String(json.message || errorCode || "Неизвестная ошибка."));
     } catch (e: any) {
       setStatus("error");
       setErrText(e?.message || "Ошибка сети/кода.");
@@ -101,6 +82,9 @@ export default function GatePage() {
 
   const openChannel = () => {
     if (!inviteUrl) return;
+
+    const tg = (globalThis as any)?.Telegram?.WebApp;
+
     try {
       if (tg?.openTelegramLink) tg.openTelegramLink(inviteUrl);
       else window.open(inviteUrl, "_blank", "noopener,noreferrer");
@@ -133,7 +117,7 @@ export default function GatePage() {
         <>
           <div style={{ fontSize: 16, fontWeight: 600 }}>Нужна подписка</div>
           <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12, lineHeight: 1.5 }}>
-            Чтобы продолжить, подпишись на наш Telegram-канал и нажми “Проверить подписку”.
+            Подпишись на Telegram-канал и нажми “Проверить подписку”.
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -149,7 +133,6 @@ export default function GatePage() {
                 cursor: "pointer",
               }}
               disabled={!inviteUrl}
-              title={!inviteUrl ? "inviteUrl не задан на сервере" : ""}
             >
               Подписаться
             </button>
@@ -172,7 +155,7 @@ export default function GatePage() {
 
           {!inviteUrl && (
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-              На сервере не задана переменная <b>TELEGRAM_CHANNEL_INVITE_URL</b>.
+              Сервер не прислал inviteUrl (позже добавим env).
             </div>
           )}
         </>
@@ -182,7 +165,7 @@ export default function GatePage() {
         <>
           <div style={{ fontSize: 16, fontWeight: 600 }}>Не внутри Telegram</div>
           <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12, lineHeight: 1.5 }}>
-            {errText || "Открой Mini App внутри Telegram (через кнопку в боте/меню)."}
+            {errText}
           </div>
         </>
       )}
@@ -191,7 +174,7 @@ export default function GatePage() {
         <>
           <div style={{ fontSize: 16, fontWeight: 600 }}>Ошибка</div>
           <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12, lineHeight: 1.5 }}>
-            {errText || "Что-то пошло не так."}
+            {errText}
           </div>
 
           <button
