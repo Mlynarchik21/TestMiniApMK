@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Status = "loading" | "need_subscribe" | "not_in_telegram" | "error";
+type Status = "loading" | "need_subscribe" | "not_in_telegram" | "error" | "debug";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -14,9 +14,9 @@ export default function GatePage() {
   const [status, setStatus] = useState<Status>("loading");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [errText, setErrText] = useState<string>("");
+  const [debug, setDebug] = useState<string>("");
 
   async function getTelegramWebAppWithWait() {
-    // ждём до ~2 секунд, пока SDK подтянется и Telegram внедрит объект
     for (let i = 0; i < 20; i++) {
       const tg = (globalThis as any)?.Telegram?.WebApp;
       if (tg) return tg;
@@ -29,18 +29,13 @@ export default function GatePage() {
     setStatus("loading");
     setErrText("");
     setInviteUrl(null);
+    setDebug("");
 
     const tg = await getTelegramWebAppWithWait();
 
     if (!tg) {
-      // диагностическая подсказка
-      const hasTelegram = Boolean((globalThis as any)?.Telegram);
       setStatus("not_in_telegram");
-      setErrText(
-        hasTelegram
-          ? "Telegram найден, но WebApp не инициализировался. Обычно это значит, что ссылка открыта не как WebApp."
-          : "Открой Mini App внутри Telegram (WebApp)."
-      );
+      setErrText("Открой Mini App внутри Telegram (WebApp).");
       return;
     }
 
@@ -60,27 +55,29 @@ export default function GatePage() {
         body: JSON.stringify({ initData }),
       });
 
-      const json: any = await res.json().catch(() => null);
+      const text = await res.text(); // читаем как текст, чтобы поймать даже не-JSON
+      setDebug(`HTTP ${res.status}\n\n${text}`);
 
-      if (!json) {
-        setStatus("error");
-        setErrText("Пустой ответ сервера.");
-        return;
+      let json: any = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        // оставим json = null
       }
 
-      if (json.ok === true && json.allowed === true) {
+      if (json && json.ok === true && json.allowed === true) {
         router.replace("/home");
         return;
       }
 
-      if (json.ok === false && json.error === "NOT_SUBSCRIBED") {
+      if (json && json.ok === false && json.error === "NOT_SUBSCRIBED") {
         setInviteUrl(json.inviteUrl ?? null);
         setStatus("need_subscribe");
         return;
       }
 
-      setStatus("error");
-      setErrText(String(json.error || json.message || "Ошибка проверки."));
+      // иначе покажем debug экран
+      setStatus("debug");
     } catch (e: any) {
       setStatus("error");
       setErrText(e?.message || "Ошибка сети/кода.");
@@ -120,9 +117,9 @@ export default function GatePage() {
     >
       {status === "loading" && (
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>Загрузка…</div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Идёт проверка подписки…</div>
           <div style={{ marginTop: 8, opacity: 0.8, fontSize: 12 }}>
-            Проверяем подписку…
+            Подожди пару секунд
           </div>
         </div>
       )}
@@ -131,7 +128,7 @@ export default function GatePage() {
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{ fontSize: 16, fontWeight: 600 }}>Нужна подписка</div>
           <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12, lineHeight: 1.5 }}>
-            Подпишись на Telegram-канал и нажми “Проверить подписку”.
+            Подпишись на канал и нажми “Проверить подписку”.
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -191,7 +188,6 @@ export default function GatePage() {
           <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12, lineHeight: 1.5 }}>
             {errText}
           </div>
-
           <button
             onClick={runGateCheck}
             style={{
@@ -207,6 +203,45 @@ export default function GatePage() {
           >
             Повторить
           </button>
+        </div>
+      )}
+
+      {status === "debug" && (
+        <div style={{ width: "100%", maxWidth: 520 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>DEBUG: ответ /api/gate</div>
+          <pre
+            style={{
+              marginTop: 10,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.2)",
+              background: "#050505",
+              fontSize: 12,
+              lineHeight: 1.45,
+              opacity: 0.95,
+            }}
+          >
+            {debug || "нет данных"}
+          </pre>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={runGateCheck}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.32)",
+                background: "#fff",
+                color: "#000",
+                padding: "10px 14px",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Повторить
+            </button>
+          </div>
         </div>
       )}
     </div>
