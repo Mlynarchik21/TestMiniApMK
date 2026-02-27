@@ -21,12 +21,17 @@ export function validateTelegramInitData(initData: string, botToken: string) {
   const { hash, dataCheckString, params } = parseInitData(initData);
   if (!hash) return { ok: false as const, error: "MISSING_HASH" };
 
+  // secret_key = HMAC_SHA256("WebAppData", bot_token)
   const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
-  const computedHash = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+
+  const computedHash = crypto
+    .createHmac("sha256", secretKey)
+    .update(dataCheckString)
+    .digest("hex");
 
   if (computedHash !== hash) return { ok: false as const, error: "BAD_INITDATA" };
 
-  // свежесть (24 часа)
+  // auth_date (24 часа)
   const authDate = Number(params.get("auth_date") || "0");
   const now = Math.floor(Date.now() / 1000);
   if (!authDate || now - authDate > 60 * 60 * 24) {
