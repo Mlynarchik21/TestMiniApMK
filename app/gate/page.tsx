@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import WebApp from "@twa-dev/sdk";
 
 export default function GatePage() {
   const [text, setText] = useState("Загрузка...");
 
   useEffect(() => {
-    const tg = (window as any)?.Telegram?.WebApp;
-    if (!tg) {
-      setText("Telegram.WebApp НЕ найден ❌");
-      return;
-    }
+    try {
+      // WebApp объект теперь всегда есть (из npm), но initData будет только внутри Telegram
+      WebApp.ready();
 
-    tg.ready?.();
-    setText("Telegram.WebApp найден ✅ initData длина: " + (tg.initData?.length || 0));
+      const initData = WebApp.initData || "";
+      if (!initData) {
+        setText("Не внутри Telegram\nОткрой Mini App внутри Telegram (WebApp).");
+        return;
+      }
+
+      setText("Telegram WebApp найден ✅\ninitData длина: " + initData.length);
+    } catch (e: any) {
+      setText("Ошибка инициализации WebApp: " + String(e?.message ?? e));
+    }
   }, []);
 
   return (
