@@ -5,21 +5,42 @@ import { useRouter } from "next/navigation";
 
 type Status = "loading" | "need_subscribe" | "not_in_telegram" | "error";
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default function GatePage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [errText, setErrText] = useState<string>("");
 
+  async function getTelegramWebAppWithWait() {
+    // ждём до ~2 секунд, пока SDK подтянется и Telegram внедрит объект
+    for (let i = 0; i < 20; i++) {
+      const tg = (globalThis as any)?.Telegram?.WebApp;
+      if (tg) return tg;
+      await sleep(100);
+    }
+    return null;
+  }
+
   async function runGateCheck() {
     setStatus("loading");
     setErrText("");
+    setInviteUrl(null);
 
-    const tg = (globalThis as any)?.Telegram?.WebApp;
+    const tg = await getTelegramWebAppWithWait();
 
     if (!tg) {
+      // диагностическая подсказка
+      const hasTelegram = Boolean((globalThis as any)?.Telegram);
       setStatus("not_in_telegram");
-      setErrText("Открой Mini App внутри Telegram.");
+      setErrText(
+        hasTelegram
+          ? "Telegram найден, но WebApp не инициализировался. Обычно это значит, что ссылка открыта не как WebApp."
+          : "Открой Mini App внутри Telegram (WebApp)."
+      );
       return;
     }
 
@@ -29,7 +50,7 @@ export default function GatePage() {
       const initData: string = tg.initData || "";
       if (!initData) {
         setStatus("error");
-        setErrText("initData пустой. Открывай Mini App через кнопку в боте.");
+        setErrText("initData пустой. Открывай Mini App через WebApp-кнопку в боте.");
         return;
       }
 
@@ -47,20 +68,17 @@ export default function GatePage() {
         return;
       }
 
-      // ✅ подписка ок
       if (json.ok === true && json.allowed === true) {
         router.replace("/home");
         return;
       }
 
-      // ❌ подписки нет
       if (json.ok === false && json.error === "NOT_SUBSCRIBED") {
         setInviteUrl(json.inviteUrl ?? null);
         setStatus("need_subscribe");
         return;
       }
 
-      // ❌ остальные ошибки
       setStatus("error");
       setErrText(String(json.error || json.message || "Ошибка проверки."));
     } catch (e: any) {
