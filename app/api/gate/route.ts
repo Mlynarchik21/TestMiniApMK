@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { validateTelegramInitData } from "@/lib/telegram";
+import { validateTelegramInitData } from "../../../lib/telegram";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,6 @@ type Ok = {
 };
 
 type Fail =
-  | { ok: false; error: "NOT_IN_TELEGRAM" }
   | { ok: false; error: "MISSING_INITDATA" }
   | { ok: false; error: "SERVER_MISCONFIGURED" }
   | { ok: false; error: "BAD_INITDATA" }
@@ -67,6 +66,7 @@ export async function POST(req: Request) {
     }
 
     const userId = Number(v.user.id);
+
     const sub = await isSubscribed(botToken, channelId, userId);
 
     if (!sub.ok) {
