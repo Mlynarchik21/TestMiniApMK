@@ -384,28 +384,31 @@ export default function GatePage() {
 
         /* === проценты внутри круга как на скрине === */
         .ringText {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 2px;
-          transform: translateY(-1px);
-          color: rgba(255, 255, 255, 0.95);
-        }
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: rgba(255, 255, 255, 0.95);
+}
 
-        .ringNum {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: 0.2px;
-        }
+.ringNum {
+  font-size: 24px;       /* было меньше — увеличили */
+  font-weight: 800;
+  line-height: 1;        /* важно для идеального центра */
+  display: flex;
+  align-items: center;
+}
 
-        .ringPct {
-          font-size: 12px;
-          font-weight: 700;
-          opacity: 0.9;
-          transform: translateY(-4px);
-        }
+.ringPct {
+  font-size: 14px;       /* чуть меньше числа */
+  font-weight: 700;
+  opacity: 0.9;
+  line-height: 1;
+  align-self: flex-start;
+  margin-top: 4px;       /* аккуратно поднимаем % */
+}
 
         .msg,
         .msgBottom {
