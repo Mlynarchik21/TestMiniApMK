@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
-export default function HomeStub() {
+export default function HomePage() {
   const router = useRouter();
 
   return (
@@ -11,24 +11,23 @@ export default function HomeStub() {
         minHeight: "100vh",
         background: "#000",
         color: "#fff",
-        padding: 16,
-        fontFamily:
-          '-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",Inter,Roboto,"Segoe UI",Arial,sans-serif',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: 16
       }}
     >
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Главная (заглушка)</h2>
-
+      <div style={{ fontSize: 22, fontWeight: 700 }}>Home (заглушка)</div>
       <button
-        onClick={() => router.push("/gate")}
+        onClick={() => router.back()}
         style={{
-          marginTop: 16,
-          borderRadius: 999,
-          border: "1px solid rgba(255,255,255,.32)",
-          background: "#000",
-          color: "#fff",
-          padding: "8px 14px",
-          fontSize: 13,
-          cursor: "pointer",
+          padding: "12px 16px",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,.25)",
+          background: "#fff",
+          color: "#000",
+          fontWeight: 700
         }}
       >
         Назад
