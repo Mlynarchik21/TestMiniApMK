@@ -1,92 +1,110 @@
 import { NextResponse } from "next/server";
-import { validateTelegramInitData } from "../../../lib/telegram";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
-type Ok = {
-  ok: true;
-  allowed: true;
-  user: { id: number; username?: string | null };
-};
+function verifyTelegramInitData(initData: string, botToken: string) {
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return { ok: false as const, reason: "no_hash" };
 
-type Fail =
-  | { ok: false; error: "MISSING_INITDATA" }
-  | { ok: false; error: "SERVER_MISCONFIGURED" }
-  | { ok: false; error: "BAD_INITDATA" }
-  | { ok: false; error: "INITDATA_EXPIRED" }
-  | { ok: false; error: "NOT_SUBSCRIBED"; inviteUrl?: string | null }
-  | { ok: false; error: "TG_API_ERROR"; message?: string };
+  params.delete("hash");
+
+  const arr: string[] = [];
+  params.forEach((v, k) => arr.push(`${k}=${v}`));
+  arr.sort();
+  const dataCheckString = arr.join("\n");
+
+  const secretKey = crypto
+    .createHmac("sha256", "WebAppData")
+    .update(botToken)
+    .digest();
+
+  const hmac = crypto
+    .createHmac("sha256", secretKey)
+    .update(dataCheckString)
+    .digest("hex");
+
+  if (hmac !== hash) return { ok: false as const, reason: "bad_hash" };
+
+  const userStr = params.get("user");
+  if (!userStr) return { ok: false as const, reason: "no_user" };
+
+  let user: any;
+  try {
+    user = JSON.parse(userStr);
+  } catch {
+    return { ok: false as const, reason: "bad_user_json" };
+  }
+
+  if (!user?.id) return { ok: false as const, reason: "no_user_id" };
+
+  return { ok: true as const, user };
+}
 
 async function isSubscribed(botToken: string, channelId: string, userId: number) {
-  // Telegram Bot API: getChatMember
-  const url =
-    `https://api.telegram.org/bot${botToken}/getChatMember` +
-    `?chat_id=${encodeURIComponent(channelId)}` +
-    `&user_id=${encodeURIComponent(String(userId))}`;
+  const url = `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${encodeURIComponent(
+    channelId
+  )}&user_id=${userId}`;
 
   const r = await fetch(url, { method: "GET" });
-  const j: any = await r.json().catch(() => null);
+  const j = await r.json().catch(() => null);
 
-  if (!r.ok || !j || j.ok !== true) {
-    return { ok: false as const, message: j?.description || `HTTP ${r.status}` };
+  if (!j?.ok) {
+    // если бот не админ в канале или неверный channelId — тут будет ошибка
+    return { ok: false as const, error: j?.description || "getChatMember failed" };
   }
 
   const status = j.result?.status as string | undefined;
-  const subscribed = status === "member" || status === "administrator" || status === "creator";
+  const subscribed =
+    status === "member" || status === "administrator" || status === "creator";
+
   return { ok: true as const, subscribed, status };
 }
 
 export async function POST(req: Request) {
   try {
     const botToken = process.env.BOT_TOKEN;
-    const channelId = process.env.TELEGRAM_CHANNEL_ID;
-    const inviteUrl = process.env.TELEGRAM_CHANNEL_INVITE_URL ?? null;
+    const channelId = process.env.CHANNEL_ID;
+    const joinUrl = process.env.CHANNEL_JOIN_URL || "";
 
-    if (!botToken || !channelId) {
-      const out: Fail = { ok: false, error: "SERVER_MISCONFIGURED" };
-      return NextResponse.json(out, { status: 500 });
-    }
+    if (!botToken) return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
+    if (!channelId) return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
 
     const body = await req.json().catch(() => null);
-    const initData = body?.initData as string | undefined;
+    const initData = String(body?.initData || "");
+    if (!initData) return NextResponse.json({ ok: false, error: "initData empty" });
 
-    if (!initData) {
-      const out: Fail = { ok: false, error: "MISSING_INITDATA" };
-      return NextResponse.json(out, { status: 400 });
-    }
-
-    const v = validateTelegramInitData(initData, botToken);
-
-    if (!v.ok) {
-      const out: Fail =
-        v.error === "INITDATA_EXPIRED"
-          ? { ok: false, error: "INITDATA_EXPIRED" }
-          : { ok: false, error: "BAD_INITDATA" };
-      return NextResponse.json(out, { status: 401 });
-    }
+    const v = verifyTelegramInitData(initData, botToken);
+    if (!v.ok) return NextResponse.json({ ok: false, error: `initData_${v.reason}` });
 
     const userId = Number(v.user.id);
 
     const sub = await isSubscribed(botToken, channelId, userId);
-
     if (!sub.ok) {
-      const out: Fail = { ok: false, error: "TG_API_ERROR", message: sub.message };
-      return NextResponse.json(out, { status: 502 });
+      return NextResponse.json({
+        ok: false,
+        error: sub.error + " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)"
+      });
     }
 
-    if (!sub.subscribed) {
-      const out: Fail = { ok: false, error: "NOT_SUBSCRIBED", inviteUrl };
-      return NextResponse.json(out, { status: 403 });
-    }
-
-    const out: Ok = {
+    const res = NextResponse.json({
       ok: true,
-      allowed: true,
-      user: { id: userId, username: v.user.username ?? null },
-    };
-    return NextResponse.json(out);
+      subscribed: sub.subscribed,
+      joinUrl
+    });
+
+    // приватная cookie (пример) — можно расширить позже
+    res.cookies.set("tm_uid", String(userId), {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30
+    });
+
+    return res;
   } catch (e: any) {
-    const out: Fail = { ok: false, error: "TG_API_ERROR", message: String(e?.message ?? e) };
-    return NextResponse.json(out, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e?.message || e) });
   }
 }
