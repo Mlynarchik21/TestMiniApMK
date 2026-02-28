@@ -3,9 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-/**
- * API response types
- */
+/** API response types */
 type GateOkSubscribed = { ok: true; subscribed: true };
 type GateOkNeedSub = { ok: true; subscribed: false; joinUrl?: string };
 type GateFail = { ok: false; error?: string };
@@ -15,16 +13,16 @@ function getTg() {
   if (typeof window === "undefined") return null;
   return (window as any)?.Telegram?.WebApp ?? null;
 }
-
 function isGateFail(x: GateResp): x is GateFail {
   return x.ok === false;
 }
 
-/**
- * Smooth progress helper (no jumps)
- */
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 export default function GatePage() {
@@ -33,200 +31,214 @@ export default function GatePage() {
   const [status, setStatus] = useState<
     "loading" | "not_tg" | "need_sub" | "ok" | "error"
   >("loading");
-  const [msg, setMsg] = useState<string>("Запуск…");
+
+  // loading variant: initial vs recheck
+  const [loadingVariant, setLoadingVariant] = useState<"init" | "recheck">("init");
+
+  // messages
+  const [msg, setMsg] = useState<string>("Инициализация…");
   const [joinUrl, setJoinUrl] = useState<string>("");
 
-  // loading UI states
-  const [progress, setProgress] = useState<number>(6); // %
-  const targetRef = useRef<number>(6);
+  // Progress (0..100)
+  const [progress, setProgress] = useState<number>(0);
+
+  // animation control
   const rafRef = useRef<number | null>(null);
-  const phaseRef = useRef<number>(0);
+  const animStartRef = useRef<number>(0);
+  const animFromRef = useRef<number>(0);
+  const animToRef = useRef<number>(0);
+  const animDurRef = useRef<number>(0);
+  const animResolveRef = useRef<null | (() => void)>(null);
 
-  const initData = useMemo(() => {
-    const tg = getTg();
-    return tg?.initData ? String(tg.initData) : "";
-  }, []);
-
-  const phases = useMemo(
+  const phasesInit = useMemo(
     () => [
-      { at: 10, text: "Инициализация Mini App…" },
-      { at: 25, text: "Проверяем контекст Telegram…" },
+      { at: 8, text: "Инициализация Mini App…" },
+      { at: 22, text: "Проверяем контекст Telegram…" },
       { at: 45, text: "Проверяем подписку на канал…" },
-      { at: 65, text: "Загружаем ваши данные…" },
-      { at: 82, text: "Почти готово. Финальная проверка…" },
+      { at: 70, text: "Загружаем ваши данные…" },
+      { at: 86, text: "Почти готово. Финальная проверка…" },
     ],
     []
   );
 
-  const stopProgressAnim = useCallback(() => {
+  const setPhaseText = useCallback(
+    (p: number) => {
+      if (loadingVariant !== "init") return; // при recheck текст фиксированный снизу
+      let idx = 0;
+      for (let i = 0; i < phasesInit.length; i++) {
+        if (p >= phasesInit[i].at) idx = i;
+      }
+      setMsg(phasesInit[idx].text);
+    },
+    [loadingVariant, phasesInit]
+  );
+
+  const stopAnim = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    animResolveRef.current?.();
+    animResolveRef.current = null;
   }, []);
 
-  const startProgressAnim = useCallback(() => {
-    stopProgressAnim();
-    const tick = () => {
-      setProgress((cur) => {
-        const target = targetRef.current;
-        // smooth approach to target
-        const delta = target - cur;
-        const step = delta * 0.08; // smoothing factor
-        const next = Math.abs(delta) < 0.15 ? target : cur + step;
-        return clamp(next, 0, 100);
-      });
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, [stopProgressAnim]);
+  const animateProgress = useCallback(
+    (from: number, to: number, durationMs: number) => {
+      stopAnim();
+      setProgress(from);
 
-  const setPhaseByProgress = useCallback(
-    (p: number) => {
-      // find highest phase where at <= p
-      let idx = 0;
-      for (let i = 0; i < phases.length; i++) {
-        if (p >= phases[i].at) idx = i;
-      }
-      if (phaseRef.current !== idx) {
-        phaseRef.current = idx;
-        setMsg(phases[idx].text);
-      }
+      animStartRef.current = performance.now();
+      animFromRef.current = from;
+      animToRef.current = to;
+      animDurRef.current = Math.max(50, durationMs);
+
+      return new Promise<void>((resolve) => {
+        animResolveRef.current = resolve;
+
+        const tick = () => {
+          const now = performance.now();
+          const t = Math.min(1, (now - animStartRef.current) / animDurRef.current);
+          const e = easeOutCubic(t);
+          const v = animFromRef.current + (animToRef.current - animFromRef.current) * e;
+
+          setProgress(v);
+          setPhaseText(v);
+
+          if (t < 1) {
+            rafRef.current = requestAnimationFrame(tick);
+          } else {
+            rafRef.current = null;
+            animResolveRef.current?.();
+            animResolveRef.current = null;
+          }
+        };
+
+        rafRef.current = requestAnimationFrame(tick);
+      });
     },
-    [phases]
+    [setPhaseText, stopAnim]
   );
 
-  const bumpTarget = useCallback(
-    (to: number) => {
-      targetRef.current = clamp(to, 0, 99);
-      setPhaseByProgress(targetRef.current);
-    },
-    [setPhaseByProgress]
-  );
-
-  const resetLoading = useCallback(() => {
-    setStatus("loading");
-    setJoinUrl("");
-    setMsg(phases[0].text);
-    setProgress(6);
-    targetRef.current = 6;
-    phaseRef.current = 0;
-    startProgressAnim();
-  }, [phases, startProgressAnim]);
-
-  const check = useCallback(async () => {
-    resetLoading();
-
-    const tg = getTg();
-    if (!tg) {
-      stopProgressAnim();
-      setStatus("not_tg");
-      setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
-      return;
+  const waitForInitData = useCallback(async (tg: any, maxMs = 1500) => {
+    const started = Date.now();
+    while (!tg.initData && Date.now() - started < maxMs) {
+      await sleep(80);
     }
+  }, []);
 
-    // Wake up webapp
-    try {
-      tg.ready?.();
-      tg.expand?.();
-    } catch {}
+  const runGateFlow = useCallback(
+    async (variant: "init" | "recheck") => {
+      setLoadingVariant(variant);
+      setStatus("loading");
+      setJoinUrl("");
 
-    bumpTarget(25);
+      // стартовая анимация медленная: 0 -> 92% ~ 4.2 секунды
+      // (реальный запрос идёт параллельно)
+      setMsg(variant === "init" ? phasesInit[0].text : "Проверяем подписку…");
+      const minDurationMs = 4200;
+      const startTs = Date.now();
 
-    // Wait for initData a bit (common in real TG webview)
-    const waitInitData = async () => {
-      const started = Date.now();
-      while (!tg.initData && Date.now() - started < 1500) {
-        await new Promise((r) => setTimeout(r, 80));
+      const tg = getTg();
+      if (!tg) {
+        // для красоты: докрутим до конца, потом покажем экран
+        await animateProgress(0, 100, 800);
+        setStatus("not_tg");
+        setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
+        return;
       }
-    };
 
-    await waitInitData();
+      try {
+        tg.ready?.();
+        tg.expand?.();
+      } catch {}
 
-    if (!tg.initData) {
-      stopProgressAnim();
-      setStatus("error");
-      setMsg(
-        "initData пустой. Проверь /setdomain в BotFather и запускай через кнопку WebApp."
-      );
-      return;
-    }
+      // запускаем “основной прогресс” (до 92%) параллельно
+      const progPromise = animateProgress(0, 92, minDurationMs);
 
-    bumpTarget(45);
+      await waitForInitData(tg, 1500);
 
-    try {
-      const res = await fetch("/api/gate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initData: String(tg.initData || "") }),
-      });
+      if (!tg.initData) {
+        // дождёмся минимального ощущения загрузки
+        await progPromise;
+        await animateProgress(92, 100, 600);
+        setStatus("error");
+        setMsg(
+          "initData пустой. Проверь /setdomain в BotFather и запускай Mini App через кнопку WebApp."
+        );
+        return;
+      }
 
-      bumpTarget(70);
+      // запрос к API
+      let json: GateResp | null = null;
+      try {
+        const res = await fetch("/api/gate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData: String(tg.initData || "") }),
+        });
 
-      const json = (await res.json()) as GateResp;
+        json = (await res.json()) as GateResp;
+      } catch (e: any) {
+        json = { ok: false, error: String(e?.message || e) };
+      }
 
-      // defensive: unexpected response
+      // гарантируем “не быстрее 3–5 секунд”: ждём, если нужно
+      const elapsed = Date.now() - startTs;
+      if (elapsed < minDurationMs) {
+        await sleep(minDurationMs - elapsed);
+      }
+
+      // ждём завершения основной анимации до 92%
+      await progPromise;
+
+      // финальный довод до 100%
+      await animateProgress(92, 100, 650);
+
+      // разбор результата
       if (!json || typeof json !== "object" || typeof (json as any).ok !== "boolean") {
-        stopProgressAnim();
         setStatus("error");
         setMsg("Некорректный ответ сервера. Проверь /api/gate.");
         return;
       }
 
       if (isGateFail(json)) {
-        stopProgressAnim();
         setStatus("error");
         setMsg(json.error ?? "Ошибка проверки.");
         return;
       }
 
       if (json.subscribed === true) {
-        bumpTarget(99);
         setStatus("ok");
         setMsg("Доступ подтверждён. Переходим…");
-        // tiny delay for UX (let progress reach ~99 smoothly)
-        setTimeout(() => {
-          stopProgressAnim();
-          router.replace("/home");
-        }, 450);
+        // ВАЖНО: переход строго после 100% (мы уже на 100), но дадим 150мс на “досмотр”
+        await sleep(150);
+        router.replace("/home");
         return;
       }
 
-      // need subscription
-      stopProgressAnim();
+      // не подписан
       setStatus("need_sub");
-      setMsg("Подписка не найдена. Подпишись и нажми «Проверить».");
+      setMsg("Подписка не найдена.");
       setJoinUrl(json.joinUrl ?? "");
-    } catch (e: any) {
-      stopProgressAnim();
-      setStatus("error");
-      setMsg(String(e?.message || e));
-    }
-  }, [bumpTarget, resetLoading, router, stopProgressAnim]);
+    },
+    [animateProgress, phasesInit, router, waitForInitData]
+  );
 
   useEffect(() => {
-    // start once
-    const tg = getTg();
-    if (!tg) {
-      setStatus("not_tg");
-      setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
-      return;
-    }
-    check();
+    // стартовая проверка
+    runGateFlow("init");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Keep phase text synced while progress animates
-  useEffect(() => {
-    if (status !== "loading") return;
-    setPhaseByProgress(progress);
-  }, [progress, setPhaseByProgress, status]);
 
   const openSubscribe = () => {
     const tg = getTg();
     const url = joinUrl || "https://t.me/";
     if (tg?.openTelegramLink) tg.openTelegramLink(url);
     else window.open(url, "_blank");
+  };
+
+  const onRecheck = () => {
+    runGateFlow("recheck");
   };
 
   // ring math
@@ -256,17 +268,30 @@ export default function GatePage() {
                   }}
                 ></circle>
               </svg>
+
               <span className="ringText">{pct}%</span>
             </div>
 
-            <div className="msg">
-              <span className="msgLine">{msg}</span>
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-            </div>
+            {/* Для init — меняющийся текст, для recheck — фиксированный */}
+            {loadingVariant === "init" ? (
+              <div className="msg">
+                <span className="msgLine">{msg}</span>
+                <span className="dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            ) : (
+              <div className="msgBottom">
+                <span className="msgLine">Проверяем подписку</span>
+                <span className="dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            )}
 
             <div className="hint">Это займёт несколько секунд</div>
           </>
@@ -274,13 +299,18 @@ export default function GatePage() {
 
         {status === "need_sub" && (
           <>
-            <div className="msgStatic">{msg}</div>
+            <div className="needTitle">Доступ закрыт</div>
+            <div className="needText">
+              Чтобы пользоваться приложением, нужно быть подписанным на наш канал.
+              <br />
+              Подпишись и нажми <b>«Проверить»</b>.
+            </div>
 
             <div className="buttons">
               <button className="btnPrimary" onClick={openSubscribe}>
                 Подписаться
               </button>
-              <button className="btnGhost" onClick={check}>
+              <button className="btnGhost" onClick={onRecheck}>
                 Проверить
               </button>
             </div>
@@ -290,7 +320,7 @@ export default function GatePage() {
         {(status === "not_tg" || status === "error") && (
           <>
             <div className="msgStatic">{msg}</div>
-            <button className="btnPrimary" onClick={check}>
+            <button className="btnPrimary" onClick={() => runGateFlow("init")}>
               Повторить
             </button>
           </>
@@ -305,11 +335,8 @@ export default function GatePage() {
           --panel: #000000;
           --panel-soft: #050505;
           --border-soft: rgba(255, 255, 255, 0.16);
-          --r: 18px;
           --e: cubic-bezier(0.2, 0.8, 0.2, 1);
           --dur: 200ms;
-          --sp-16: 16px;
-          --green: #00c853;
         }
 
         .page {
@@ -339,15 +366,15 @@ export default function GatePage() {
         }
 
         .ring {
-          width: 110px;
-          height: 110px;
-          margin: 0 auto 16px;
+          width: 120px;
+          height: 120px;
+          margin: 0 auto 14px;
           position: relative;
         }
 
         .ring svg {
-          width: 110px;
-          height: 110px;
+          width: 120px;
+          height: 120px;
           transform: rotate(-90deg);
           overflow: visible;
         }
@@ -364,8 +391,8 @@ export default function GatePage() {
 
         .ring .fg {
           stroke: #78d06a;
-          transition: stroke-dashoffset 420ms var(--e);
-          filter: drop-shadow(0 0 8px rgba(120, 208, 106, 0.25));
+          transition: stroke-dashoffset 120ms var(--e);
+          filter: drop-shadow(0 0 10px rgba(120, 208, 106, 0.22));
         }
 
         .ringText {
@@ -390,13 +417,23 @@ export default function GatePage() {
           opacity: 0.95;
         }
 
+        .msgBottom {
+          margin-top: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 24px;
+          color: #eaeaea;
+          opacity: 0.95;
+        }
+
         .msgLine {
           display: inline-block;
           transform-origin: 50% 50%;
-          animation: msgIn 460ms var(--e) both;
+          animation: msgIn 420ms var(--e) both;
         }
 
-        /* subtle “lift-in” animation when message changes */
         @keyframes msgIn {
           from {
             opacity: 0;
@@ -421,14 +458,14 @@ export default function GatePage() {
           border-radius: 50%;
           background: rgba(255, 255, 255, 0.7);
           display: inline-block;
-          animation: dot 900ms var(--e) infinite;
+          animation: dot 1050ms var(--e) infinite;
         }
         .dots i:nth-child(2) {
-          animation-delay: 120ms;
+          animation-delay: 140ms;
           opacity: 0.7;
         }
         .dots i:nth-child(3) {
-          animation-delay: 240ms;
+          animation-delay: 280ms;
           opacity: 0.55;
         }
 
@@ -436,7 +473,7 @@ export default function GatePage() {
           0%,
           100% {
             transform: translateY(0);
-            opacity: 0.4;
+            opacity: 0.35;
           }
           50% {
             transform: translateY(-4px);
@@ -453,6 +490,19 @@ export default function GatePage() {
         .msgStatic {
           opacity: 0.92;
           line-height: 1.5;
+          margin-bottom: 16px;
+          color: #eaeaea;
+        }
+
+        .needTitle {
+          font-size: 16px;
+          font-weight: 700;
+          margin: 6px 0 8px;
+        }
+
+        .needText {
+          opacity: 0.92;
+          line-height: 1.55;
           margin-bottom: 16px;
           color: #eaeaea;
         }
@@ -491,7 +541,7 @@ export default function GatePage() {
           background: transparent;
           color: #fff;
           font-size: 16px;
-          fontWeight: 700;
+          font-weight: 700;
           cursor: pointer;
           transition: transform 120ms var(--e), background var(--dur) var(--e),
             border-color var(--dur) var(--e);
