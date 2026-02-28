@@ -3,13 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type GateOk = { ok: true; subscribed: true };
-type GateNeedSub = { ok: true; subscribed: false; joinUrl?: string };
-type GateErr = { ok: false; error: string };
-type GateResp = GateOk | GateNeedSub | GateErr;
+/**
+ * Дискриминированный union:
+ * ok — строго true/false (литералы), чтобы TS гарантированно сужал типы.
+ */
+type GateOkSubscribed = { ok: true; subscribed: true };
+type GateOkNeedSub = { ok: true; subscribed: false; joinUrl?: string };
+type GateFail = { ok: false; error?: string };
+type GateResp = GateOkSubscribed | GateOkNeedSub | GateFail;
 
 function getTg() {
+  if (typeof window === "undefined") return null;
   return (window as any)?.Telegram?.WebApp ?? null;
+}
+
+function isGateFail(x: GateResp): x is GateFail {
+  return x.ok === false;
 }
 
 export default function GatePage() {
@@ -21,8 +30,9 @@ export default function GatePage() {
   const [msg, setMsg] = useState<string>("Идёт проверка подписки…");
   const [joinUrl, setJoinUrl] = useState<string>("");
 
+  // Просто для удобства (не критично), initData всё равно берём из tg в check()
   const initData = useMemo(() => {
-    const tg = typeof window !== "undefined" ? getTg() : null;
+    const tg = getTg();
     return tg?.initData ? String(tg.initData) : "";
   }, []);
 
@@ -37,17 +47,19 @@ export default function GatePage() {
       return;
     }
 
-    // важно: подождать готовности webapp
+    // Важно: попытаться “разбудить” WebApp
     try {
       tg.ready?.();
       tg.expand?.();
     } catch {}
 
-    const id = setTimeout(() => {
-      // если initData всё ещё пустой — покажем ошибку
+    // Фолбэк: если initData не появится — покажем подсказку
+    const timerId = window.setTimeout(() => {
       if (!tg.initData) {
         setStatus("error");
-        setMsg("initData пустой. Проверь /setdomain в BotFather и открывай из кнопки WebApp.");
+        setMsg(
+          "initData пустой. Проверь /setdomain в BotFather и открывай Mini App из кнопки WebApp."
+        );
       }
     }, 600);
 
@@ -55,16 +67,24 @@ export default function GatePage() {
       const res = await fetch("/api/gate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initData: String(tg.initData || "") })
+        body: JSON.stringify({ initData: String(tg.initData || "") }),
       });
 
+      // Даже если сервер вернул 4xx/5xx — попробуем прочитать тело
       const json = (await res.json()) as GateResp;
 
-      clearTimeout(id);
+      window.clearTimeout(timerId);
 
-      if (!json.ok) {
+      // Если сервер упал и вернул не-наш формат — тоже обработаем
+      if (!json || typeof json !== "object" || typeof (json as any).ok !== "boolean") {
         setStatus("error");
-        setMsg(json.error || "Ошибка проверки.");
+        setMsg("Некорректный ответ сервера. Проверь /api/gate.");
+        return;
+      }
+
+      if (isGateFail(json)) {
+        setStatus("error");
+        setMsg(json.error ?? "Ошибка проверки.");
         return;
       }
 
@@ -77,29 +97,28 @@ export default function GatePage() {
 
       setStatus("need_sub");
       setMsg("Подписка не найдена. Подпишись и нажми «Проверить».");
-      setJoinUrl(json.joinUrl || "");
+      setJoinUrl(json.joinUrl ?? "");
     } catch (e: any) {
-      clearTimeout(id);
+      window.clearTimeout(timerId);
       setStatus("error");
       setMsg(String(e?.message || e));
     }
   }, [router]);
 
   useEffect(() => {
-    // если вообще не в TG — покажем экран
-    const tg = typeof window !== "undefined" ? getTg() : null;
+    const tg = getTg();
     if (!tg) {
       setStatus("not_tg");
       setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
       return;
     }
     check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [check]);
 
   const openSubscribe = () => {
     const tg = getTg();
     const url = joinUrl || "https://t.me/";
-    // внутри TG лучше так
     if (tg?.openTelegramLink) tg.openTelegramLink(url);
     else window.open(url, "_blank");
   };
@@ -114,7 +133,7 @@ export default function GatePage() {
         alignItems: "center",
         justifyContent: "center",
         padding: 16,
-        textAlign: "center"
+        textAlign: "center",
       }}
     >
       <div style={{ width: "100%", maxWidth: 420 }}>
@@ -138,7 +157,7 @@ export default function GatePage() {
                 background: "#fff",
                 color: "#000",
                 fontSize: 16,
-                fontWeight: 700
+                fontWeight: 700,
               }}
             >
               Подписаться
@@ -154,7 +173,7 @@ export default function GatePage() {
                 background: "transparent",
                 color: "#fff",
                 fontSize: 16,
-                fontWeight: 700
+                fontWeight: 700,
               }}
             >
               Проверить
@@ -173,7 +192,7 @@ export default function GatePage() {
               background: "#fff",
               color: "#000",
               fontSize: 16,
-              fontWeight: 700
+              fontWeight: 700,
             }}
           >
             Повторить
