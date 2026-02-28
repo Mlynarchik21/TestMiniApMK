@@ -32,17 +32,13 @@ export default function GatePage() {
     "loading" | "not_tg" | "need_sub" | "ok" | "error"
   >("loading");
 
-  // loading variant: initial vs recheck
   const [loadingVariant, setLoadingVariant] = useState<"init" | "recheck">("init");
 
-  // messages
   const [msg, setMsg] = useState<string>("Инициализация…");
   const [joinUrl, setJoinUrl] = useState<string>("");
 
-  // Progress (0..100)
   const [progress, setProgress] = useState<number>(0);
 
-  // animation control
   const rafRef = useRef<number | null>(null);
   const animStartRef = useRef<number>(0);
   const animFromRef = useRef<number>(0);
@@ -63,7 +59,8 @@ export default function GatePage() {
 
   const setPhaseText = useCallback(
     (p: number) => {
-      if (loadingVariant !== "init") return; // при recheck текст фиксированный снизу
+      if (loadingVariant !== "init") return;
+
       let idx = 0;
       for (let i = 0; i < phasesInit.length; i++) {
         if (p >= phasesInit[i].at) idx = i;
@@ -132,8 +129,9 @@ export default function GatePage() {
       setStatus("loading");
       setJoinUrl("");
 
-      // ощущение “дорого”: 4.2с до 92% + 0.65с до 100%
       setMsg(variant === "init" ? phasesInit[0].text : "Проверяем подписку…");
+
+      // 3–5 секунд: ставим "дорогую" скорость ~4.2с
       const minDurationMs = 4200;
       const startTs = Date.now();
 
@@ -150,6 +148,7 @@ export default function GatePage() {
         tg.expand?.();
       } catch {}
 
+      // основной прогресс до 92% параллельно
       const progPromise = animateProgress(0, 92, minDurationMs);
 
       await waitForInitData(tg, 1500);
@@ -177,6 +176,7 @@ export default function GatePage() {
         json = { ok: false, error: String(e?.message || e) };
       }
 
+      // гарантируем, что не быстрее minDurationMs
       const elapsed = Date.now() - startTs;
       if (elapsed < minDurationMs) await sleep(minDurationMs - elapsed);
 
@@ -198,6 +198,7 @@ export default function GatePage() {
       if (json.subscribed === true) {
         setStatus("ok");
         setMsg("Доступ подтверждён. Переходим…");
+        // строго после 100% (мы уже на 100), дадим чуть “досмотреть”
         await sleep(150);
         router.replace("/home");
         return;
@@ -212,6 +213,7 @@ export default function GatePage() {
 
   useEffect(() => {
     runGateFlow("init");
+    return () => stopAnim();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -241,7 +243,7 @@ export default function GatePage() {
           <>
             <div className="ring" aria-label="Loading progress">
               <svg viewBox="0 0 80 80">
-                <circle className="bg" cx="40" cy="40" r={R}></circle>
+                <circle className="bg" cx="40" cy="40" r={R} />
                 <circle
                   className="fg"
                   cx="40"
@@ -251,10 +253,10 @@ export default function GatePage() {
                     strokeDasharray: `${C}`,
                     strokeDashoffset: `${dashOffset}`,
                   }}
-                ></circle>
+                />
               </svg>
 
-              {/* проценты внутри как на скрине */}
+              {/* проценты как на скрине */}
               <span className="ringText">
                 <span className="ringNum">{pct}</span>
                 <span className="ringPct">%</span>
@@ -329,8 +331,8 @@ export default function GatePage() {
           background: var(--bg);
           color: var(--text);
           font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Display",
-            "SF Pro Text", Inter, Roboto, "Segoe UI", "Noto Sans",
-            "Helvetica Neue", Arial, sans-serif;
+            "SF Pro Text", Inter, Roboto, "Segoe UI", "Noto Sans", "Helvetica Neue",
+            Arial, sans-serif;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -361,4 +363,195 @@ export default function GatePage() {
           width: 120px;
           height: 120px;
           transform: rotate(-90deg);
-         
+          overflow: visible;
+        }
+
+        .ring circle {
+          fill: none;
+          stroke-width: 7;
+          stroke-linecap: round;
+        }
+
+        .ring .bg {
+          stroke: rgba(255, 255, 255, 0.12);
+        }
+
+        .ring .fg {
+          stroke: #78d06a;
+          transition: stroke-dashoffset 120ms var(--e);
+          filter: drop-shadow(0 0 10px rgba(120, 208, 106, 0.22));
+        }
+
+        /* === проценты внутри круга как на скрине === */
+        .ringText {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2px;
+          transform: translateY(-1px);
+          color: rgba(255, 255, 255, 0.95);
+        }
+
+        .ringNum {
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 0.2px;
+        }
+
+        .ringPct {
+          font-size: 12px;
+          font-weight: 700;
+          opacity: 0.9;
+          transform: translateY(-4px);
+        }
+
+        .msg,
+        .msgBottom {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 24px;
+          margin: 0 auto 6px;
+          color: #eaeaea;
+          opacity: 0.95;
+        }
+
+        .msgLine {
+          display: inline-block;
+          transform-origin: 50% 50%;
+          animation: msgIn 420ms var(--e) both;
+        }
+
+        @keyframes msgIn {
+          from {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .dots {
+          display: inline-flex;
+          gap: 4px;
+          align-items: center;
+          height: 10px;
+        }
+
+        .dots i {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.7);
+          display: inline-block;
+          animation: dot 1050ms var(--e) infinite;
+        }
+
+        .dots i:nth-child(2) {
+          animation-delay: 140ms;
+          opacity: 0.7;
+        }
+
+        .dots i:nth-child(3) {
+          animation-delay: 280ms;
+          opacity: 0.55;
+        }
+
+        @keyframes dot {
+          0%,
+          100% {
+            transform: translateY(0);
+            opacity: 0.35;
+          }
+          50% {
+            transform: translateY(-4px);
+            opacity: 1;
+          }
+        }
+
+        .hint {
+          font-size: 12px;
+          color: var(--muted);
+          margin-bottom: 14px;
+        }
+
+        .msgStatic {
+          opacity: 0.92;
+          line-height: 1.5;
+          margin-bottom: 16px;
+          color: #eaeaea;
+        }
+
+        .needTitle {
+          font-size: 16px;
+          font-weight: 700;
+          margin: 6px 0 8px;
+        }
+
+        .needText {
+          opacity: 0.92;
+          line-height: 1.55;
+          margin-bottom: 16px;
+          color: #eaeaea;
+        }
+
+        .buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .btnPrimary {
+          width: 100%;
+          padding: 14px 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          background: #fff;
+          color: #000;
+          font-size: 16px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: transform 120ms var(--e), background var(--dur) var(--e),
+            border-color var(--dur) var(--e);
+        }
+
+        .btnPrimary:active {
+          transform: translateY(1px) scale(0.985);
+          background: #f2f2f2;
+          border-color: #fff;
+        }
+
+        .btnGhost {
+          width: 100%;
+          padding: 14px 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          background: transparent;
+          color: #fff;
+          font-size: 16px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: transform 120ms var(--e), background var(--dur) var(--e),
+            border-color var(--dur) var(--e);
+        }
+
+        .btnGhost:active {
+          transform: translateY(1px) scale(0.985);
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.6);
+        }
+
+        @media (min-width: 720px) {
+          .wrap {
+            max-width: 480px;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
