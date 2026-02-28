@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 
 /**
  * Дискриминированный union:
- * ok — строго true/false (литералы), чтобы TS гарантированно сужал типы.
+ * ok — true/false (литералы), subscribed — true/false (литералы).
+ * joinUrl существует только при subscribed:false.
  */
 type GateOkSubscribed = { ok: true; subscribed: true };
 type GateOkNeedSub = { ok: true; subscribed: false; joinUrl?: string };
@@ -30,7 +31,7 @@ export default function GatePage() {
   const [msg, setMsg] = useState<string>("Идёт проверка подписки…");
   const [joinUrl, setJoinUrl] = useState<string>("");
 
-  // Просто для удобства (не критично), initData всё равно берём из tg в check()
+  // Не критично, просто для удобства (в check всё равно берём актуальное из tg)
   const initData = useMemo(() => {
     const tg = getTg();
     return tg?.initData ? String(tg.initData) : "";
@@ -47,13 +48,11 @@ export default function GatePage() {
       return;
     }
 
-    // Важно: попытаться “разбудить” WebApp
     try {
       tg.ready?.();
       tg.expand?.();
     } catch {}
 
-    // Фолбэк: если initData не появится — покажем подсказку
     const timerId = window.setTimeout(() => {
       if (!tg.initData) {
         setStatus("error");
@@ -70,12 +69,11 @@ export default function GatePage() {
         body: JSON.stringify({ initData: String(tg.initData || "") }),
       });
 
-      // Даже если сервер вернул 4xx/5xx — попробуем прочитать тело
       const json = (await res.json()) as GateResp;
 
       window.clearTimeout(timerId);
 
-      // Если сервер упал и вернул не-наш формат — тоже обработаем
+      // защита от “не того” ответа
       if (!json || typeof json !== "object" || typeof (json as any).ok !== "boolean") {
         setStatus("error");
         setMsg("Некорректный ответ сервера. Проверь /api/gate.");
@@ -88,13 +86,15 @@ export default function GatePage() {
         return;
       }
 
-      if (json.subscribed) {
+      // ЯВНОЕ сужение — чтобы TS гарантированно понял ветки
+      if (json.subscribed === true) {
         setStatus("ok");
         setMsg("Доступ подтверждён. Переходим…");
         router.replace("/home");
         return;
       }
 
+      // здесь json — GateOkNeedSub
       setStatus("need_sub");
       setMsg("Подписка не найдена. Подпишись и нажми «Проверить».");
       setJoinUrl(json.joinUrl ?? "");
