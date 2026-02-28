@@ -1,92 +1,108 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Status = "loading" | "need_subscribe" | "ok" | "error" | "not_in_telegram";
+type GateOk = { ok: true; subscribed: true };
+type GateNeedSub = { ok: true; subscribed: false; joinUrl?: string };
+type GateErr = { ok: false; error: string };
+type GateResp = GateOk | GateNeedSub | GateErr;
+
+function getTg() {
+  return (window as any)?.Telegram?.WebApp ?? null;
+}
 
 export default function GatePage() {
   const router = useRouter();
 
-  const [status, setStatus] = useState<Status>("loading");
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string>("");
+  const [status, setStatus] = useState<
+    "loading" | "not_tg" | "need_sub" | "ok" | "error"
+  >("loading");
+  const [msg, setMsg] = useState<string>("Идёт проверка подписки…");
+  const [joinUrl, setJoinUrl] = useState<string>("");
 
-  // безопасно проверяем Telegram WebApp только на клиенте
-  const isTelegramWebApp = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    const tg = (window as any).Telegram?.WebApp;
-    return !!tg;
+  const initData = useMemo(() => {
+    const tg = typeof window !== "undefined" ? getTg() : null;
+    return tg?.initData ? String(tg.initData) : "";
   }, []);
 
-  // helper: получить initData
-  const getInitData = () => {
-    const tg = (window as any).Telegram?.WebApp;
-    return tg?.initData || "";
-  };
+  const check = useCallback(async () => {
+    setStatus("loading");
+    setMsg("Идёт проверка подписки…");
 
-  async function checkSubscription() {
-    try {
-      setStatus("loading");
-      setMsg("Идёт проверка подписки...");
-
-      const initData = getInitData();
-      if (!initData) {
-        setStatus("not_in_telegram");
-        setMsg("Telegram.WebApp не найден или initData пустой.");
-        return;
-      }
-
-      const res = await fetch("/api/gate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initData }),
-      });
-
-      const json: any = await res.json().catch(() => null);
-
-      if (!json || json.ok !== true) {
-        // ожидаем, что API может вернуть { ok:false, error:"NOT_SUBSCRIBED", inviteUrl:"..." }
-        if (json?.error === "NOT_SUBSCRIBED") {
-          setInviteUrl(json?.inviteUrl ?? null);
-          setStatus("need_subscribe");
-          setMsg("Подпишись на канал и нажми «Проверить подписку» ещё раз.");
-          return;
-        }
-
-        setStatus("error");
-        setMsg(json?.error ? String(json.error) : "Ошибка проверки подписки");
-        return;
-      }
-
-      // ok
-      setStatus("ok");
-      setMsg("ОК. Перенаправляю на /home ...");
-      router.replace("/home");
-    } catch (e: any) {
-      setStatus("error");
-      setMsg(String(e?.message ?? e));
-    }
-  }
-
-  useEffect(() => {
-    // запускаем автопроверку при входе
-    if (!isTelegramWebApp) {
-      setStatus("not_in_telegram");
-      setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
+    const tg = getTg();
+    if (!tg) {
+      setStatus("not_tg");
+      setMsg("Telegram.WebApp не найден.");
       return;
     }
 
-    // Telegram UI фичи (не обязательно)
+    // важно: подождать готовности webapp
     try {
-      const tg = (window as any).Telegram?.WebApp;
-      tg?.ready?.();
-      tg?.expand?.();
+      tg.ready?.();
+      tg.expand?.();
     } catch {}
 
-    checkSubscription();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const id = setTimeout(() => {
+      // если initData всё ещё пустой — покажем ошибку
+      if (!tg.initData) {
+        setStatus("error");
+        setMsg("initData пустой. Проверь /setdomain в BotFather и открывай из кнопки WebApp.");
+      }
+    }, 600);
+
+    try {
+      const res = await fetch("/api/gate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData: String(tg.initData || "") })
+      });
+
+      const json = (await res.json()) as GateResp;
+
+      clearTimeout(id);
+
+      if (!json.ok) {
+        setStatus("error");
+        setMsg(json.error || "Ошибка проверки.");
+        return;
+      }
+
+      if (json.subscribed) {
+        setStatus("ok");
+        setMsg("Доступ подтверждён. Переходим…");
+        router.replace("/home");
+        return;
+      }
+
+      setStatus("need_sub");
+      setMsg("Подписка не найдена. Подпишись и нажми «Проверить».");
+      setJoinUrl(json.joinUrl || "");
+    } catch (e: any) {
+      clearTimeout(id);
+      setStatus("error");
+      setMsg(String(e?.message || e));
+    }
+  }, [router]);
+
+  useEffect(() => {
+    // если вообще не в TG — покажем экран
+    const tg = typeof window !== "undefined" ? getTg() : null;
+    if (!tg) {
+      setStatus("not_tg");
+      setMsg("Не внутри Telegram. Открой Mini App внутри Telegram (WebApp).");
+      return;
+    }
+    check();
+  }, [check]);
+
+  const openSubscribe = () => {
+    const tg = getTg();
+    const url = joinUrl || "https://t.me/";
+    // внутри TG лучше так
+    if (tg?.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, "_blank");
+  };
 
   return (
     <div
@@ -97,74 +113,71 @@ export default function GatePage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 18,
-        textAlign: "center",
+        padding: 16,
+        textAlign: "center"
       }}
     >
       <div style={{ width: "100%", maxWidth: 420 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 10 }}>
-          {status === "loading" ? "Загрузка..." : "Gate / Проверка доступа"}
+        <div style={{ fontSize: 26, fontWeight: 700, marginBottom: 12 }}>
+          Gate / Проверка доступа
         </div>
 
-        <div style={{ opacity: 0.85, lineHeight: 1.5, marginBottom: 16 }}>
+        <div style={{ opacity: 0.9, lineHeight: 1.5, marginBottom: 18 }}>
           {msg}
         </div>
 
-        {status === "need_subscribe" && (
-          <div style={{ display: "grid", gap: 10 }}>
+        {status === "need_sub" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
-              onClick={() => {
-                if (inviteUrl) window.open(inviteUrl, "_blank");
-              }}
+              onClick={openSubscribe}
               style={{
-                height: 44,
-                borderRadius: 12,
+                width: "100%",
+                padding: "14px 16px",
+                borderRadius: 14,
                 border: "1px solid rgba(255,255,255,.25)",
-                background: "#111",
-                color: "#fff",
-                fontSize: 14,
-                cursor: "pointer",
+                background: "#fff",
+                color: "#000",
+                fontSize: 16,
+                fontWeight: 700
               }}
             >
               Подписаться
             </button>
 
             <button
-              onClick={checkSubscription}
+              onClick={check}
               style={{
-                height: 44,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.35)",
-                background: "#fff",
-                color: "#000",
-                fontSize: 14,
-                cursor: "pointer",
-                fontWeight: 600,
+                width: "100%",
+                padding: "14px 16px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,.25)",
+                background: "transparent",
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: 700
               }}
             >
-              Проверить подписку
+              Проверить
             </button>
           </div>
         )}
 
-        {(status === "error" || status === "not_in_telegram") && (
-          <div style={{ display: "grid", gap: 10 }}>
-            <button
-              onClick={checkSubscription}
-              style={{
-                height: 44,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.35)",
-                background: "#fff",
-                color: "#000",
-                fontSize: 14,
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              Повторить
-            </button>
-          </div>
+        {(status === "not_tg" || status === "error") && (
+          <button
+            onClick={check}
+            style={{
+              width: "100%",
+              padding: "14px 16px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,.25)",
+              background: "#fff",
+              color: "#000",
+              fontSize: 16,
+              fontWeight: 700
+            }}
+          >
+            Повторить
+          </button>
         )}
       </div>
     </div>
