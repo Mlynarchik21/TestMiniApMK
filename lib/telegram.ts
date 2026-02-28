@@ -1,54 +1,57 @@
 import crypto from "crypto";
 
-export function parseInitData(initData: string) {
+function parseInitData(initData: string) {
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
-  params.delete("hash");
+  if (!hash) return null;
 
-  const entries: string[] = [];
-  Array.from(params.keys())
-    .sort()
-    .forEach((key) => {
-      const val = params.get(key) ?? "";
-      entries.push(`${key}=${val}`);
-    });
+  const data: Record<string, string> = {};
+  params.forEach((value, key) => {
+    if (key !== "hash") data[key] = value;
+  });
 
-  const dataCheckString = entries.join("\n");
-  return { hash, dataCheckString, params };
+  return { hash, data };
 }
 
-export function validateTelegramInitData(initData: string, botToken: string) {
-  const { hash, dataCheckString, params } = parseInitData(initData);
-  if (!hash) return { ok: false as const, error: "MISSING_HASH" };
+export function verifyTelegramInitData(initData: string, botToken: string) {
+  const parsed = parseInitData(initData);
+  if (!parsed) return null;
 
-  // secret_key = HMAC_SHA256("WebAppData", bot_token)
-  const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
+  const { hash, data } = parsed;
 
+  // data_check_string
+  const dataCheckString = Object.keys(data)
+    .sort()
+    .map((k) => `${k}=${data[k]}`)
+    .join("\n");
+
+  // secret_key = SHA256(botToken)
+  const secretKey = crypto.createHash("sha256").update(botToken).digest();
+
+  // HMAC-SHA256(data_check_string, secret_key) in hex
   const computedHash = crypto
     .createHmac("sha256", secretKey)
     .update(dataCheckString)
     .digest("hex");
 
-  if (computedHash !== hash) return { ok: false as const, error: "BAD_INITDATA" };
+  if (computedHash !== hash) return null;
 
-  // auth_date (24 часа)
-  const authDate = Number(params.get("auth_date") || "0");
-  const now = Math.floor(Date.now() / 1000);
-  if (!authDate || now - authDate > 60 * 60 * 24) {
-    return { ok: false as const, error: "INITDATA_EXPIRED" };
+  // опционально: проверка свежести auth_date (например 24 часа)
+  const authDate = Number(data["auth_date"] || "0");
+  if (authDate) {
+    const ageSec = Math.floor(Date.now() / 1000) - authDate;
+    if (ageSec > 60 * 60 * 24) return null; // старше 24ч
   }
 
-  const userRaw = params.get("user");
-  if (!userRaw) return { ok: false as const, error: "NO_USER" };
-
-  let user: any;
-  try {
-    user = JSON.parse(userRaw);
-  } catch {
-    return { ok: false as const, error: "BAD_USER_JSON" };
+  // user приходит JSON строкой
+  let user: any = null;
+  if (data["user"]) {
+    try {
+      user = JSON.parse(data["user"]);
+    } catch {
+      user = null;
+    }
   }
 
-  if (!user?.id) return { ok: false as const, error: "NO_USER_ID" };
-
-  return { ok: true as const, user };
+  return { data, user };
 }
