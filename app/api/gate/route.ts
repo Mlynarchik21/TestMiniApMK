@@ -78,13 +78,13 @@ export async function POST(req: Request) {
     const botToken = process.env.BOT_TOKEN;
     const channelId = process.env.CHANNEL_ID;
     const joinUrl = process.env.CHANNEL_JOIN_URL || "";
+    const ttlDaysRaw = Number(process.env.SESSION_TTL_DAYS || 30);
+    const ttlDays = Number.isFinite(ttlDaysRaw) && ttlDaysRaw > 0 ? ttlDaysRaw : 30;
 
     if (!botToken)
       return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
     if (!channelId)
       return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
-    if (!process.env.DATABASE_URL)
-      return NextResponse.json({ ok: false, error: "DATABASE_URL missing" });
 
     const body = await req.json().catch(() => null);
     const initData = String(body?.initData || "");
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     if (!Number.isFinite(tgIdNumber))
       return NextResponse.json({ ok: false, error: "bad_tg_id" });
 
-    // 2) check subscription
+    // 2) subscription check
     const sub = await isSubscribed(botToken, channelId, tgIdNumber);
     if (!sub.ok) {
       return NextResponse.json({
@@ -109,24 +109,18 @@ export async function POST(req: Request) {
       });
     }
 
-    // Если НЕ подписан — user/session не создаём (так обычно удобнее)
+    // Если не подписан — просто отдаём ответ, без создания сессии
     if (!sub.subscribed) {
-      return NextResponse.json({
-        ok: true,
-        subscribed: false,
-        joinUrl,
-      });
+      return NextResponse.json({ ok: true, subscribed: false, joinUrl });
     }
 
-    // 3) upsert user in DB (B2)
+    // 3) upsert user (B2)
     const tgId = BigInt(tgIdNumber);
 
-    const username =
-      typeof v.user.username === "string" ? v.user.username : null;
+    const username = typeof v.user.username === "string" ? v.user.username : null;
     const firstName =
       typeof v.user.first_name === "string" ? v.user.first_name : null;
-    const lastName =
-      typeof v.user.last_name === "string" ? v.user.last_name : null;
+    const lastName = typeof v.user.last_name === "string" ? v.user.last_name : null;
 
     const user = await prisma.user.upsert({
       where: { tgId },
@@ -136,7 +130,7 @@ export async function POST(req: Request) {
         firstName,
         lastName,
         lastSeenAt: new Date(),
-        profile: { create: {} }, // создаём профиль сразу
+        profile: { create: {} },
       },
       update: {
         username,
@@ -148,11 +142,8 @@ export async function POST(req: Request) {
     });
 
     // 4) create session (B2)
-    const token = randomToken(32); // то, что будет лежать в cookie
-    const tokenHash = sha256Hex(token); // то, что лежит в БД
-
-    const days = Number(process.env.SESSION_TTL_DAYS || 30);
-    const ttlDays = Number.isFinite(days) && days > 0 ? days : 30;
+    const token = randomToken(32); // кладём в cookie
+    const tokenHash = sha256Hex(token); // храним в БД
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
@@ -164,7 +155,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 5) set HttpOnly cookie (это уже основа B3, но без /api/me пока)
+    // 5) response + cookie
     const res = NextResponse.json({
       ok: true,
       subscribed: true,
@@ -184,7 +175,7 @@ export async function POST(req: Request) {
       maxAge: ttlDays * 24 * 60 * 60,
     });
 
-    // Убираем старую небезопасную cookie, если где-то осталась
+    // убираем старую небезопасную cookie, если была
     res.cookies.set("tm_uid", "", { path: "/", maxAge: 0 });
 
     return res;
