@@ -24,31 +24,37 @@ export async function POST(req: Request) {
   }
 
   if (!initData || typeof initData !== "string") {
-    return NextResponse.json({ ok: false, error: "initData required" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "initData required" },
+      { status: 400 }
+    );
   }
 
   const verified = verifyTelegramInitData(initData, botToken);
   if (!verified || !verified.user?.id) {
-    return NextResponse.json({ ok: false, error: "invalid initData" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "invalid initData" },
+      { status: 401 }
+    );
   }
 
   const tgId = BigInt(verified.user.id);
 
   // upsert user
-const user = await prisma.user.upsert({
-  where: { tgId: String(tgId) },
-  update: {
-    username: verified.user.username ?? null,
-    firstName: verified.user.first_name ?? null,
-    lastName: verified.user.last_name ?? null,
-  },
-  create: {
-    tgId: String(tgId),
-    username: verified.user.username ?? null,
-    firstName: verified.user.first_name ?? null,
-    lastName: verified.user.last_name ?? null,
-  },
-});
+  const user = await prisma.user.upsert({
+    where: { tgId: String(tgId) },
+    update: {
+      username: verified.user.username ?? null,
+      firstName: verified.user.first_name ?? null,
+      lastName: verified.user.last_name ?? null,
+    },
+    create: {
+      tgId: String(tgId),
+      username: verified.user.username ?? null,
+      firstName: verified.user.first_name ?? null,
+      lastName: verified.user.last_name ?? null,
+    },
+  });
 
   // create session
   const token = randomToken();
@@ -60,7 +66,7 @@ const user = await prisma.user.upsert({
   await prisma.session.create({
     data: {
       userId: user.id,
-      tokenHash,
+      token: tokenHash, // ✅ вместо tokenHash
       expiresAt,
     },
   });
