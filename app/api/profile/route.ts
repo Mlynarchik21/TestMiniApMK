@@ -4,11 +4,20 @@ import { requireUser } from "../../../lib/auth";
 
 export const runtime = "nodejs";
 
+function errToJson(e: any) {
+  return {
+    message: e?.message ?? String(e),
+    code: e?.code ?? null,
+    name: e?.name ?? null,
+    meta: e?.meta ?? null,
+  };
+}
+
 export async function GET() {
   try {
     const user = await requireUser();
     if (!user) {
-      return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
     const profile = await prisma.profile.upsert({
@@ -19,15 +28,8 @@ export async function GET() {
 
     return NextResponse.json({ ok: true, profile });
   } catch (e: any) {
-    console.error("GET /api/profile error:", e);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: e?.message ?? "profile error",
-        code: e?.code ?? null,
-      },
-      { status: 500 }
-    );
+    console.error("GET /api/profile:", e);
+    return NextResponse.json({ ok: false, error: errToJson(e) }, { status: 500 });
   }
 }
 
@@ -35,7 +37,7 @@ export async function PATCH(req: Request) {
   try {
     const user = await requireUser();
     if (!user) {
-      return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -49,14 +51,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ ok: true, profile });
   } catch (e: any) {
-    console.error("PATCH /api/profile error:", e);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: e?.message ?? "profile error",
-        code: e?.code ?? null,
-      },
-      { status: 500 }
-    );
+    console.error("PATCH /api/profile:", e);
+    return NextResponse.json({ ok: false, error: errToJson(e) }, { status: 500 });
   }
 }
