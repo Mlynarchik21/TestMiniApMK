@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -114,8 +114,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, subscribed: false, joinUrl });
     }
 
-    // 3) upsert user (B2)
-    const tgId = BigInt(tgIdNumber);
+    // 3) upsert user
+    const tgId = String(tgIdNumber);
 
     const username = typeof v.user.username === "string" ? v.user.username : null;
     const firstName =
@@ -129,28 +129,25 @@ export async function POST(req: Request) {
         username,
         firstName,
         lastName,
-        lastSeenAt: new Date(),
-        profile: { create: {} },
       },
       update: {
         username,
         firstName,
         lastName,
-        lastSeenAt: new Date(),
       },
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
-    // 4) create session (B2)
+    // 4) create session
     const token = randomToken(32); // кладём в cookie
-    const tokenHash = sha256Hex(token); // храним в БД
+    const tokenHash = sha256Hex(token); // храним в БД (в поле token)
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
     await prisma.session.create({
       data: {
         userId: user.id,
-        tokenHash,
+        token: tokenHash,
         expiresAt,
       },
     });
