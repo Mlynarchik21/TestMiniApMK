@@ -12,39 +12,30 @@ export async function GET() {
     const token = cookies().get("session")?.value;
 
     if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "no session" },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
     }
 
     const tokenHash = sha256hex(token);
 
     const session = await prisma.session.findUnique({
-      where: { tokenHash },
+      where: { token: tokenHash },
       include: { user: true },
     });
 
     if (!session) {
-      return NextResponse.json(
-        { ok: false, error: "invalid session" },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: "invalid session" }, { status: 401 });
     }
 
     if (session.expiresAt < new Date()) {
-      await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
-      return NextResponse.json(
-        { ok: false, error: "session expired" },
-        { status: 401 }
-      );
+      await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
+      return NextResponse.json({ ok: false, error: "session expired" }, { status: 401 });
     }
 
     return NextResponse.json({
       ok: true,
       user: {
         id: session.user.id,
-        tgId: session.user.tgId.toString(),
+        tgId: session.user.tgId,
         username: session.user.username,
         firstName: session.user.firstName,
         lastName: session.user.lastName,
