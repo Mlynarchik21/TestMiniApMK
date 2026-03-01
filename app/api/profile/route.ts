@@ -1,57 +1,42 @@
+// app/api/profile/route.ts
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 
-function errToJson(e: any) {
-  return {
-    message: e?.message ?? String(e),
-    code: e?.code ?? null,
-    name: e?.name ?? null,
-    meta: e?.meta ?? null,
-  };
+function sha256hex(input: string) {
+  return crypto.createHash("sha256").update(input).digest("hex");
 }
 
 export async function GET() {
-  try {
-    const user = await requireUser();
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-    }
-
-    const profile = await prisma.profile.upsert({
-      where: { userId: user.id },
-      update: {},
-      create: { userId: user.id, settings: {} },
-    });
-
-    return NextResponse.json({ ok: true, profile });
-  } catch (e: any) {
-    console.error("GET /api/profile:", e);
-    return NextResponse.json({ ok: false, error: errToJson(e) }, { status: 500 });
+  const token = cookies().get("session")?.value;
+  if (!token) {
+    return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
   }
-}
 
-export async function PATCH(req: Request) {
-  try {
-    const user = await requireUser();
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-    }
+  const tokenHash = sha256hex(token);
 
-    const body = await req.json().catch(() => ({}));
-    const settings = body?.settings ?? {};
+  const session = await prisma.session.findUnique({
+    where: { token: tokenHash },
+    include: { user: true },
+  });
 
-    const profile = await prisma.profile.upsert({
-      where: { userId: user.id },
-      update: { settings },
-      create: { userId: user.id, settings },
-    });
-
-    return NextResponse.json({ ok: true, profile });
-  } catch (e: any) {
-    console.error("PATCH /api/profile:", e);
-    return NextResponse.json({ ok: false, error: errToJson(e) }, { status: 500 });
+  if (!session || session.expiresAt < new Date()) {
+    return NextResponse.json({ ok: false, error: "invalid session" }, { status: 401 });
   }
+
+  return NextResponse.json({
+    ok: true,
+    profile: {
+      userId: session.user.id,
+      tgId: session.user.tgId,
+      username: session.user.username,
+      firstName: session.user.firstName,
+      lastName: session.user.lastName,
+      // временно нет отдельной таблицы profile
+      settings: {},
+    },
+  });
 }
