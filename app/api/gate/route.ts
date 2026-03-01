@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -51,8 +52,10 @@ async function isSubscribed(botToken: string, channelId: string, userId: number)
   const j = await r.json().catch(() => null);
 
   if (!j?.ok) {
-    // если бот не админ в канале или неверный channelId — тут будет ошибка
-    return { ok: false as const, error: j?.description || "getChatMember failed" };
+    return {
+      ok: false as const,
+      error: j?.description || "getChatMember failed",
+    };
   }
 
   const status = j.result?.status as string | undefined;
@@ -62,46 +65,127 @@ async function isSubscribed(botToken: string, channelId: string, userId: number)
   return { ok: true as const, subscribed, status };
 }
 
+function sha256Hex(input: string) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+function randomToken(bytes = 32) {
+  return crypto.randomBytes(bytes).toString("hex");
+}
+
 export async function POST(req: Request) {
   try {
     const botToken = process.env.BOT_TOKEN;
     const channelId = process.env.CHANNEL_ID;
     const joinUrl = process.env.CHANNEL_JOIN_URL || "";
 
-    if (!botToken) return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
-    if (!channelId) return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
+    if (!botToken)
+      return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
+    if (!channelId)
+      return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
+    if (!process.env.DATABASE_URL)
+      return NextResponse.json({ ok: false, error: "DATABASE_URL missing" });
 
     const body = await req.json().catch(() => null);
     const initData = String(body?.initData || "");
     if (!initData) return NextResponse.json({ ok: false, error: "initData empty" });
 
+    // 1) validate initData
     const v = verifyTelegramInitData(initData, botToken);
     if (!v.ok) return NextResponse.json({ ok: false, error: `initData_${v.reason}` });
 
-    const userId = Number(v.user.id);
+    const tgIdNumber = Number(v.user.id);
+    if (!Number.isFinite(tgIdNumber))
+      return NextResponse.json({ ok: false, error: "bad_tg_id" });
 
-    const sub = await isSubscribed(botToken, channelId, userId);
+    // 2) check subscription
+    const sub = await isSubscribed(botToken, channelId, tgIdNumber);
     if (!sub.ok) {
       return NextResponse.json({
         ok: false,
-        error: sub.error + " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)"
+        error:
+          sub.error +
+          " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)",
       });
     }
 
-    const res = NextResponse.json({
-      ok: true,
-      subscribed: sub.subscribed,
-      joinUrl
+    // Если НЕ подписан — user/session не создаём (так обычно удобнее)
+    if (!sub.subscribed) {
+      return NextResponse.json({
+        ok: true,
+        subscribed: false,
+        joinUrl,
+      });
+    }
+
+    // 3) upsert user in DB (B2)
+    const tgId = BigInt(tgIdNumber);
+
+    const username =
+      typeof v.user.username === "string" ? v.user.username : null;
+    const firstName =
+      typeof v.user.first_name === "string" ? v.user.first_name : null;
+    const lastName =
+      typeof v.user.last_name === "string" ? v.user.last_name : null;
+
+    const user = await prisma.user.upsert({
+      where: { tgId },
+      create: {
+        tgId,
+        username,
+        firstName,
+        lastName,
+        lastSeenAt: new Date(),
+        profile: { create: {} }, // создаём профиль сразу
+      },
+      update: {
+        username,
+        firstName,
+        lastName,
+        lastSeenAt: new Date(),
+      },
+      select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
-    // приватная cookie (пример) — можно расширить позже
-    res.cookies.set("tm_uid", String(userId), {
+    // 4) create session (B2)
+    const token = randomToken(32); // то, что будет лежать в cookie
+    const tokenHash = sha256Hex(token); // то, что лежит в БД
+
+    const days = Number(process.env.SESSION_TTL_DAYS || 30);
+    const ttlDays = Number.isFinite(days) && days > 0 ? days : 30;
+
+    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    // 5) set HttpOnly cookie (это уже основа B3, но без /api/me пока)
+    const res = NextResponse.json({
+      ok: true,
+      subscribed: true,
+      user: {
+        tgId: tgIdNumber,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
+
+    res.cookies.set("session", token, {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 30
+      maxAge: ttlDays * 24 * 60 * 60,
     });
+
+    // Убираем старую небезопасную cookie, если где-то осталась
+    res.cookies.set("tm_uid", "", { path: "/", maxAge: 0 });
 
     return res;
   } catch (e: any) {
