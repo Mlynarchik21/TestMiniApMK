@@ -1,39 +1,46 @@
-// app/api/profile/route.ts
-import { NextResponse } from "next/server";
+// app/profile/page.tsx
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const user = await requireUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+export default async function ProfilePage() {
+  const token = cookies().get("session")?.value;
+
+  if (!token) {
+    redirect("/"); // или "/login" если есть
   }
 
-  const profile = await prisma.profile.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id, settings: {} },
+  const session = await prisma.session.findUnique({
+    where: { token },
+    include: { user: true },
   });
 
-  return NextResponse.json({ ok: true, profile });
-}
-
-export async function PATCH(req: Request) {
-  const user = await requireUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+  if (!session || session.expiresAt < new Date()) {
+    redirect("/");
   }
 
-  const body = await req.json().catch(() => ({}));
-  const settings = body?.settings ?? {};
+  const user = session.user;
 
-  const profile = await prisma.profile.upsert({
-    where: { userId: user.id },
-    update: { settings },
-    create: { userId: user.id, settings },
-  });
+  return (
+    <main style={{ padding: 24, fontFamily: "system-ui" }}>
+      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Profile</h1>
 
-  return NextResponse.json({ ok: true, profile });
+      <div style={{ display: "grid", gap: 8, maxWidth: 520 }}>
+        <div>
+          <b>ID:</b> {user.id}
+        </div>
+        <div>
+          <b>TG ID:</b> {user.tgId}
+        </div>
+        <div>
+          <b>Username:</b> {user.username ?? "-"}
+        </div>
+        <div>
+          <b>Name:</b> {[user.firstName, user.lastName].filter(Boolean).join(" ") || "-"}
+        </div>
+      </div>
+    </main>
+  );
 }
