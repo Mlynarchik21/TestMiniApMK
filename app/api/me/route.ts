@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { prisma } from "../../../../lib/db";
+import { prisma } from "../../../lib/db";
 import { cookies } from "next/headers";
 
 function sha256hex(input: string) {
@@ -8,32 +8,53 @@ function sha256hex(input: string) {
 }
 
 export async function GET() {
-  const token = cookies().get("session")?.value;
-  if (!token) return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+  try {
+    const token = cookies().get("session")?.value;
 
-  const tokenHash = sha256hex(token);
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, error: "no session" },
+        { status: 401 }
+      );
+    }
 
-  const session = await prisma.session.findUnique({
-    where: { tokenHash },
-    include: { user: true },
-  });
+    const tokenHash = sha256hex(token);
 
-  if (!session) return NextResponse.json({ ok: false, error: "invalid session" }, { status: 401 });
-  if (session.expiresAt < new Date()) {
-    // можно удалить протухшую
-    await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
-    return NextResponse.json({ ok: false, error: "session expired" }, { status: 401 });
+    const session = await prisma.session.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+
+    if (!session) {
+      return NextResponse.json(
+        { ok: false, error: "invalid session" },
+        { status: 401 }
+      );
+    }
+
+    if (session.expiresAt < new Date()) {
+      await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
+      return NextResponse.json(
+        { ok: false, error: "session expired" },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        id: session.user.id,
+        tgId: session.user.tgId.toString(),
+        username: session.user.username,
+        firstName: session.user.firstName,
+        lastName: session.user.lastName,
+        createdAt: session.user.createdAt,
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "server error" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({
-    ok: true,
-    user: {
-      id: session.user.id,
-      tgId: session.user.tgId.toString(), // BigInt в JSON нельзя
-      username: session.user.username,
-      firstName: session.user.firstName,
-      lastName: session.user.lastName,
-      createdAt: session.user.createdAt,
-    },
-  });
 }
