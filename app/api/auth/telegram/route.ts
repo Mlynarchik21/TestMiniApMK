@@ -35,22 +35,20 @@ export async function POST(req: Request) {
   const tgId = BigInt(verified.user.id);
 
   // upsert user
-  const user = await prisma.user.upsert({
-    where: { tgId },
-    update: {
-      username: verified.user.username ?? null,
-      firstName: verified.user.first_name ?? null,
-      lastName: verified.user.last_name ?? null,
-      lastSeenAt: new Date(),
-    },
-    create: {
-      tgId,
-      username: verified.user.username ?? null,
-      firstName: verified.user.first_name ?? null,
-      lastName: verified.user.last_name ?? null,
-      lastSeenAt: new Date(),
-    },
-  });
+const user = await prisma.user.upsert({
+  where: { tgId: String(tgId) },
+  update: {
+    username: verified.user.username ?? null,
+    firstName: verified.user.first_name ?? null,
+    lastName: verified.user.last_name ?? null,
+  },
+  create: {
+    tgId: String(tgId),
+    username: verified.user.username ?? null,
+    firstName: verified.user.first_name ?? null,
+    lastName: verified.user.last_name ?? null,
+  },
+});
 
   // create session
   const token = randomToken();
