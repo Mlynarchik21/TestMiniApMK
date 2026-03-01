@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { prisma } from "../../../../lib/db";
+import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
 
 function sha256hex(input: string) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { prisma } from "../../../../lib/db";
-import { verifyTelegramInitData } from "../../../../lib/telegram";
+import { prisma } from "@/lib/db";
+import { verifyTelegramInitData } from "@/lib/telegram";
 
 function randomToken() {
   // 32 байта -> base64url
