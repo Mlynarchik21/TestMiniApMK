@@ -8,11 +8,8 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function makeClient() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL missing");
-  }
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL missing");
 
-  // один pool на весь процесс
   const pool =
     globalForPrisma.pgPool ??
     new Pool({
