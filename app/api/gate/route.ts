@@ -1,3 +1,4 @@
+// app/api/gate/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
@@ -69,6 +70,7 @@ function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+// 32 bytes -> hex string (64 chars)
 function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("hex");
 }
@@ -78,39 +80,61 @@ export async function POST(req: Request) {
     const botToken = process.env.BOT_TOKEN;
     const channelId = process.env.CHANNEL_ID;
     const joinUrl = process.env.CHANNEL_JOIN_URL || "";
-    const ttlDaysRaw = Number(process.env.SESSION_TTL_DAYS || 30);
-    const ttlDays = Number.isFinite(ttlDaysRaw) && ttlDaysRaw > 0 ? ttlDaysRaw : 30;
 
-    if (!botToken) return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
-    if (!channelId) return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
+    const ttlDaysRaw = Number(process.env.SESSION_TTL_DAYS || 30);
+    const ttlDays =
+      Number.isFinite(ttlDaysRaw) && ttlDaysRaw > 0 ? ttlDaysRaw : 30;
+
+    if (!botToken) {
+      return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" }, { status: 500 });
+    }
+    if (!channelId) {
+      return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" }, { status: 500 });
+    }
 
     const body = await req.json().catch(() => null);
     const initData = String(body?.initData || "");
-    if (!initData) return NextResponse.json({ ok: false, error: "initData empty" });
+    if (!initData) {
+      return NextResponse.json({ ok: false, error: "initData empty" }, { status: 400 });
+    }
 
     // 1) validate initData
     const v = verifyTelegramInitData(initData, botToken);
-    if (!v.ok) return NextResponse.json({ ok: false, error: `initData_${v.reason}` });
+    if (!v.ok) {
+      return NextResponse.json(
+        { ok: false, error: `initData_${v.reason}` },
+        { status: 401 }
+      );
+    }
 
+    // tg id as number for Telegram API call
     const tgIdNumber = Number(v.user.id);
-    if (!Number.isFinite(tgIdNumber)) return NextResponse.json({ ok: false, error: "bad_tg_id" });
+    if (!Number.isFinite(tgIdNumber)) {
+      return NextResponse.json({ ok: false, error: "bad_tg_id" }, { status: 400 });
+    }
+
+    // ✅ tgId for Prisma as BigInt (User.tgId = BigInt)
+    const tgId = BigInt(v.user.id);
 
     // 2) subscription check
     const sub = await isSubscribed(botToken, channelId, tgIdNumber);
     if (!sub.ok) {
-      return NextResponse.json({
-        ok: false,
-        error: sub.error + " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)",
-      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            sub.error +
+            " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)",
+        },
+        { status: 500 }
+      );
     }
 
     if (!sub.subscribed) {
       return NextResponse.json({ ok: true, subscribed: false, joinUrl });
     }
 
-    // 3) upsert user
-    const tgId = String(tgIdNumber);
-
+    // 3) upsert user (BigInt!)
     const username = typeof v.user.username === "string" ? v.user.username : null;
     const firstName = typeof v.user.first_name === "string" ? v.user.first_name : null;
     const lastName = typeof v.user.last_name === "string" ? v.user.last_name : null;
@@ -122,9 +146,9 @@ export async function POST(req: Request) {
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
-    // 4) create session
-    const rawToken = randomToken(32); // клиент будет хранить и слать в Authorization
-    const tokenHash = sha256Hex(rawToken); // в DB (Session.token)
+    // 4) create session (store hash in DB, return raw token to client)
+    const rawToken = randomToken(32);
+    const tokenHash = sha256Hex(rawToken);
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
@@ -140,16 +164,16 @@ export async function POST(req: Request) {
     const res = NextResponse.json({
       ok: true,
       subscribed: true,
-      sessionToken: rawToken, // ✅ ВАЖНО: отдаём токен клиенту
+      sessionToken: rawToken,
       user: {
-        tgId: tgIdNumber,
+        tgId: tgIdNumber, // для фронта оставляем number
         username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
       },
     });
 
-    // cookie оставляем как "опционально". В Telegram часто не работает, но пусть будет.
+    // В Telegram cookie часто не работают — но пусть будет.
     res.cookies.set("session", rawToken, {
       httpOnly: true,
       secure: true,
@@ -162,6 +186,9 @@ export async function POST(req: Request) {
 
     return res;
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) });
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || e) },
+      { status: 500 }
+    );
   }
 }
