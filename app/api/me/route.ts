@@ -1,10 +1,12 @@
 // app/api/me/route.ts
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth/requireUser";
+import { requireUser } from "@/lib/auth";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const { user } = await requireUser();
+    const user = await requireUser();
 
     return NextResponse.json({
       ok: true,
