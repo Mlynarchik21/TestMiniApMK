@@ -4,13 +4,10 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
-// DELETE /api/keys/:id -> удалить только свой ключ
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(_: Request, ctx: { params: { id: string } }) {
   try {
     const { user } = await requireUser();
     const id = String(ctx?.params?.id || "");
-
-    if (!id) return NextResponse.json({ ok: false, error: "id_required" }, { status: 400 });
 
     const row = await prisma.userKey.findFirst({
       where: { id, userId: user.id },
