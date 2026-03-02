@@ -1,34 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-type AnyResp =
-  | { ok: true; [k: string]: any }
-  | { ok: false; error: string; [k: string]: any };
+type AnyResp = { ok: true; [k: string]: any } | { ok: false; error: string; [k: string]: any };
+
+function getToken() {
+  try {
+    return localStorage.getItem("sessionToken") || "";
+  } catch {
+    return "";
+  }
+}
 
 export default function HomePage() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AnyResp | null>(null);
-  const [status, setStatus] = useState<number | null>(null);
-  const [tokenPreview, setTokenPreview] = useState<string>("");
+  const router = useRouter();
 
-  function getToken() {
-    try {
-      return localStorage.getItem("sessionToken") || "";
-    } catch {
-      return "";
-    }
-  }
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<number | null>(null);
+  const [result, setResult] = useState<AnyResp | null>(null);
+
+  const tokenPreview = useMemo(() => {
+    const t = getToken();
+    return t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена";
+  }, []);
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
-    setResult(null);
     setStatus(null);
+    setResult(null);
 
     const token = getToken();
-    setTokenPreview(
-      token ? `${token.slice(0, 6)}…${token.slice(-6)} (len=${token.length})` : "нет токена"
-    );
 
     try {
       const res = await fetch(path, {
@@ -41,46 +43,17 @@ export default function HomePage() {
       });
 
       setStatus(res.status);
-
-      const data = (await res.json()) as AnyResp;
-      setResult(data);
+      setResult((await res.json()) as AnyResp);
     } catch (e: any) {
-      setStatus(null);
       setResult({ ok: false, error: e?.message ?? "fetch error" });
     } finally {
       setLoading(false);
     }
   }
 
-  // /api/me
   const checkMe = () => run("/api/me", { method: "GET" });
 
-  // /api/settings
-  const getSettings = () => run("/api/settings", { method: "GET" });
-
-  const setRiskConservative = () =>
-    run("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ riskMode: "conservative" }),
-    });
-
-  const setRiskNormal = () =>
-    run("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ riskMode: "normal" }),
-    });
-
-  const setRiskAggressive = () =>
-    run("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ riskMode: "aggressive" }),
-    });
-
   useEffect(() => {
-    // автопроверка /api/me при заходе
     checkMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -88,87 +61,75 @@ export default function HomePage() {
   return (
     <main
       style={{
+        minHeight: "100vh",
         padding: 16,
+        background: "#000",
+        color: "#fff",
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-        maxWidth: 720,
-        margin: "0 auto",
       }}
     >
-      <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>Home</h1>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Home</div>
 
-      <div style={{ marginBottom: 12, fontSize: 14 }}>
-        <div style={{ marginBottom: 6 }}>
-          <b>sessionToken:</b> {tokenPreview || "—"}
+        <div style={{ opacity: 0.85, fontSize: 13, marginBottom: 12 }}>
+          <div>
+            <b>sessionToken:</b> {tokenPreview}
+          </div>
+          <div>
+            <b>HTTP статус:</b> {status ?? "—"}
+          </div>
         </div>
-        <div style={{ marginBottom: 6 }}>
-          <b>HTTP статус:</b> {status ?? "—"}
-        </div>
-      </div>
 
-      <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-        <button
-          onClick={checkMe}
-          disabled={loading}
-          style={btnStyle(loading)}
+        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+          <button onClick={checkMe} disabled={loading} style={btnPrimary(loading)}>
+            {loading ? "..." : "Проверить /api/me"}
+          </button>
+
+          <button onClick={() => router.replace("/settings")} disabled={loading} style={btnGhost()}>
+            Settings
+          </button>
+        </div>
+
+        <div
+          style={{
+            whiteSpace: "pre-wrap",
+            background: "#111",
+            padding: 12,
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.12)",
+            minHeight: 160,
+          }}
         >
-          {loading ? "..." : "Проверить /api/me"}
-        </button>
-
-        <button
-          onClick={getSettings}
-          disabled={loading}
-          style={btnStyle(loading)}
-        >
-          {loading ? "..." : "GET /api/settings"}
-        </button>
-
-        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr" }}>
-          <button
-            onClick={setRiskNormal}
-            disabled={loading}
-            style={btnStyle(loading)}
-          >
-            PATCH risk=normal
-          </button>
-          <button
-            onClick={setRiskConservative}
-            disabled={loading}
-            style={btnStyle(loading)}
-          >
-            PATCH risk=conservative
-          </button>
-          <button
-            onClick={setRiskAggressive}
-            disabled={loading}
-            style={btnStyle(loading)}
-          >
-            PATCH risk=aggressive
-          </button>
+          {result ? JSON.stringify(result, null, 2) : "—"}
         </div>
-      </div>
-
-      <div
-        style={{
-          whiteSpace: "pre-wrap",
-          background: "#f7f7f7",
-          padding: 12,
-          borderRadius: 10,
-          minHeight: 140,
-        }}
-      >
-        {result ? JSON.stringify(result, null, 2) : "—"}
       </div>
     </main>
   );
 }
 
-function btnStyle(disabled: boolean): React.CSSProperties {
+function btnPrimary(disabled: boolean): React.CSSProperties {
   return {
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-    background: disabled ? "#f5f5f5" : "#fff",
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.25)",
+    background: "#fff",
+    color: "#000",
+    fontWeight: 900,
     cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 700,
+    opacity: disabled ? 0.85 : 1,
+  };
+}
+
+function btnGhost(): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.25)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
   };
 }
