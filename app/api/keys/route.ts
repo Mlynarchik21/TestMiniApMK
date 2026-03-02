@@ -1,35 +1,60 @@
-import crypto from "crypto";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
+import { encryptString } from "@/lib/crypto/secretBox";
+import { Exchange } from "@prisma/client";
 
-function getKey(): Buffer {
-  const hex = process.env.SECRET_BOX_KEY_HEX || "";
-  if (!hex) throw new Error("SECRET_BOX_KEY_HEX missing");
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error("SECRET_BOX_KEY_HEX must be 64 hex chars");
-  return Buffer.from(hex, "hex"); // 32 bytes
+type CreateBody = {
+  exchange: Exchange;
+  label?: string | null;
+  apiKey: string;
+  apiSecret: string;
+  passphrase?: string | null;
+};
+
+export async function GET() {
+  const { user } = await requireUser();
+
+  const rows = await prisma.userKey.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      exchange: true,
+      label: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return NextResponse.json({ ok: true, keys: rows });
 }
 
-export function encryptSecret(plain: string): string {
-  const key = getKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+export async function POST(req: Request) {
+  const { user } = await requireUser();
 
-  const ciphertext = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
+  const body = (await req.json()) as Partial<CreateBody>;
+  if (!body.exchange) return NextResponse.json({ ok: false, error: "exchange required" }, { status: 400 });
+  if (!body.apiKey) return NextResponse.json({ ok: false, error: "apiKey required" }, { status: 400 });
+  if (!body.apiSecret) return NextResponse.json({ ok: false, error: "apiSecret required" }, { status: 400 });
 
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${ciphertext.toString("base64")}`;
-}
+  const row = await prisma.userKey.create({
+    data: {
+      userId: user.id,
+      exchange: body.exchange,
+      label: body.label ?? null,
+      apiKeyEnc: encryptString(body.apiKey),
+      apiSecretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    },
+    select: {
+      id: true,
+      exchange: true,
+      label: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
-export function decryptSecret(payload: string): string {
-  const key = getKey();
-  const [ivB64, tagB64, dataB64] = payload.split(".");
-  if (!ivB64 || !tagB64 || !dataB64) throw new Error("bad_secret_payload");
-
-  const iv = Buffer.from(ivB64, "base64");
-  const tag = Buffer.from(tagB64, "base64");
-  const data = Buffer.from(dataB64, "base64");
-
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(tag);
-
-  const plain = Buffer.concat([decipher.update(data), decipher.final()]);
-  return plain.toString("utf8");
+  return NextResponse.json({ ok: true, key: row });
 }
