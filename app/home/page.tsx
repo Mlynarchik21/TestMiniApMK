@@ -25,16 +25,28 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MeResponse | null>(null);
   const [status, setStatus] = useState<number | null>(null);
+  const [tokenPreview, setTokenPreview] = useState<string>("");
+
+  function getToken() {
+    try {
+      return localStorage.getItem("sessionToken") || "";
+    } catch {
+      return "";
+    }
+  }
 
   async function checkMe() {
     setLoading(true);
     setResult(null);
     setStatus(null);
 
+    const token = getToken();
+    setTokenPreview(token ? `${token.slice(0, 6)}…${token.slice(-6)} (len=${token.length})` : "нет токена");
+
     try {
       const res = await fetch("/api/me", {
         method: "GET",
-        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         cache: "no-store",
       });
 
@@ -51,7 +63,6 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    // Автопроверка при заходе на /home
     checkMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -76,6 +87,10 @@ export default function HomePage() {
       </button>
 
       <div style={{ marginTop: 12, fontSize: 14 }}>
+        <div style={{ marginBottom: 6 }}>
+          <b>sessionToken:</b> {tokenPreview || "—"}
+        </div>
+
         <div style={{ marginBottom: 8 }}>
           <b>HTTP статус:</b> {status ?? "—"}
         </div>
