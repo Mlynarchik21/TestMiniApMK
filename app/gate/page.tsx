@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /** API response types */
-type GateOkSubscribed = { ok: true; subscribed: true };
+type GateOkSubscribed = { ok: true; subscribed: true; sessionToken?: string };
 type GateOkNeedSub = { ok: true; subscribed: false; joinUrl?: string };
 type GateFail = { ok: false; error?: string };
 type GateResp = GateOkSubscribed | GateOkNeedSub | GateFail;
@@ -196,9 +196,16 @@ export default function GatePage() {
       }
 
       if (json.subscribed === true) {
+        // ✅ сохраняем sessionToken (если сервер вернул)
+        const st = (json as GateOkSubscribed).sessionToken;
+        if (typeof st === "string" && st.length > 0) {
+          try {
+            localStorage.setItem("sessionToken", st);
+          } catch {}
+        }
+
         setStatus("ok");
         setMsg("Доступ подтверждён. Переходим…");
-        // строго после 100% (мы уже на 100), дадим чуть “досмотреть”
         await sleep(150);
         router.replace("/home");
         return;
@@ -206,7 +213,7 @@ export default function GatePage() {
 
       setStatus("need_sub");
       setMsg("Подписка не найдена.");
-      setJoinUrl(json.joinUrl ?? "");
+      setJoinUrl((json as GateOkNeedSub).joinUrl ?? "");
     },
     [animateProgress, phasesInit, router, waitForInitData]
   );
@@ -256,7 +263,6 @@ export default function GatePage() {
                 />
               </svg>
 
-              {/* проценты как на скрине */}
               <span className="ringText">
                 <span className="ringNum">{pct}</span>
                 <span className="ringPct">%</span>
@@ -382,33 +388,29 @@ export default function GatePage() {
           filter: drop-shadow(0 0 10px rgba(120, 208, 106, 0.22));
         }
 
-        /* === проценты внутри круга как на скрине === */
-.ringText {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  /* было: translateY(-1px) */
-  transform: translate(2px, -1px); /* ← сдвиг вправо */
-  color: rgba(255, 255, 255, 0.95);
-}
+        .ringText {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2px;
+          transform: translate(2px, -1px);
+          color: rgba(255, 255, 255, 0.95);
+        }
 
-.ringNum {
-  /* было: 18px */
-  font-size: 21px; /* ← чуть больше цифры */
-  font-weight: 800;
-  letter-spacing: 0.2px;
-}
+        .ringNum {
+          font-size: 21px;
+          font-weight: 800;
+          letter-spacing: 0.2px;
+        }
 
-.ringPct {
-  /* было: 12px */
-  font-size: 13px;
-  font-weight: 700;
-  opacity: 0.9;
-  transform: translateY(-5px); /* слегка поднимем, чтобы выглядело аккуратно с большим числом */
-}
+        .ringPct {
+          font-size: 13px;
+          font-weight: 700;
+          opacity: 0.9;
+          transform: translateY(-5px);
+        }
 
         .msg,
         .msgBottom {
