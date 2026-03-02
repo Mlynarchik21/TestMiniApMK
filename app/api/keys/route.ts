@@ -13,7 +13,7 @@ type CreateBody = {
 };
 
 export async function GET() {
-  const { user } = await requireUser();
+  const user = await requireUser();
 
   const rows = await prisma.userKey.findMany({
     where: { userId: user.id },
@@ -31,12 +31,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user } = await requireUser();
+  const user = await requireUser();
 
   const body = (await req.json()) as Partial<CreateBody>;
-  if (!body.exchange) return NextResponse.json({ ok: false, error: "exchange required" }, { status: 400 });
-  if (!body.apiKey) return NextResponse.json({ ok: false, error: "apiKey required" }, { status: 400 });
-  if (!body.apiSecret) return NextResponse.json({ ok: false, error: "apiSecret required" }, { status: 400 });
+  if (!body.exchange)
+    return NextResponse.json({ ok: false, error: "exchange required" }, { status: 400 });
+  if (!body.apiKey)
+    return NextResponse.json({ ok: false, error: "apiKey required" }, { status: 400 });
+  if (!body.apiSecret)
+    return NextResponse.json({ ok: false, error: "apiSecret required" }, { status: 400 });
 
   const row = await prisma.userKey.create({
     data: {
