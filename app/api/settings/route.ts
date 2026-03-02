@@ -28,7 +28,7 @@ function fail(status: number, error: string, extra?: any) {
 
 export async function GET() {
   try {
-    const { user } = await requireUser(); // ✅ правильный формат
+    const user = await requireUser(); // ✅ requireUser возвращает User
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: user.id },
@@ -64,7 +64,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const { user } = await requireUser(); // ✅ правильный формат
+    const user = await requireUser(); // ✅ requireUser возвращает User
 
     const body = await req.json().catch(() => null);
 
