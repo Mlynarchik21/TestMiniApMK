@@ -1,6 +1,6 @@
 // lib/auth/requireUser.ts
 import crypto from "crypto";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 type RequireUserResult = {
@@ -34,16 +34,17 @@ function unauthorized(msg: string) {
 
 /**
  * requireUser()
- * - читает Authorization: Bearer <rawToken>
- * - sha256(rawToken) -> ищет Session по Session.token
- * - подтягивает User
- * - если нет -> 401
+ * Источник токена:
+ * 1) Authorization: Bearer <rawToken>
+ * 2) cookie "session" (fallback)
  */
 export async function requireUser(): Promise<RequireUserResult> {
   const auth = headers().get("authorization") || "";
-  const rawToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const cookieToken = cookies().get("session")?.value || "";
 
-  if (!rawToken) throw unauthorized("UNAUTHORIZED: missing Authorization Bearer token");
+  const rawToken = bearerToken || cookieToken;
+  if (!rawToken) throw unauthorized("UNAUTHORIZED: no bearer token and no cookie");
 
   const tokenHash = sha256Hex(rawToken);
 
