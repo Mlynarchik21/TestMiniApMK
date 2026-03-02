@@ -2,28 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-type MeOk = {
-  ok: true;
-  user: {
-    id: string;
-    tgId: string;
-    username: string | null;
-    firstName: string | null;
-    lastName: string | null;
-    createdAt?: string;
-  };
-};
-
-type MeErr = {
-  ok: false;
-  error: string;
-};
-
-type MeResponse = MeOk | MeErr;
+type AnyResp =
+  | { ok: true; [k: string]: any }
+  | { ok: false; error: string; [k: string]: any };
 
 export default function HomePage() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<MeResponse | null>(null);
+  const [result, setResult] = useState<AnyResp | null>(null);
   const [status, setStatus] = useState<number | null>(null);
   const [tokenPreview, setTokenPreview] = useState<string>("");
 
@@ -35,24 +20,29 @@ export default function HomePage() {
     }
   }
 
-  async function checkMe() {
+  async function run(path: string, init?: RequestInit) {
     setLoading(true);
     setResult(null);
     setStatus(null);
 
     const token = getToken();
-    setTokenPreview(token ? `${token.slice(0, 6)}…${token.slice(-6)} (len=${token.length})` : "нет токена");
+    setTokenPreview(
+      token ? `${token.slice(0, 6)}…${token.slice(-6)} (len=${token.length})` : "нет токена"
+    );
 
     try {
-      const res = await fetch("/api/me", {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const res = await fetch(path, {
         cache: "no-store",
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
 
       setStatus(res.status);
 
-      const data = (await res.json()) as MeResponse;
+      const data = (await res.json()) as AnyResp;
       setResult(data);
     } catch (e: any) {
       setStatus(null);
@@ -62,43 +52,123 @@ export default function HomePage() {
     }
   }
 
+  // /api/me
+  const checkMe = () => run("/api/me", { method: "GET" });
+
+  // /api/settings
+  const getSettings = () => run("/api/settings", { method: "GET" });
+
+  const setRiskConservative = () =>
+    run("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ riskMode: "conservative" }),
+    });
+
+  const setRiskNormal = () =>
+    run("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ riskMode: "normal" }),
+    });
+
+  const setRiskAggressive = () =>
+    run("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ riskMode: "aggressive" }),
+    });
+
   useEffect(() => {
+    // автопроверка /api/me при заходе
     checkMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>Home</h1>
+    <main
+      style={{
+        padding: 16,
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        maxWidth: 720,
+        margin: "0 auto",
+      }}
+    >
+      <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>Home</h1>
 
-      <button
-        onClick={checkMe}
-        disabled={loading}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: "1px solid #ddd",
-          background: loading ? "#f5f5f5" : "#fff",
-          cursor: loading ? "not-allowed" : "pointer",
-          fontWeight: 600,
-        }}
-      >
-        {loading ? "Проверяю..." : "Проверить /api/me"}
-      </button>
-
-      <div style={{ marginTop: 12, fontSize: 14 }}>
+      <div style={{ marginBottom: 12, fontSize: 14 }}>
         <div style={{ marginBottom: 6 }}>
           <b>sessionToken:</b> {tokenPreview || "—"}
         </div>
-
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 6 }}>
           <b>HTTP статус:</b> {status ?? "—"}
         </div>
+      </div>
 
-        <div style={{ whiteSpace: "pre-wrap", background: "#f7f7f7", padding: 12, borderRadius: 10 }}>
-          {result ? JSON.stringify(result, null, 2) : "—"}
+      <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+        <button
+          onClick={checkMe}
+          disabled={loading}
+          style={btnStyle(loading)}
+        >
+          {loading ? "..." : "Проверить /api/me"}
+        </button>
+
+        <button
+          onClick={getSettings}
+          disabled={loading}
+          style={btnStyle(loading)}
+        >
+          {loading ? "..." : "GET /api/settings"}
+        </button>
+
+        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr" }}>
+          <button
+            onClick={setRiskNormal}
+            disabled={loading}
+            style={btnStyle(loading)}
+          >
+            PATCH risk=normal
+          </button>
+          <button
+            onClick={setRiskConservative}
+            disabled={loading}
+            style={btnStyle(loading)}
+          >
+            PATCH risk=conservative
+          </button>
+          <button
+            onClick={setRiskAggressive}
+            disabled={loading}
+            style={btnStyle(loading)}
+          >
+            PATCH risk=aggressive
+          </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          whiteSpace: "pre-wrap",
+          background: "#f7f7f7",
+          padding: 12,
+          borderRadius: 10,
+          minHeight: 140,
+        }}
+      >
+        {result ? JSON.stringify(result, null, 2) : "—"}
       </div>
     </main>
   );
+}
+
+function btnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    background: disabled ? "#f5f5f5" : "#fff",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 700,
+  };
 }
