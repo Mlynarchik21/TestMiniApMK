@@ -1,7 +1,7 @@
 // lib/auth/requireUser.ts
 import crypto from "crypto";
 import { headers, cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 
 type RequireUserResult = {
   user: {
@@ -65,10 +65,10 @@ export async function requireUser(): Promise<RequireUserResult> {
   return {
     user: {
       id: session.user.id,
-      tgId: session.user.tgId,
-      username: session.user.username,
-      firstName: session.user.firstName,
-      lastName: session.user.lastName,
+      tgId: String(session.user.tgId), // ✅ всегда string
+      username: session.user.username ?? null,
+      firstName: session.user.firstName ?? null,
+      lastName: session.user.lastName ?? null,
       createdAt: session.user.createdAt,
       updatedAt: session.user.updatedAt,
     },
