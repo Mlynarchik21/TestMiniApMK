@@ -149,12 +149,12 @@ export async function POST(req: Request) {
     });
 
     res.cookies.set("session", rawToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: ttlDays * 24 * 60 * 60,
-    });
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  path: "/",
+  maxAge: ttlDays * 24 * 60 * 60,
+});
 
     res.cookies.set("tm_uid", "", { path: "/", maxAge: 0 });
 
