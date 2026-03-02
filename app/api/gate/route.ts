@@ -134,20 +134,21 @@ export async function POST(req: Request) {
         username,
         firstName,
         lastName,
+        lastSeenAt: new Date(),
       },
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
     // 4) create session
-    const token = randomToken(32); // кладём в cookie
-    const tokenHash = sha256Hex(token); // храним в БД (в поле token)
+    const rawToken = randomToken(32);      // кладём в cookie
+    const tokenHash = sha256Hex(rawToken); // храним в БД (в tokenHash)
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
     await prisma.session.create({
       data: {
         userId: user.id,
-        token: tokenHash,
+        tokenHash, // ВАЖНО: пишем в tokenHash (как в базе)
         expiresAt,
       },
     });
@@ -164,7 +165,7 @@ export async function POST(req: Request) {
       },
     });
 
-    res.cookies.set("session", token, {
+    res.cookies.set("session", rawToken, {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
