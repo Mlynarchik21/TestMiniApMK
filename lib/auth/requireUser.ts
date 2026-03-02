@@ -1,6 +1,6 @@
 // lib/auth/requireUser.ts
-import { cookies } from "next/headers";
 import crypto from "crypto";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 type RequireUserResult = {
@@ -17,7 +17,7 @@ type RequireUserResult = {
     id: string;
     userId: string;
     token: string;
-    createdAt?: Date; // оставляем опционально (если есть в модели)
+    createdAt?: Date;
   };
 };
 
@@ -25,35 +25,40 @@ function sha256Hex(input: string): string {
   return crypto.createHash("sha256").update(input, "utf8").digest("hex");
 }
 
+function unauthorized(msg: string) {
+  const err = new Error(msg);
+  // @ts-expect-error attach status
+  err.status = 401;
+  return err;
+}
+
 /**
  * requireUser()
- * - читает HttpOnly cookie "session" (raw token)
- * - sha256(raw) -> ищет Session по Session.token
+ * - читает Authorization: Bearer <rawToken>
+ * - sha256(rawToken) -> ищет Session по Session.token
  * - подтягивает User
- * - если нет -> кидает ошибку 401
+ * - если нет -> 401
  */
 export async function requireUser(): Promise<RequireUserResult> {
-  const rawSession = cookies().get("session")?.value;
+  const auth = headers().get("authorization") || "";
+  const rawToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
 
-  if (!rawSession) {
-    const err = new Error("UNAUTHORIZED: missing session cookie");
-    // @ts-expect-error attach status
-    err.status = 401;
-    throw err;
-  }
+  if (!rawToken) throw unauthorized("UNAUTHORIZED: missing Authorization Bearer token");
 
-  const tokenHash = sha256Hex(rawSession);
+  const tokenHash = sha256Hex(rawToken);
 
   const session = await prisma.session.findUnique({
     where: { token: tokenHash },
     include: { user: true },
   });
 
-  if (!session || !session.user) {
-    const err = new Error("UNAUTHORIZED: invalid session");
-    // @ts-expect-error attach status
-    err.status = 401;
-    throw err;
+  if (!session || !session.user) throw unauthorized("UNAUTHORIZED: invalid session");
+
+  // expiresAt — опционально (если есть в модели)
+  const expiresAt: Date | undefined = (session as any).expiresAt;
+  if (expiresAt instanceof Date && expiresAt < new Date()) {
+    await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
+    throw unauthorized("UNAUTHORIZED: session expired");
   }
 
   return {
@@ -70,7 +75,7 @@ export async function requireUser(): Promise<RequireUserResult> {
       id: session.id,
       userId: session.userId,
       token: session.token,
-      createdAt: (session as any).createdAt, // если поля нет — будет undefined, TS не упадёт
+      createdAt: (session as any).createdAt,
     },
   };
 }
