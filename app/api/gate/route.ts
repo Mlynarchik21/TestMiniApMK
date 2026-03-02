@@ -81,10 +81,8 @@ export async function POST(req: Request) {
     const ttlDaysRaw = Number(process.env.SESSION_TTL_DAYS || 30);
     const ttlDays = Number.isFinite(ttlDaysRaw) && ttlDaysRaw > 0 ? ttlDaysRaw : 30;
 
-    if (!botToken)
-      return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
-    if (!channelId)
-      return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
+    if (!botToken) return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" });
+    if (!channelId) return NextResponse.json({ ok: false, error: "CHANNEL_ID missing" });
 
     const body = await req.json().catch(() => null);
     const initData = String(body?.initData || "");
@@ -95,21 +93,17 @@ export async function POST(req: Request) {
     if (!v.ok) return NextResponse.json({ ok: false, error: `initData_${v.reason}` });
 
     const tgIdNumber = Number(v.user.id);
-    if (!Number.isFinite(tgIdNumber))
-      return NextResponse.json({ ok: false, error: "bad_tg_id" });
+    if (!Number.isFinite(tgIdNumber)) return NextResponse.json({ ok: false, error: "bad_tg_id" });
 
     // 2) subscription check
     const sub = await isSubscribed(botToken, channelId, tgIdNumber);
     if (!sub.ok) {
       return NextResponse.json({
         ok: false,
-        error:
-          sub.error +
-          " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)",
+        error: sub.error + " (проверь: бот должен быть админом канала + правильный CHANNEL_ID)",
       });
     }
 
-    // Если не подписан — просто отдаём ответ, без создания сессии
     if (!sub.subscribed) {
       return NextResponse.json({ ok: true, subscribed: false, joinUrl });
     }
@@ -118,36 +112,26 @@ export async function POST(req: Request) {
     const tgId = String(tgIdNumber);
 
     const username = typeof v.user.username === "string" ? v.user.username : null;
-    const firstName =
-      typeof v.user.first_name === "string" ? v.user.first_name : null;
+    const firstName = typeof v.user.first_name === "string" ? v.user.first_name : null;
     const lastName = typeof v.user.last_name === "string" ? v.user.last_name : null;
 
     const user = await prisma.user.upsert({
       where: { tgId },
-      create: {
-        tgId,
-        username,
-        firstName,
-        lastName,
-      },
-      update: {
-        username,
-        firstName,
-        lastName,
-      },
+      create: { tgId, username, firstName, lastName },
+      update: { username, firstName, lastName },
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
     // 4) create session
     const rawToken = randomToken(32);      // cookie
-    const tokenHash = sha256Hex(rawToken); // db
+    const tokenHash = sha256Hex(rawToken); // in DB (Session.token)
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
     await prisma.session.create({
       data: {
         userId: user.id,
-        tokenHash,
+        token: tokenHash, // ВАЖНО: Prisma ожидает поле token
         expiresAt,
       },
     });
