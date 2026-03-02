@@ -1,21 +1,34 @@
 // app/api/settings/route.ts
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-function ok(data: any) {
-  return NextResponse.json({ ok: true, ...data });
+// ✅ безопасный JSON: BigInt -> string
+function json(data: any, init?: ResponseInit) {
+  return new Response(
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    {
+      ...init,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(init?.headers || {}),
+      },
+    }
+  );
 }
 
-function fail(status: number, error: string) {
-  return NextResponse.json({ ok: false, error }, { status });
+function ok(data: any) {
+  return json({ ok: true, ...data });
+}
+
+function fail(status: number, error: string, extra?: any) {
+  return json({ ok: false, error, ...(extra ? { extra } : {}) }, { status });
 }
 
 export async function GET() {
   try {
-    const user = await requireUser(); // ✅ requireUser возвращает User
+    const { user } = await requireUser(); // ✅ правильный формат
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: user.id },
@@ -28,13 +41,14 @@ export async function GET() {
       },
     });
 
-    // если настроек ещё нет — возвращаем дефолт, но НЕ создаём запись
     if (!settings) {
       return ok({
         settings: {
           timezone: "UTC",
           currency: "USD",
           riskMode: "normal",
+          createdAt: null,
+          updatedAt: null,
         },
       });
     }
@@ -42,13 +56,15 @@ export async function GET() {
     return ok({ settings });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR");
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
+      message: e?.message ?? String(e),
+    });
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    const user = await requireUser(); // ✅ requireUser возвращает User
+    const { user } = await requireUser(); // ✅ правильный формат
 
     const body = await req.json().catch(() => null);
 
@@ -97,6 +113,8 @@ export async function PATCH(req: Request) {
     return ok({ settings });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR");
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
+      message: e?.message ?? String(e),
+    });
   }
 }
