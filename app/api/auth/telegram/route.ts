@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { verifyTelegramInitData } from "@/lib/telegram";
 
+export const runtime = "nodejs";
+
 function randomToken() {
   // 32 байта -> base64url
   return crypto.randomBytes(32).toString("base64url");
@@ -38,22 +40,24 @@ export async function POST(req: Request) {
     );
   }
 
+  // ✅ tgId теперь bigint (как в Prisma)
   const tgId = BigInt(verified.user.id);
 
   // upsert user
   const user = await prisma.user.upsert({
-    where: { tgId: String(tgId) },
+    where: { tgId }, // ← БЕЗ String(...)
     update: {
       username: verified.user.username ?? null,
       firstName: verified.user.first_name ?? null,
       lastName: verified.user.last_name ?? null,
     },
     create: {
-      tgId: String(tgId),
+      tgId, // ← БЕЗ String(...)
       username: verified.user.username ?? null,
       firstName: verified.user.first_name ?? null,
       lastName: verified.user.last_name ?? null,
     },
+    select: { id: true },
   });
 
   // create session
@@ -66,7 +70,7 @@ export async function POST(req: Request) {
   await prisma.session.create({
     data: {
       userId: user.id,
-      token: tokenHash, // ✅ вместо tokenHash
+      token: tokenHash, // В БД храним hash
       expiresAt,
     },
   });
