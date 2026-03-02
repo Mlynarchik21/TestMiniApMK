@@ -17,8 +17,7 @@ type RequireUserResult = {
     id: string;
     userId: string;
     token: string;
-    createdAt?: Date;
-    updatedAt?: Date;
+    createdAt?: Date; // оставляем опционально (если есть в модели)
   };
 };
 
@@ -31,7 +30,7 @@ function sha256Hex(input: string): string {
  * - читает HttpOnly cookie "session" (raw token)
  * - sha256(raw) -> ищет Session по Session.token
  * - подтягивает User
- * - если нет сессии/юзера -> кидает ошибку с кодом 401
+ * - если нет -> кидает ошибку 401
  */
 export async function requireUser(): Promise<RequireUserResult> {
   const rawSession = cookies().get("session")?.value;
@@ -71,8 +70,7 @@ export async function requireUser(): Promise<RequireUserResult> {
       id: session.id,
       userId: session.userId,
       token: session.token,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
+      createdAt: (session as any).createdAt, // если поля нет — будет undefined, TS не упадёт
     },
   };
 }
