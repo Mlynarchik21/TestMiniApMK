@@ -123,23 +123,24 @@ export async function POST(req: Request) {
     });
 
     // 4) create session
-    const rawToken = randomToken(32);      // cookie
-    const tokenHash = sha256Hex(rawToken); // in DB (Session.token)
+    const rawToken = randomToken(32); // клиент будет хранить и слать в Authorization
+    const tokenHash = sha256Hex(rawToken); // в DB (Session.token)
 
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
     await prisma.session.create({
       data: {
         userId: user.id,
-        token: tokenHash, // ВАЖНО: Prisma ожидает поле token
+        token: tokenHash,
         expiresAt,
       },
     });
 
-    // 5) response + cookie
+    // 5) response (+ optional cookie)
     const res = NextResponse.json({
       ok: true,
       subscribed: true,
+      sessionToken: rawToken, // ✅ ВАЖНО: отдаём токен клиенту
       user: {
         tgId: tgIdNumber,
         username: user.username,
@@ -148,13 +149,14 @@ export async function POST(req: Request) {
       },
     });
 
+    // cookie оставляем как "опционально". В Telegram часто не работает, но пусть будет.
     res.cookies.set("session", rawToken, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "lax",
-  path: "/",
-  maxAge: ttlDays * 24 * 60 * 60,
-});
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: ttlDays * 24 * 60 * 60,
+    });
 
     res.cookies.set("tm_uid", "", { path: "/", maxAge: 0 });
 
