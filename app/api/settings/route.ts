@@ -1,7 +1,9 @@
 // app/api/settings/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth/requireUser";
+import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
+
+export const runtime = "nodejs";
 
 function ok(data: any) {
   return NextResponse.json({ ok: true, ...data });
@@ -13,7 +15,7 @@ function fail(status: number, error: string) {
 
 export async function GET() {
   try {
-    const { user } = await requireUser();
+    const user = await requireUser(); // ✅ requireUser возвращает User
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: user.id },
@@ -46,15 +48,19 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const { user } = await requireUser();
+    const user = await requireUser(); // ✅ requireUser возвращает User
 
     const body = await req.json().catch(() => null);
 
     const timezone =
-      typeof body?.timezone === "string" && body.timezone.length <= 64 ? body.timezone : undefined;
+      typeof body?.timezone === "string" && body.timezone.length <= 64
+        ? body.timezone
+        : undefined;
 
     const currency =
-      typeof body?.currency === "string" && body.currency.length <= 16 ? body.currency : undefined;
+      typeof body?.currency === "string" && body.currency.length <= 16
+        ? body.currency
+        : undefined;
 
     const riskModeRaw = typeof body?.riskMode === "string" ? body.riskMode : undefined;
     const riskMode =
@@ -78,7 +84,6 @@ export async function PATCH(req: Request) {
         ...(timezone ? { timezone } : {}),
         ...(currency ? { currency } : {}),
         ...(riskMode ? { riskMode } : {}),
-        // updatedAt в БД дефолтный now(), но Prisma @updatedAt обновит сам
       },
       select: {
         timezone: true,
