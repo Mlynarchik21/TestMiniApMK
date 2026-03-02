@@ -21,15 +21,18 @@ export async function POST() {
   const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
   // dev-user (фиксированный tgId)
+  const tgId = 999999999n; // <-- ВАЖНО: bigint
+
   const user = await prisma.user.upsert({
-    where: { tgId: "999999999" },
+    where: { tgId },
     update: {},
     create: {
-      tgId: "999999999",
+      tgId,
       username: "dev",
       firstName: "Dev",
       lastName: "User",
     },
+    select: { id: true },
   });
 
   const token = generateTokenBase64Url(32);
