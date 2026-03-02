@@ -9,12 +9,23 @@ function sha256hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+// ✅ безопасный JSON: BigInt -> string
+function json(data: any, init?: ResponseInit) {
+  return new Response(
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    {
+      ...init,
+      headers: { "content-type": "application/json; charset=utf-8", ...(init?.headers || {}) },
+    }
+  );
+}
+
 export async function GET() {
   try {
     const token = cookies().get("session")?.value;
 
     if (!token) {
-      return NextResponse.json({ ok: false, error: "NO_SESSION" }, { status: 401 });
+      return json({ ok: false, error: "NO_SESSION" }, { status: 401 });
     }
 
     const tokenHash = sha256hex(token);
@@ -25,15 +36,15 @@ export async function GET() {
     });
 
     if (!session) {
-      return NextResponse.json({ ok: false, error: "INVALID_SESSION" }, { status: 401 });
+      return json({ ok: false, error: "INVALID_SESSION" }, { status: 401 });
     }
 
     if (session.expiresAt < new Date()) {
       await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
-      return NextResponse.json({ ok: false, error: "SESSION_EXPIRED" }, { status: 401 });
+      return json({ ok: false, error: "SESSION_EXPIRED" }, { status: 401 });
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       user: {
         id: session.user.id,
@@ -45,14 +56,11 @@ export async function GET() {
       },
     });
   } catch (e: any) {
-    // 🔥 Временно: отдаем реальную ошибку, чтобы понять 500
-    return NextResponse.json(
+    return json(
       {
         ok: false,
         error: "SERVER_ERROR",
         message: e?.message ?? String(e),
-        name: e?.name,
-        stack: e?.stack,
       },
       { status: 500 }
     );
