@@ -7,13 +7,18 @@ datasource db {
 }
 
 model User {
-  id        String        @id @default(cuid())
-  tgId      String        @unique
+  id        String   @id @default(cuid())
+
+  // tg id лучше хранить как BigInt (и в Supabase это обычно BIGINT)
+  tgId      BigInt   @unique
+
   username  String?
   firstName String?
   lastName  String?
+
   sessions  Session[]
   settings  UserSettings?
+  keys      UserKey[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -21,11 +26,20 @@ model User {
 
 model Session {
   id        String   @id @default(cuid())
+
+  // Если ты хранишь RAW токен в БД — оставь token (unique)
+  // Если хранишь только HASH — используй tokenHash (unique) и token можешь оставить пустым/необязательным
   token     String   @unique
+  tokenHash String?  @unique
+
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model UserSettings {
@@ -39,4 +53,33 @@ model UserSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum Exchange {
+  BINANCE
+  BYBIT
+  OKX
+}
+
+model UserKey {
+  id      String   @id @default(cuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange Exchange
+  label    String?
+
+  // Храним только ЗАШИФРОВАННЫЕ значения
+  apiKeyEnc     String
+  apiSecretEnc  String
+  passphraseEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, exchange])
+
+  // Надёжная уникальность (не зависит от nullable label)
+  @@unique([userId, exchange, apiKeyEnc])
 }
