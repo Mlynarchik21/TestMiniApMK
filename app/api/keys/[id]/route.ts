@@ -20,7 +20,7 @@ function json(data: any, init?: ResponseInit) {
 
 export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   try {
-    const { user } = await requireUser(req);
+    const user = await requireUser(req);
 
     const id = String(ctx.params?.id || "").trim();
     if (!id) return json({ ok: false, error: "BAD_REQUEST" }, { status: 400 });
@@ -37,7 +37,7 @@ export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
     return json(
-      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message },
+      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message ?? String(e) },
       { status }
     );
   }
