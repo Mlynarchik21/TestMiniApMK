@@ -1,13 +1,8 @@
 // app/api/settings/route.ts
-import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { cookies, headers } from "next/headers";
+import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
-
-function sha256hex(input: string) {
-  return crypto.createHash("sha256").update(input, "utf8").digest("hex");
-}
 
 // ✅ BigInt-safe JSON
 function json(data: any, init?: ResponseInit) {
@@ -27,39 +22,16 @@ function ok(data: any) {
   return json({ ok: true, ...data });
 }
 
-function fail(status: number, error: string, extra?: any) {
-  return json({ ok: false, error, ...(extra ? { extra } : {}) }, { status });
-}
-
-async function getAuthedUser() {
-  const auth = headers().get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const cookieToken = cookies().get("session")?.value || "";
-  const rawToken = bearer || cookieToken;
-
-  if (!rawToken) return null;
-
-  const tokenHash = sha256hex(rawToken);
-
-  const session = await prisma.session.findUnique({
-    where: { token: tokenHash },
-    include: { user: true },
-  });
-
-  if (!session || !session.user) return null;
-
-  if (session.expiresAt < new Date()) {
-    await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
-    return null;
-  }
-
-  return session.user;
+function fail(status: number, error: string, message?: string) {
+  return json(
+    { ok: false, error, ...(message ? { message } : {}) },
+    { status }
+  );
 }
 
 export async function GET() {
   try {
-    const user = await getAuthedUser();
-    if (!user) return fail(401, "UNAUTHORIZED");
+    const user = await requireUser();
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: user.id },
@@ -72,6 +44,7 @@ export async function GET() {
       },
     });
 
+    // если настроек ещё нет — возвращаем дефолт, но НЕ создаём запись
     if (!settings) {
       return ok({
         settings: {
@@ -86,14 +59,18 @@ export async function GET() {
 
     return ok({ settings });
   } catch (e: any) {
-    return fail(500, "SERVER_ERROR", { message: e?.message ?? String(e) });
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    const user = await getAuthedUser();
-    if (!user) return fail(401, "UNAUTHORIZED");
+    const user = await requireUser();
 
     const body = await req.json().catch(() => null);
 
@@ -141,6 +118,11 @@ export async function PATCH(req: Request) {
 
     return ok({ settings });
   } catch (e: any) {
-    return fail(500, "SERVER_ERROR", { message: e?.message ?? String(e) });
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
