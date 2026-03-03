@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
-// BigInt-safe JSON
 function json(data: any, init?: ResponseInit) {
   return new Response(
     JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
@@ -37,7 +36,7 @@ export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
     return json(
-      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message ?? String(e) },
+      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message },
       { status }
     );
   }
