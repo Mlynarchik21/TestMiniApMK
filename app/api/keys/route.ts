@@ -64,17 +64,18 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // если у тебя в schema @@unique([userId, exchange, label]) — делаем вручную:
+    const payload = {
+      // ✅ реальные поля в БД
+      apiKey: encryptString(body.apiKey),
+      secretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    };
+
+    // manual upsert по (userId, exchange, label)
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
-
-    const payload = {
-      apiKeyEnc: encryptString(body.apiKey),
-      apiSecretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
-    };
 
     const row = existing
       ? await prisma.userKey.update({
