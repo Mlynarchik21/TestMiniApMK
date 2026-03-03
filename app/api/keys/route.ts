@@ -1,7 +1,7 @@
 // app/api/keys/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/requireUser";
 import { encryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
 
@@ -15,22 +15,20 @@ type CreateBody = {
   passphrase?: string | null;
 };
 
-function json(data: any, init?: ResponseInit) {
-  return new Response(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-    {
-      ...init,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        ...(init?.headers || {}),
-      },
-    }
+function ok(data: any) {
+  return NextResponse.json({ ok: true, ...data });
+}
+
+function fail(status: number, error: string, message?: string) {
+  return NextResponse.json(
+    { ok: false, error, ...(message ? { message } : {}) },
+    { status }
   );
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -44,37 +42,66 @@ export async function GET() {
       },
     });
 
-    return json({ ok: true, keys: rows });
+    return ok({ keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return json(
-      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message },
-      { status }
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
-    if (!body?.exchange) return json({ ok: false, error: "exchange required" }, { status: 400 });
-    if (!body?.apiKey) return json({ ok: false, error: "apiKey required" }, { status: 400 });
-    if (!body?.apiSecret) return json({ ok: false, error: "apiSecret required" }, { status: 400 });
+    if (!body?.exchange) return fail(400, "BAD_REQUEST", "exchange required");
+    if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
+    if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
-    // ВАЖНО: записываем так, как у тебя сейчас в базе:
-    // apiKey (plain) + secretEnc (encrypt(apiSecret)) + passphraseEnc (optional)
+    const label =
+      typeof body.label === "string" && body.label.trim().length
+        ? body.label.trim().slice(0, 64)
+        : null;
+
+    // ВАЖНО: имена полей должны совпадать с твоей моделью UserKey в prisma/schema.prisma
+    // Судя по твоим логам/коду сейчас это: apiKey, secretEnc, passphraseEnc
+    const payload = {
+      apiKey: encryptString(body.apiKey),
+      secretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    };
+
+    // “upsert” делаем вручную по (userId, exchange, label)
+    const existing = await prisma.userKey.findFirst({
+      where: { userId: user.id, exchange: body.exchange, label },
+      select: { id: true },
+    });
+
+    if (existing) {
+      const row = await prisma.userKey.update({
+        where: { id: existing.id },
+        data: payload as any, // ✅ снимаем Prisma TS-конфликт
+        select: {
+          id: true,
+          exchange: true,
+          label: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return ok({ key: row, updated: true });
+    }
+
     const row = await prisma.userKey.create({
       data: {
-        userId: user.id,
+        // ✅ связь через connect (и одновременно не даём Prisma типам упасть)
+        user: { connect: { id: user.id } },
         exchange: body.exchange,
-        label: body.label ?? null,
-        apiKey: String(body.apiKey),
-        secretEnc: encryptString(String(body.apiSecret)),
-        passphraseEnc: body.passphrase ? encryptString(String(body.passphrase)) : null,
-      },
+        label,
+        ...payload,
+      } as any, // ✅ снимаем Prisma TS-конфликт
       select: {
         id: true,
         exchange: true,
@@ -84,11 +111,9 @@ export async function POST(req: Request) {
       },
     });
 
-    return json({ ok: true, key: row });
+    return ok({ key: row, created: true });
   } catch (e: any) {
-    return json(
-      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
-      { status: 500 }
-    );
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
