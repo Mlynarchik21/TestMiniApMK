@@ -1,66 +1,70 @@
 // lib/auth/requireUser.ts
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { headers as nextHeaders, cookies as nextCookies } from "next/headers";
 
-export type AuthedUser = {
-  id: string;
-  tgId: bigint;
-  username: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
+export const runtime = "nodejs";
 
-function sha256hex(input: string) {
+function sha256Hex(input: string): string {
   return crypto.createHash("sha256").update(input, "utf8").digest("hex");
 }
 
-function getCookie(cookieHeader: string, name: string) {
-  const parts = cookieHeader.split(";").map((s) => s.trim());
-  const hit = parts.find((p) => p.startsWith(name + "="));
-  if (!hit) return "";
-  return decodeURIComponent(hit.slice(name.length + 1));
+function unauthorized(message = "UNAUTHORIZED") {
+  const err = new Error(message);
+  // @ts-expect-error attach status
+  err.status = 401;
+  return err;
 }
 
-function unauthorized(message = "UNAUTHORIZED") {
-  const e = new Error(message);
-  // @ts-expect-error attach status
-  e.status = 401;
-  throw e;
+function getCookieFromHeader(cookieHeader: string | null | undefined, name: string) {
+  if (!cookieHeader) return "";
+  const parts = cookieHeader.split(";").map((s) => s.trim());
+  const found = parts.find((p) => p.startsWith(name + "="));
+  if (!found) return "";
+  return decodeURIComponent(found.slice(name.length + 1));
 }
 
 /**
- * requireUser(req)
- * Sources:
+ * requireUser(req?)
+ * Берёт raw token:
  * - Authorization: Bearer <rawToken>
- * - Cookie: session=<rawToken>
- *
- * DB stores sha256(rawToken) in Session.token
+ * - cookie "session"
+ * Хэширует -> ищет Session.token (= sha256(rawToken))
+ * Возвращает Prisma User
  */
-export async function requireUser(req: Request): Promise<AuthedUser> {
-  const auth = req.headers.get("authorization") || "";
+export async function requireUser(req?: Request) {
+  // 1) read raw token from req OR next/headers
+  let auth = "";
+  let cookieToken = "";
+
+  if (req) {
+    auth = req.headers.get("authorization") || "";
+    cookieToken = getCookieFromHeader(req.headers.get("cookie"), "session");
+  } else {
+    // fallback for server components / route handlers that call without req
+    auth = nextHeaders().get("authorization") || "";
+    cookieToken = nextCookies().get("session")?.value || "";
+  }
+
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-
-  const cookieHeader = req.headers.get("cookie") || "";
-  const cookieToken = getCookie(cookieHeader, "session");
-
   const rawToken = bearer || cookieToken;
-  if (!rawToken) unauthorized("UNAUTHORIZED");
 
-  const tokenHash = sha256hex(rawToken);
+  if (!rawToken) throw unauthorized("UNAUTHORIZED: no session token");
+
+  const tokenHash = sha256Hex(rawToken);
 
   const session = await prisma.session.findUnique({
     where: { token: tokenHash },
     include: { user: true },
   });
 
-  if (!session || !session.user) unauthorized("UNAUTHORIZED");
+  if (!session?.user) throw unauthorized("UNAUTHORIZED: invalid session");
 
-  // expiresAt у тебя есть в модели Session
-  if (session.expiresAt < new Date()) {
+  // expiresAt (если есть в модели Session)
+  const expiresAt: Date | undefined = (session as any).expiresAt;
+  if (expiresAt instanceof Date && expiresAt < new Date()) {
     await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
-    unauthorized("UNAUTHORIZED");
+    throw unauthorized("UNAUTHORIZED: session expired");
   }
 
   return session.user;
