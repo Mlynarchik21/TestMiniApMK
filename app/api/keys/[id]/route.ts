@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
-// BigInt-safe JSON
 function json(data: any, init?: ResponseInit) {
   return new Response(
     JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
