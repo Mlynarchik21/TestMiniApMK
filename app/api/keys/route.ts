@@ -33,7 +33,7 @@ function fail(status: number, error: string, message?: string) {
  */
 async function getUser() {
   const r: any = await requireUser();
-  return r?.user ?? r; // <-- если {user} то вернёт user, иначе вернёт r как user
+  return r?.user ?? r;
 }
 
 export async function GET() {
@@ -73,12 +73,11 @@ export async function POST(req: Request) {
     if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
     if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
-    // Нормализуем label: если пусто/нет — будет "Main"
-    const labelRaw =
-      typeof body.label === "string" ? body.label.trim() : "";
+    // label: если пусто — считаем "Main"
+    const labelRaw = typeof body.label === "string" ? body.label.trim() : "";
     const label = labelRaw.length ? labelRaw : "Main";
 
-    // Шифруем
+    // encrypt
     const apiKeyEnc = encryptString(String(body.apiKey).trim());
     const apiSecretEnc = encryptString(String(body.apiSecret).trim());
     const passphraseEnc =
@@ -86,37 +85,45 @@ export async function POST(req: Request) {
         ? encryptString(String(body.passphrase).trim())
         : null;
 
-    // ВАЖНО: чтобы не плодить дубликаты — upsert по @@unique([userId, exchange, label])
-    const row = await prisma.userKey.upsert({
+    // НЕ используем upsert по composite unique (имя может отличаться)
+    const existing = await prisma.userKey.findFirst({
       where: {
-        // Prisma сам генерит это имя для composite unique:
-        userId_exchange_label: {
-          userId: user.id,
-          exchange: body.exchange,
-          label,
-        },
-      },
-      create: {
         userId: user.id,
         exchange: body.exchange,
         label,
-        apiKeyEnc,
-        apiSecretEnc,
-        passphraseEnc,
       },
-      update: {
-        apiKeyEnc,
-        apiSecretEnc,
-        passphraseEnc,
-      },
-      select: {
-        id: true,
-        exchange: true,
-        label: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: { id: true },
     });
+
+    const row = existing
+      ? await prisma.userKey.update({
+          where: { id: existing.id },
+          data: { apiKeyEnc, apiSecretEnc, passphraseEnc },
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        })
+      : await prisma.userKey.create({
+          data: {
+            userId: user.id,
+            exchange: body.exchange,
+            label,
+            apiKeyEnc,
+            apiSecretEnc,
+            passphraseEnc,
+          },
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
 
     return ok({ key: row });
   } catch (e: any) {
