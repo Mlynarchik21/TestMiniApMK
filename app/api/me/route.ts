@@ -19,17 +19,19 @@ function json(data: any, init?: ResponseInit) {
 
 export async function GET(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    // ✅ FIX: requireUser(req) -> AuthedUser (НЕ { user })
+    const user = await requireUser(req);
 
     return json({
       ok: true,
       user: {
         id: user.id,
-        tgId: user.tgId, // bigint -> будет сериализован в string через json()
-        username: user.username ?? null,
-        firstName: user.firstName ?? null,
-        lastName: user.lastName ?? null,
-        createdAt: user.createdAt ?? null,
+        tgId: user.tgId,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     });
   } catch (e: any) {
