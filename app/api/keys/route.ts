@@ -26,6 +26,16 @@ function fail(status: number, error: string, message?: string) {
   );
 }
 
+function normalizeLabel(label: unknown): string | null {
+  if (typeof label !== "string") return null;
+  const s = label.trim();
+  return s.length ? s.slice(0, 64) : null;
+}
+
+function isExchange(v: any): v is Exchange {
+  return v === "BINANCE" || v === "BYBIT" || v === "OKX";
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
@@ -45,7 +55,7 @@ export async function GET(req: Request) {
     return ok({ keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
 
@@ -54,27 +64,30 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
+    if (!body) return fail(400, "BAD_REQUEST", "invalid json");
 
-    if (!body?.exchange) return fail(400, "BAD_REQUEST", "exchange required");
-    if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
-    if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
+    if (!isExchange(body.exchange)) return fail(400, "BAD_REQUEST", "exchange required");
+    if (typeof body.apiKey !== "string" || !body.apiKey.trim())
+      return fail(400, "BAD_REQUEST", "apiKey required");
+    if (typeof body.apiSecret !== "string" || !body.apiSecret.trim())
+      return fail(400, "BAD_REQUEST", "apiSecret required");
 
-    const label =
-      typeof body.label === "string" && body.label.trim().length
-        ? body.label.trim().slice(0, 64)
-        : null;
+    const label = normalizeLabel(body.label);
 
-    // Не используем prisma upsert по composite имени (оно у тебя ломало билд).
-    // Делаем вручную: ищем existing по (userId, exchange, label), если есть — обновляем, иначе создаём.
+    // ВАЖНО: unique у тебя @@unique([userId, exchange, label])
+    // Prisma не всегда генерит красивый composite name => делаем вручную:
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
     const payload = {
-      apiKeyEnc: encryptString(body.apiKey),
-      apiSecretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+      apiKeyEnc: encryptString(body.apiKey.trim()),
+      apiSecretEnc: encryptString(body.apiSecret.trim()),
+      passphraseEnc:
+        typeof body.passphrase === "string" && body.passphrase.trim().length
+          ? encryptString(body.passphrase.trim())
+          : null,
     };
 
     const row = existing
