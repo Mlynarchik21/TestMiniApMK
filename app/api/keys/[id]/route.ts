@@ -20,7 +20,7 @@ function json(data: any, init?: ResponseInit) {
 
 export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   try {
-    const user = await requireUser(req);
+    const { user } = await requireUser(req);
 
     const id = String(ctx.params?.id || "").trim();
     if (!id) return json({ ok: false, error: "BAD_REQUEST" }, { status: 400 });
