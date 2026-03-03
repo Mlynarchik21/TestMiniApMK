@@ -1,34 +1,41 @@
-import { NextResponse } from "next/server";
+// app/api/me/route.ts
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 export const runtime = "nodejs";
 
 function sha256hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex");
+  return crypto.createHash("sha256").update(input, "utf8").digest("hex");
 }
 
-// ✅ безопасный JSON: BigInt -> string
+// ✅ BigInt-safe JSON
 function json(data: any, init?: ResponseInit) {
   return new Response(
     JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
     {
       ...init,
-      headers: { "content-type": "application/json; charset=utf-8", ...(init?.headers || {}) },
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(init?.headers || {}),
+      },
     }
   );
 }
 
 export async function GET() {
   try {
-    const token = cookies().get("session")?.value;
+    const auth = headers().get("authorization") || "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+    const cookieToken = cookies().get("session")?.value || "";
 
-    if (!token) {
+    const rawToken = bearer || cookieToken;
+
+    if (!rawToken) {
       return json({ ok: false, error: "NO_SESSION" }, { status: 401 });
     }
 
-    const tokenHash = sha256hex(token);
+    const tokenHash = sha256hex(rawToken);
 
     const session = await prisma.session.findUnique({
       where: { token: tokenHash },
@@ -57,11 +64,7 @@ export async function GET() {
     });
   } catch (e: any) {
     return json(
-      {
-        ok: false,
-        error: "SERVER_ERROR",
-        message: e?.message ?? String(e),
-      },
+      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
       { status: 500 }
     );
   }
