@@ -64,26 +64,22 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // уникальность у тебя сейчас по (userId, exchange, label) — поэтому обновляем вручную
+    // unique у тебя: @@unique([userId, exchange, label])
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    // ✅ ВАЖНО: поля должны совпадать с твоей реальной моделью UserKey:
-    // apiKey (TEXT NOT NULL) + secretEnc (TEXT NOT NULL) + passphraseEnc (nullable)
-    const dataEncrypted = {
-      apiKey: encryptString(body.apiKey),          // кладём шифротекст в apiKey
-      secretEnc: encryptString(body.apiSecret),    // кладём шифротекст в secretEnc
+    const enc = {
+      apiKeyEnc: encryptString(body.apiKey), // ✅ ВАЖНО: именно apiKeyEnc
+      apiSecretEnc: encryptString(body.apiSecret), // ✅ ВАЖНО: именно apiSecretEnc
       passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
-      label,
-      exchange: body.exchange,
     };
 
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: dataEncrypted,
+          data: { ...enc },
           select: {
             id: true,
             exchange: true,
@@ -94,8 +90,10 @@ export async function POST(req: Request) {
         })
       : await prisma.userKey.create({
           data: {
-            ...dataEncrypted,
-            user: { connect: { id: user.id } }, // ✅ через relation connect
+            userId: user.id, // если у тебя userId доступен (судя по прошлым версиям — да)
+            exchange: body.exchange,
+            label,
+            ...enc,
           },
           select: {
             id: true,
