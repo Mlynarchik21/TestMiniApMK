@@ -1,5 +1,4 @@
 // app/api/keys/route.ts
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { encryptString } from "@/lib/crypto/secretBox";
@@ -15,20 +14,31 @@ type CreateBody = {
   passphrase?: string | null;
 };
 
+// BigInt-safe JSON
+function json(data: any, init?: ResponseInit) {
+  return new Response(
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    {
+      ...init,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(init?.headers || {}),
+      },
+    }
+  );
+}
+
 function ok(data: any) {
-  return NextResponse.json({ ok: true, ...data });
+  return json({ ok: true, ...data });
 }
 
 function fail(status: number, error: string, message?: string) {
-  return NextResponse.json(
-    { ok: false, error, ...(message ? { message } : {}) },
-    { status }
-  );
+  return json({ ok: false, error, ...(message ? { message } : {}) }, { status });
 }
 
 export async function GET(req: Request) {
   try {
-    const user = await requireUser(req);
+    const { user } = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -45,13 +55,13 @@ export async function GET(req: Request) {
     return ok({ keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const user = await requireUser(req);
+    const { user } = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -64,54 +74,48 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // ВАЖНО: имена полей должны совпадать с твоей моделью UserKey в prisma/schema.prisma
-    // Судя по твоим логам/коду сейчас это: apiKey, secretEnc, passphraseEnc
-    const payload = {
-      apiKey: encryptString(body.apiKey),
-      secretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
-    };
-
-    // “upsert” делаем вручную по (userId, exchange, label)
+    // Находим запись по (userId, exchange, label) и обновляем/создаём
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    if (existing) {
-      const row = await prisma.userKey.update({
-        where: { id: existing.id },
-        data: payload as any, // ✅ снимаем Prisma TS-конфликт
-        select: {
-          id: true,
-          exchange: true,
-          label: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    // ✅ ВАЖНО: Prisma ожидает эти поля (apiKeyEnc/apiSecretEnc/passphraseEnc)
+    const enc = {
+      apiKeyEnc: encryptString(body.apiKey),
+      apiSecretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    };
 
-      return ok({ key: row, updated: true });
-    }
+    const row = existing
+      ? await prisma.userKey.update({
+          where: { id: existing.id },
+          data: enc,
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        })
+      : await prisma.userKey.create({
+          data: {
+            userId: user.id,
+            exchange: body.exchange,
+            label,
+            ...enc,
+          },
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
 
-    const row = await prisma.userKey.create({
-      data: {
-        // ✅ связь через connect (и одновременно не даём Prisma типам упасть)
-        user: { connect: { id: user.id } },
-        exchange: body.exchange,
-        label,
-        ...payload,
-      } as any, // ✅ снимаем Prisma TS-конфликт
-      select: {
-        id: true,
-        exchange: true,
-        label: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    return ok({ key: row, created: true });
+    return ok({ key: row });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
     return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
