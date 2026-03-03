@@ -30,6 +30,7 @@ export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
 
+    // тут userId обычно доступен в where
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -65,13 +66,11 @@ export async function POST(req: Request) {
         : null;
 
     const payload = {
-      // ✅ реальные поля в БД
       apiKey: encryptString(body.apiKey),
       secretEnc: encryptString(body.apiSecret),
       passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
     };
 
-    // manual upsert по (userId, exchange, label)
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
@@ -91,7 +90,8 @@ export async function POST(req: Request) {
         })
       : await prisma.userKey.create({
           data: {
-            userId: user.id,
+            // ✅ ВАЖНО: через relation connect (иначе userId = never)
+            user: { connect: { id: user.id } },
             exchange: body.exchange,
             label,
             ...payload,
