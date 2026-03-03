@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type AnyResp = { ok: true; [k: string]: any } | { ok: false; error: string; [k: string]: any };
+type AnyResp =
+  | { ok: true; [k: string]: any }
+  | { ok: false; error: string; [k: string]: any };
 
 function getToken() {
   try {
@@ -85,8 +87,16 @@ export default function HomePage() {
             {loading ? "..." : "Проверить /api/me"}
           </button>
 
-          <button onClick={() => router.replace("/settings")} disabled={loading} style={btnGhost()}>
+          <button
+            onClick={() => router.replace("/settings")}
+            disabled={loading}
+            style={btnGhost()}
+          >
             Settings
+          </button>
+
+          <button onClick={() => router.replace("/keys")} disabled={loading} style={btnGhost()}>
+            Keys
           </button>
         </div>
 
