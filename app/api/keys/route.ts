@@ -1,8 +1,10 @@
 // app/api/keys/route.ts
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
-import { encryptString } from "@/lib/crypto/secretBox";
+import { encryptString, decryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
+import { fetchBinanceBalances } from "@/lib/exchanges/binance";
 
 export const runtime = "nodejs";
 
@@ -14,31 +16,20 @@ type CreateBody = {
   passphrase?: string | null;
 };
 
-// BigInt-safe JSON
-function json(data: any, init?: ResponseInit) {
-  return new Response(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-    {
-      ...init,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        ...(init?.headers || {}),
-      },
-    }
-  );
-}
-
 function ok(data: any) {
-  return json({ ok: true, ...data });
+  return NextResponse.json({ ok: true, ...data });
 }
 
-function fail(status: number, error: string, message?: string) {
-  return json({ ok: false, error, ...(message ? { message } : {}) }, { status });
+function fail(status: number, error: string, message?: string, extra?: any) {
+  return NextResponse.json(
+    { ok: false, error, ...(message ? { message } : {}), ...(extra ? { extra } : {}) },
+    { status }
+  );
 }
 
 export async function GET(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    const user = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -61,7 +52,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -74,48 +65,50 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // Находим запись по (userId, exchange, label) и обновляем/создаём
+    // 1) ищем существующий ключ по (userId, exchange, label)
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    // ✅ ВАЖНО: Prisma ожидает эти поля (apiKeyEnc/apiSecretEnc/passphraseEnc)
     const enc = {
       apiKeyEnc: encryptString(body.apiKey),
       apiSecretEnc: encryptString(body.apiSecret),
       passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
     };
 
+    // 2) update или create
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
           data: enc,
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
+          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
         })
       : await prisma.userKey.create({
           data: {
-            userId: user.id,
+            // ✅ важно: создаём через relation connect, чтобы не ловить "userId: never"
+            user: { connect: { id: user.id } },
             exchange: body.exchange,
             label,
             ...enc,
           },
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
+          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
         });
 
-    return ok({ key: row });
+    // 3) проверка ключей — баланс (пока только BINANCE)
+    let balance: any = null;
+
+    if (row.exchange === "BINANCE") {
+      const apiKey = decryptString(enc.apiKeyEnc);
+      const apiSecret = decryptString(enc.apiSecretEnc);
+
+      const b = await fetchBinanceBalances(apiKey, apiSecret);
+      balance = b.ok ? { exchange: "BINANCE", balances: b.balances } : { exchange: "BINANCE", ...b };
+    } else {
+      balance = { exchange: row.exchange, ok: false, error: "BALANCE_NOT_IMPLEMENTED_YET" };
+    }
+
+    return ok({ key: row, balance });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
     return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
