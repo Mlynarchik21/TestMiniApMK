@@ -15,14 +15,16 @@ type CreateBody = {
   passphrase?: string | null;
 };
 
-function ok(data: any) {
-  return NextResponse.json({ ok: true, ...data });
-}
-
-function fail(status: number, error: string, message?: string) {
-  return NextResponse.json(
-    { ok: false, error, ...(message ? { message } : {}) },
-    { status }
+function json(data: any, init?: ResponseInit) {
+  return new Response(
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    {
+      ...init,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(init?.headers || {}),
+      },
+    }
   );
 }
 
@@ -42,10 +44,13 @@ export async function GET() {
       },
     });
 
-    return ok({ keys: rows });
+    return json({ ok: true, keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
+    return json(
+      { ok: false, error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", message: e?.message },
+      { status }
+    );
   }
 }
 
@@ -55,20 +60,20 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
-    if (!body?.exchange) return fail(400, "exchange required");
-    if (!body?.apiKey) return fail(400, "apiKey required");
-    if (!body?.apiSecret) return fail(400, "apiSecret required");
+    if (!body?.exchange) return json({ ok: false, error: "exchange required" }, { status: 400 });
+    if (!body?.apiKey) return json({ ok: false, error: "apiKey required" }, { status: 400 });
+    if (!body?.apiSecret) return json({ ok: false, error: "apiSecret required" }, { status: 400 });
 
+    // ВАЖНО: записываем так, как у тебя сейчас в базе:
+    // apiKey (plain) + secretEnc (encrypt(apiSecret)) + passphraseEnc (optional)
     const row = await prisma.userKey.create({
       data: {
         userId: user.id,
         exchange: body.exchange,
         label: body.label ?? null,
-
-        // ✅ ПОЛЯ, КОТОРЫЕ ТОЧНО ЕСТЬ В PRISMA CLIENT (по твоей прошлой версии кода)
-        apiKeyEnc: encryptString(body.apiKey),
-        apiSecretEnc: encryptString(body.apiSecret),
-        passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+        apiKey: String(body.apiKey),
+        secretEnc: encryptString(String(body.apiSecret)),
+        passphraseEnc: body.passphrase ? encryptString(String(body.passphrase)) : null,
       },
       select: {
         id: true,
@@ -79,13 +84,11 @@ export async function POST(req: Request) {
       },
     });
 
-    return ok({ key: row });
+    return json({ ok: true, key: row });
   } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
+    return json(
+      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
+      { status: 500 }
     );
   }
 }
