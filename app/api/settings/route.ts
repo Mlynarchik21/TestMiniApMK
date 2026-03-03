@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
-// ✅ BigInt-safe JSON
+// BigInt-safe JSON
 function json(data: any, init?: ResponseInit) {
   return new Response(
     JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
@@ -22,16 +22,13 @@ function ok(data: any) {
   return json({ ok: true, ...data });
 }
 
-function fail(status: number, error: string, message?: string) {
-  return json(
-    { ok: false, error, ...(message ? { message } : {}) },
-    { status }
-  );
+function fail(status: number, error: string, extra?: any) {
+  return json({ ok: false, error, ...(extra ? { extra } : {}) }, { status });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireUser(req);
 
     const settings = await prisma.userSettings.findUnique({
       where: { userId: user.id },
@@ -44,7 +41,6 @@ export async function GET() {
       },
     });
 
-    // если настроек ещё нет — возвращаем дефолт, но НЕ создаём запись
     if (!settings) {
       return ok({
         settings: {
@@ -60,17 +56,15 @@ export async function GET() {
     return ok({ settings });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
+      message: e?.message ?? String(e),
+    });
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireUser(req);
 
     const body = await req.json().catch(() => null);
 
@@ -119,10 +113,8 @@ export async function PATCH(req: Request) {
     return ok({ settings });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
+      message: e?.message ?? String(e),
+    });
   }
 }
