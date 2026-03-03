@@ -1,6 +1,7 @@
 // app/api/keys/[id]/route.ts
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth/requireUser";
+import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -17,20 +18,18 @@ function json(data: any, init?: ResponseInit) {
   );
 }
 
-export async function DELETE(req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(_: Request, ctx: { params: { id: string } }) {
   try {
-    const user = await requireUser(req);
+    const user = await requireUser();
 
     const id = String(ctx.params?.id || "").trim();
-    if (!id) return json({ ok: false, error: "BAD_REQUEST" }, { status: 400 });
+    if (!id) return json({ ok: false, error: "bad_id" }, { status: 400 });
 
     const result = await prisma.userKey.deleteMany({
       where: { id, userId: user.id },
     });
 
-    if (result.count === 0) {
-      return json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-    }
+    if (result.count === 0) return json({ ok: false, error: "not_found" }, { status: 404 });
 
     return json({ ok: true });
   } catch (e: any) {
