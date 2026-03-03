@@ -2,9 +2,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
-import { encryptString, decryptString } from "@/lib/crypto/secretBox";
+import { encryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
-import { fetchBinanceBalances } from "@/lib/exchanges/binance";
 
 export const runtime = "nodejs";
 
@@ -20,9 +19,9 @@ function ok(data: any) {
   return NextResponse.json({ ok: true, ...data });
 }
 
-function fail(status: number, error: string, message?: string, extra?: any) {
+function fail(status: number, error: string, message?: string) {
   return NextResponse.json(
-    { ok: false, error, ...(message ? { message } : {}), ...(extra ? { extra } : {}) },
+    { ok: false, error, ...(message ? { message } : {}) },
     { status }
   );
 }
@@ -46,7 +45,7 @@ export async function GET(req: Request) {
     return ok({ keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
   }
 }
 
@@ -65,52 +64,55 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // 1) ищем существующий ключ по (userId, exchange, label)
+    // уникальность у тебя сейчас по (userId, exchange, label) — поэтому обновляем вручную
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    const enc = {
-      apiKeyEnc: encryptString(body.apiKey),
-      apiSecretEnc: encryptString(body.apiSecret),
+    // ✅ ВАЖНО: поля должны совпадать с твоей реальной моделью UserKey:
+    // apiKey (TEXT NOT NULL) + secretEnc (TEXT NOT NULL) + passphraseEnc (nullable)
+    const dataEncrypted = {
+      apiKey: encryptString(body.apiKey),          // кладём шифротекст в apiKey
+      secretEnc: encryptString(body.apiSecret),    // кладём шифротекст в secretEnc
       passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+      label,
+      exchange: body.exchange,
     };
 
-    // 2) update или create
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: enc,
-          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
+          data: dataEncrypted,
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         })
       : await prisma.userKey.create({
           data: {
-            // ✅ важно: создаём через relation connect, чтобы не ловить "userId: never"
-            user: { connect: { id: user.id } },
-            exchange: body.exchange,
-            label,
-            ...enc,
+            ...dataEncrypted,
+            user: { connect: { id: user.id } }, // ✅ через relation connect
           },
-          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
+          select: {
+            id: true,
+            exchange: true,
+            label: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
 
-    // 3) проверка ключей — баланс (пока только BINANCE)
-    let balance: any = null;
-
-    if (row.exchange === "BINANCE") {
-      const apiKey = decryptString(enc.apiKeyEnc);
-      const apiSecret = decryptString(enc.apiSecretEnc);
-
-      const b = await fetchBinanceBalances(apiKey, apiSecret);
-      balance = b.ok ? { exchange: "BINANCE", balances: b.balances } : { exchange: "BINANCE", ...b };
-    } else {
-      balance = { exchange: row.exchange, ok: false, error: "BALANCE_NOT_IMPLEMENTED_YET" };
-    }
-
-    return ok({ key: row, balance });
+    return ok({ key: row });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
