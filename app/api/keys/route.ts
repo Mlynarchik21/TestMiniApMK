@@ -1,7 +1,7 @@
 // app/api/keys/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth/requireUser";
+import { requireUser } from "@/lib/auth";
 import { encryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
 
@@ -26,11 +26,10 @@ function fail(status: number, error: string, message?: string) {
   );
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const user = await requireUser(req);
+    const user = await requireUser();
 
-    // тут userId обычно доступен в where
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -52,62 +51,41 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireUser(req);
+    const user = await requireUser();
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
-    if (!body?.exchange) return fail(400, "BAD_REQUEST", "exchange required");
-    if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
-    if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
+    if (!body?.exchange) return fail(400, "exchange required");
+    if (!body?.apiKey) return fail(400, "apiKey required");
+    if (!body?.apiSecret) return fail(400, "apiSecret required");
 
-    const label =
-      typeof body.label === "string" && body.label.trim().length
-        ? body.label.trim().slice(0, 64)
-        : null;
+    const row = await prisma.userKey.create({
+      data: {
+        userId: user.id,
+        exchange: body.exchange,
+        label: body.label ?? null,
 
-    const payload = {
-      apiKey: encryptString(body.apiKey),
-      secretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
-    };
-
-    const existing = await prisma.userKey.findFirst({
-      where: { userId: user.id, exchange: body.exchange, label },
-      select: { id: true },
+        // ✅ ПОЛЯ, КОТОРЫЕ ТОЧНО ЕСТЬ В PRISMA CLIENT (по твоей прошлой версии кода)
+        apiKeyEnc: encryptString(body.apiKey),
+        apiSecretEnc: encryptString(body.apiSecret),
+        passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+      },
+      select: {
+        id: true,
+        exchange: true,
+        label: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-
-    const row = existing
-      ? await prisma.userKey.update({
-          where: { id: existing.id },
-          data: payload,
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        })
-      : await prisma.userKey.create({
-          data: {
-            // ✅ ВАЖНО: через relation connect (иначе userId = never)
-            user: { connect: { id: user.id } },
-            exchange: body.exchange,
-            label,
-            ...payload,
-          },
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        });
 
     return ok({ key: row });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
