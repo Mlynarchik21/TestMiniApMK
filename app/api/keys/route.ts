@@ -1,6 +1,7 @@
 // app/api/keys/route.ts
-import crypto from "crypto";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { encryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
 
@@ -14,62 +15,20 @@ type CreateBody = {
   passphrase?: string | null;
 };
 
-function sha256hex(input: string) {
-  return crypto.createHash("sha256").update(input, "utf8").digest("hex");
+function ok(data: any) {
+  return NextResponse.json({ ok: true, ...data });
 }
 
-// BigInt-safe JSON (на будущее, единый стиль)
-function json(data: any, init?: ResponseInit) {
-  return new Response(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-    {
-      ...init,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        ...(init?.headers || {}),
-      },
-    }
+function fail(status: number, error: string, message?: string) {
+  return NextResponse.json(
+    { ok: false, error, ...(message ? { message } : {}) },
+    { status }
   );
 }
 
-async function getAuthedUser(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-
-  // если у тебя в miniapp токен идёт всегда Bearer — этого хватит.
-  // но на всякий случай поддержим cookie (как в /api/settings)
-  const cookieHeader = req.headers.get("cookie") || "";
-  const cookieToken =
-    cookieHeader
-      .split(";")
-      .map((s) => s.trim())
-      .find((p) => p.startsWith("session="))
-      ?.split("=")[1] || "";
-
-  const rawToken = bearer || cookieToken;
-  if (!rawToken) return null;
-
-  const tokenHash = sha256hex(rawToken);
-
-  const session = await prisma.session.findUnique({
-    where: { token: tokenHash },
-    include: { user: true },
-  });
-
-  if (!session || !session.user) return null;
-
-  if (session.expiresAt < new Date()) {
-    await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
-    return null;
-  }
-
-  return session.user;
-}
-
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const user = await getAuthedUser(req);
-    if (!user) return json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    const user = await requireUser();
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -83,64 +42,61 @@ export async function GET(req: Request) {
       },
     });
 
-    return json({ ok: true, keys: rows });
+    return ok({ keys: rows });
   } catch (e: any) {
-    return json(
-      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
-      { status: 500 }
-    );
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const user = await getAuthedUser(req);
-    if (!user) return json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    const user = await requireUser();
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
-    if (!body?.exchange)
-      return json({ ok: false, error: "exchange required" }, { status: 400 });
-    if (!body?.apiKey)
-      return json({ ok: false, error: "apiKey required" }, { status: 400 });
-    if (!body?.apiSecret)
-      return json({ ok: false, error: "apiSecret required" }, { status: 400 });
+    if (!body?.exchange) return fail(400, "exchange required");
+    if (!body?.apiKey) return fail(400, "apiKey required");
+    if (!body?.apiSecret) return fail(400, "apiSecret required");
 
-    const apiKeyEnc = encryptString(body.apiKey);
-    const apiSecretEnc = encryptString(body.apiSecret);
-    const passphraseEnc = body.passphrase ? encryptString(body.passphrase) : null;
+    const row = await prisma.userKey.create({
+      data: {
+        userId: user.id,
+        exchange: body.exchange,
+        label: body.label ?? null,
 
-    try {
-      const row = await prisma.userKey.create({
-        data: {
-          userId: user.id,
-          exchange: body.exchange,
-          label: body.label ?? null,
-          apiKeyEnc,
-          apiSecretEnc,
-          passphraseEnc,
-        },
-        select: {
-          id: true,
-          exchange: true,
-          label: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+        // БАЗА ЖДЁТ ЭТИ ПОЛЯ
+        apiKey: body.apiKey,
 
-      return json({ ok: true, key: row });
-    } catch (e: any) {
-      // Prisma unique violation -> понятная ошибка
-      if (e?.code === "P2002") {
-        return json({ ok: false, error: "ALREADY_EXISTS" }, { status: 409 });
-      }
-      throw e;
-    }
+        // Шифруем secret + passphrase в одно поле
+        secretEnc: encryptString(
+          JSON.stringify({
+            apiSecret: body.apiSecret,
+            passphrase: body.passphrase ?? null,
+          })
+        ),
+
+        // это поле nullable — можем оставить
+        passphraseEnc: body.passphrase
+          ? encryptString(body.passphrase)
+          : null,
+      },
+      select: {
+        id: true,
+        exchange: true,
+        label: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return ok({ key: row });
   } catch (e: any) {
-    return json(
-      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
-      { status: 500 }
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
     );
   }
 }
