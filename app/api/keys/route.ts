@@ -26,19 +26,35 @@ function fail(status: number, error: string, message?: string) {
   );
 }
 
+function unauthorized(message = "UNAUTHORIZED") {
+  const err = new Error(message);
+  // @ts-expect-error attach status
+  err.status = 401;
+  return err;
+}
+
 /**
- * Совместимость:
- * - requireUser() может вернуть User
+ * Совместимость с любым requireUser():
+ * - возвращает User
  * - или { user, session }
+ * - или null / { user: null }
+ * - или кидает ошибку с status=401
  */
-async function getUser() {
+async function ensureUser() {
   const r: any = await requireUser();
-  return r?.user ?? r;
+
+  const user = r?.user ?? r;
+
+  if (!user || !user.id) {
+    throw unauthorized("UNAUTHORIZED");
+  }
+
+  return user as { id: string };
 }
 
 export async function GET() {
   try {
-    const user = await getUser();
+    const user = await ensureUser();
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -65,7 +81,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const user = await getUser();
+    const user = await ensureUser();
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -77,7 +93,6 @@ export async function POST(req: Request) {
     const labelRaw = typeof body.label === "string" ? body.label.trim() : "";
     const label = labelRaw.length ? labelRaw : "Main";
 
-    // encrypt
     const apiKeyEnc = encryptString(String(body.apiKey).trim());
     const apiSecretEnc = encryptString(String(body.apiSecret).trim());
     const passphraseEnc =
@@ -85,7 +100,7 @@ export async function POST(req: Request) {
         ? encryptString(String(body.passphrase).trim())
         : null;
 
-    // НЕ используем upsert по composite unique (имя может отличаться)
+    // Не используем upsert по composite unique (имя может отличаться)
     const existing = await prisma.userKey.findFirst({
       where: {
         userId: user.id,
