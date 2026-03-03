@@ -1,24 +1,16 @@
 // lib/auth/requireUser.ts
 import crypto from "crypto";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 
-type RequireUserResult = {
-  user: {
-    id: string;
-    tgId: bigint | string;
-    username: string | null;
-    firstName: string | null;
-    lastName: string | null;
-    createdAt?: Date;
-    updatedAt?: Date;
-  };
-  session: {
-    id: string;
-    userId: string;
-    token: string;
-    expiresAt?: Date;
-    createdAt?: Date;
-  };
+export type AuthedUser = {
+  id: string;
+  tgId: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 function sha256Hex(input: string): string {
@@ -27,34 +19,38 @@ function sha256Hex(input: string): string {
 
 function unauthorized(msg = "UNAUTHORIZED") {
   const err = new Error(msg);
-  // @ts-expect-error
+  // @ts-expect-error attach status
   err.status = 401;
   return err;
 }
 
-function getCookieValue(cookieHeader: string, name: string) {
-  const parts = cookieHeader.split(";").map((s) => s.trim());
-  const hit = parts.find((p) => p.startsWith(name + "="));
-  if (!hit) return "";
-  return decodeURIComponent(hit.slice(name.length + 1));
+function getCookieFromHeader(cookieHeader: string, name: string): string {
+  if (!cookieHeader) return "";
+  const part = cookieHeader
+    .split(";")
+    .map((s) => s.trim())
+    .find((p) => p.startsWith(name + "="));
+  if (!part) return "";
+  return decodeURIComponent(part.split("=").slice(1).join("="));
 }
 
 /**
- * requireUser(req)
- * Token sources:
- * 1) Authorization: Bearer <rawToken>
- * 2) Cookie: session=<rawToken>
+ * requireUser(req?)
+ * Источник токена:
+ * - Authorization: Bearer <rawToken>
+ * - cookie "session"
  *
- * В БД Session.token хранит sha256(rawToken)
+ * Работает и в route handlers (с req), и в server components (без req).
  */
-export async function requireUser(req: Request): Promise<RequireUserResult> {
-  const auth = req.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+export async function requireUser(req?: Request): Promise<AuthedUser> {
+  const authHeader = req ? req.headers.get("authorization") || "" : headers().get("authorization") || "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
 
-  const cookieHeader = req.headers.get("cookie") || "";
-  const cookieToken = getCookieValue(cookieHeader, "session");
+  const cookieToken = req
+    ? getCookieFromHeader(req.headers.get("cookie") || "", "session")
+    : cookies().get("session")?.value || "";
 
-  const rawToken = bearer || cookieToken;
+  const rawToken = bearerToken || cookieToken;
   if (!rawToken) throw unauthorized("UNAUTHORIZED");
 
   const tokenHash = sha256Hex(rawToken);
@@ -64,31 +60,22 @@ export async function requireUser(req: Request): Promise<RequireUserResult> {
     include: { user: true },
   });
 
-  if (!session || !session.user) throw unauthorized("UNAUTHORIZED");
+  if (!session?.user) throw unauthorized("UNAUTHORIZED");
 
-  // expiresAt есть у тебя в модели Session
-  const expiresAt = (session as any).expiresAt as Date | undefined;
+  // если expiresAt есть — проверяем
+  const expiresAt: Date | undefined = (session as any).expiresAt;
   if (expiresAt instanceof Date && expiresAt < new Date()) {
     await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
-    throw unauthorized("SESSION_EXPIRED");
+    throw unauthorized("UNAUTHORIZED");
   }
 
   return {
-    user: {
-      id: session.user.id,
-      tgId: session.user.tgId,
-      username: session.user.username ?? null,
-      firstName: session.user.firstName ?? null,
-      lastName: session.user.lastName ?? null,
-      createdAt: session.user.createdAt,
-      updatedAt: session.user.updatedAt,
-    },
-    session: {
-      id: session.id,
-      userId: session.userId,
-      token: session.token,
-      expiresAt,
-      createdAt: (session as any).createdAt,
-    },
+    id: session.user.id,
+    tgId: String(session.user.tgId),
+    username: session.user.username ?? null,
+    firstName: session.user.firstName ?? null,
+    lastName: session.user.lastName ?? null,
+    createdAt: session.user.createdAt,
+    updatedAt: session.user.updatedAt,
   };
 }
