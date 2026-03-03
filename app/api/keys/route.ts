@@ -65,21 +65,10 @@ export async function POST(req: Request) {
         exchange: body.exchange,
         label: body.label ?? null,
 
-        // БАЗА ЖДЁТ ЭТИ ПОЛЯ
-        apiKey: body.apiKey,
-
-        // Шифруем secret + passphrase в одно поле
-        secretEnc: encryptString(
-          JSON.stringify({
-            apiSecret: body.apiSecret,
-            passphrase: body.passphrase ?? null,
-          })
-        ),
-
-        // это поле nullable — можем оставить
-        passphraseEnc: body.passphrase
-          ? encryptString(body.passphrase)
-          : null,
+        // ✅ ПОЛЯ, КОТОРЫЕ ТОЧНО ЕСТЬ В PRISMA CLIENT (по твоей прошлой версии кода)
+        apiKeyEnc: encryptString(body.apiKey),
+        apiSecretEnc: encryptString(body.apiSecret),
+        passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
       },
       select: {
         id: true,
