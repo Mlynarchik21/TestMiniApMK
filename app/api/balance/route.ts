@@ -24,112 +24,12 @@ function hmacSha256Hex(secret: string, payload: string) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-async function binanceSpotBalances(apiKey: string, apiSecret: string) {
-  const baseUrl = process.env.BINANCE_BASE_URL || "https://api.binance.com";
-  const timestamp = Date.now();
-
-  const qs = new URLSearchParams({
-    timestamp: String(timestamp),
-    recvWindow: "5000",
-  });
-
-  const signature = hmacSha256Hex(apiSecret, qs.toString());
-  qs.set("signature", signature);
-
-  const url = `${baseUrl}/api/v3/account?${qs.toString()}`;
-
-  const r = await fetch(url, {
-    method: "GET",
-    headers: { "X-MBX-APIKEY": apiKey },
-    cache: "no-store",
-  });
-
-  const text = await r.text();
-  let j: any = null;
-  try {
-    j = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    return {
-      ok: false as const,
-      status: r.status,
-      error: j?.msg || text || "Binance error",
-      raw: j ?? text,
-    };
-  }
-
-  const balancesRaw = Array.isArray(j?.balances) ? j.balances : [];
-  const balances = balancesRaw
-    .map((b: any) => ({
-      asset: String(b.asset),
-      free: Number(b.free),
-      locked: Number(b.locked),
-    }))
-    .filter((b) => (Number.isFinite(b.free) && b.free !== 0) || (Number.isFinite(b.locked) && b.locked !== 0));
-
-  return { ok: true as const, balances };
-}
-
-async function binancePricesUSDT(assets: string[]) {
-  const baseUrl = process.env.BINANCE_BASE_URL || "https://api.binance.com";
-
-  // Берём цены на все пары сразу (проще и надежнее)
-  const r = await fetch(`${baseUrl}/api/v3/ticker/price`, { cache: "no-store" });
-  const list = (await r.json().catch(() => null)) as any[] | null;
-
-  const map = new Map<string, number>(); // symbol -> price
-  if (Array.isArray(list)) {
-    for (const it of list) {
-      const sym = String(it?.symbol || "");
-      const p = Number(it?.price);
-      if (sym && Number.isFinite(p)) map.set(sym, p);
-    }
-  }
-
-  // Для каждого asset пытаемся получить оценку в USDT:
-  // 1) assetUSDT
-  // 2) assetBUSD (редко) -> игнорируем
-  // 3) assetBTC + BTCUSDT
-  // 4) assetETH + ETHUSDT
-  const btcUsdt = map.get("BTCUSDT") ?? null;
-  const ethUsdt = map.get("ETHUSDT") ?? null;
-
-  const assetToUsdt = new Map<string, number>();
-  for (const a of assets) {
-    if (a === "USDT") {
-      assetToUsdt.set(a, 1);
-      continue;
-    }
-
-    const direct = map.get(`${a}USDT`);
-    if (direct) {
-      assetToUsdt.set(a, direct);
-      continue;
-    }
-
-    const viaBtc = map.get(`${a}BTC`);
-    if (viaBtc && btcUsdt) {
-      assetToUsdt.set(a, viaBtc * btcUsdt);
-      continue;
-    }
-
-    const viaEth = map.get(`${a}ETH`);
-    if (viaEth && ethUsdt) {
-      assetToUsdt.set(a, viaEth * ethUsdt);
-      continue;
-    }
-  }
-
-  return assetToUsdt;
-}
-
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
 
     const url = new URL(req.url);
-    const keyId = String(url.searchParams.get("keyId") || "").trim();
+    const keyId = (url.searchParams.get("keyId") || "").trim();
     if (!keyId) return json({ ok: false, error: "BAD_REQUEST", message: "keyId required" }, { status: 400 });
 
     const key = await prisma.userKey.findFirst({
@@ -140,62 +40,75 @@ export async function GET(req: Request) {
         apiKey: true,
         secretEnc: true,
         passphraseEnc: true,
-      } as any,
+      },
     });
 
     if (!key) return json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
 
     if (key.exchange !== "BINANCE") {
-      return json({ ok: false, error: "NOT_SUPPORTED_YET", message: `exchange ${key.exchange} not implemented` }, { status: 400 });
+      return json(
+        { ok: false, error: "NOT_IMPLEMENTED", message: `Balance for ${key.exchange} not implemented yet` },
+        { status: 400 }
+      );
     }
 
-    // decrypt with fallback
-    const apiKeyRaw = String((key as any).apiKey || "");
-    const apiSecretRaw = String((key as any).secretEnc || "");
+    // ✅ в БД лежит ENCRYPTED, тут расшифровываем
+    const apiKey = decryptString(key.apiKey);
+    const apiSecret = decryptString(key.secretEnc);
 
-    let apiKey = apiKeyRaw;
-    let apiSecret = apiSecretRaw;
+    const base = "https://api.binance.com";
+    const timestamp = Date.now();
+    const recvWindow = 5000;
 
-    try { apiKey = decryptString(apiKeyRaw); } catch {}
-    try { apiSecret = decryptString(apiSecretRaw); } catch {}
+    const qs = `timestamp=${timestamp}&recvWindow=${recvWindow}`;
+    const signature = hmacSha256Hex(apiSecret, qs);
 
-    if (!apiKey || !apiSecret) {
-      return json({ ok: false, error: "BAD_KEY", message: "apiKey/apiSecret missing after decrypt" }, { status: 400 });
+    const r = await fetch(`${base}/api/v3/account?${qs}&signature=${signature}`, {
+      method: "GET",
+      headers: {
+        "X-MBX-APIKEY": apiKey,
+      },
+      cache: "no-store",
+    });
+
+    const text = await r.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
     }
 
-    const b = await binanceSpotBalances(apiKey, apiSecret);
-    if (!b.ok) {
-      return json({ ok: false, error: "EXCHANGE_ERROR", exchange: "BINANCE", details: b }, { status: 400 });
+    // Binance при ошибке отдаёт { code, msg }
+    if (!r.ok) {
+      return json(
+        {
+          ok: false,
+          error: "EXCHANGE_ERROR",
+          status: r.status,
+          details: data,
+        },
+        { status: 400 }
+      );
     }
 
-    const assets = b.balances.map((x) => x.asset);
-    const priceMap = await binancePricesUSDT(assets);
-
-    const rows = b.balances
-      .map((x) => {
-        const total = x.free + x.locked;
-        const px = priceMap.get(x.asset) ?? null;
-        const estUsdt = px ? total * px : (x.asset === "USDT" ? total : null);
-        return {
-          asset: x.asset,
-          free: x.free,
-          locked: x.locked,
-          total,
-          priceUSDT: px,
-          estUSDT: estUsdt,
-        };
-      })
-      .sort((a, b) => (Number(b.estUSDT ?? 0) - Number(a.estUSDT ?? 0)));
-
-    const totalUSDT = rows.reduce((s, r) => s + (Number(r.estUSDT ?? 0) || 0), 0);
+    const balances = Array.isArray(data?.balances) ? data.balances : [];
+    const nonZero = balances
+      .map((b: any) => ({
+        asset: String(b.asset),
+        free: String(b.free),
+        locked: String(b.locked),
+      }))
+      .filter((b: any) => Number(b.free) !== 0 || Number(b.locked) !== 0);
 
     return json({
       ok: true,
       exchange: "BINANCE",
+      accountType: "SPOT",
       keyId: key.id,
-      balances: rows,
-      totalUSDT,
-      note: "Spot balances (est. USDT via public prices).",
+      balances: nonZero,
+      // если хочешь видеть всё:
+      // raw: data,
     });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
