@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { decryptString } from "@/lib/crypto/secretBox";
+import { Exchange } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -29,46 +30,60 @@ export async function GET(req: Request) {
     const user = await requireUser(req);
 
     const url = new URL(req.url);
-    const keyId = (url.searchParams.get("keyId") || "").trim();
-    if (!keyId) return json({ ok: false, error: "BAD_REQUEST", message: "keyId required" }, { status: 400 });
+    const exchangeStr = String(url.searchParams.get("exchange") || "").toUpperCase().trim();
+    const label = url.searchParams.get("label");
+    const exchange = exchangeStr as Exchange;
 
-    const key = await prisma.userKey.findFirst({
-      where: { id: keyId, userId: user.id },
-      select: {
-        id: true,
-        exchange: true,
-        apiKey: true,
-        secretEnc: true,
-        passphraseEnc: true,
-      },
-    });
+    if (!exchangeStr) return json({ ok: false, error: "BAD_REQUEST", message: "exchange required" }, { status: 400 });
 
-    if (!key) return json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-
-    if (key.exchange !== "BINANCE") {
+    // пока делаем 100% рабочий BINANCE spot
+    if (exchange !== "BINANCE") {
       return json(
-        { ok: false, error: "NOT_IMPLEMENTED", message: `Balance for ${key.exchange} not implemented yet` },
+        { ok: false, error: "NOT_SUPPORTED", message: "Currently only BINANCE spot balance is implemented" },
         { status: 400 }
       );
     }
 
-    // ✅ в БД лежит ENCRYPTED, тут расшифровываем
-    const apiKey = decryptString(key.apiKey);
+    // берём ключ пользователя (если label задан — по label, иначе самый свежий)
+    const key = await prisma.userKey.findFirst({
+      where: {
+        userId: user.id,
+        exchange,
+        ...(typeof label === "string" ? { label } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        apiKey: true,
+        secretEnc: true,
+        passphraseEnc: true,
+        label: true,
+        exchange: true,
+      },
+    });
+
+    if (!key) {
+      return json({ ok: false, error: "NO_KEY", message: "No API key saved for this exchange" }, { status: 404 });
+    }
+
+    const apiKey = key.apiKey;
     const apiSecret = decryptString(key.secretEnc);
 
-    const base = "https://api.binance.com";
+    // Binance signed endpoint: GET /api/v3/account
     const timestamp = Date.now();
     const recvWindow = 5000;
 
-    const qs = `timestamp=${timestamp}&recvWindow=${recvWindow}`;
+    const qs = `recvWindow=${recvWindow}&timestamp=${timestamp}`;
     const signature = hmacSha256Hex(apiSecret, qs);
 
-    const r = await fetch(`${base}/api/v3/account?${qs}&signature=${signature}`, {
+    const endpoint = `https://api.binance.com/api/v3/account?${qs}&signature=${signature}`;
+
+    const r = await fetch(endpoint, {
       method: "GET",
+      cache: "no-store",
       headers: {
         "X-MBX-APIKEY": apiKey,
       },
-      cache: "no-store",
     });
 
     const text = await r.text();
@@ -76,39 +91,46 @@ export async function GET(req: Request) {
     try {
       data = JSON.parse(text);
     } catch {
-      data = { raw: text };
+      // ignore
     }
 
-    // Binance при ошибке отдаёт { code, msg }
     if (!r.ok) {
       return json(
         {
           ok: false,
           error: "EXCHANGE_ERROR",
           status: r.status,
-          details: data,
+          message: data?.msg || text || "Binance error",
         },
         { status: 400 }
       );
     }
 
-    const balances = Array.isArray(data?.balances) ? data.balances : [];
-    const nonZero = balances
-      .map((b: any) => ({
-        asset: String(b.asset),
-        free: String(b.free),
-        locked: String(b.locked),
+    const balancesRaw: any[] = Array.isArray(data?.balances) ? data.balances : [];
+    const balances = balancesRaw
+      .map((b) => ({
+        asset: String(b.asset || ""),
+        free: String(b.free || "0"),
+        locked: String(b.locked || "0"),
       }))
-      .filter((b: any) => Number(b.free) !== 0 || Number(b.locked) !== 0);
+      .filter((b) => {
+        const free = Number(b.free);
+        const locked = Number(b.locked);
+        return (Number.isFinite(free) && free !== 0) || (Number.isFinite(locked) && locked !== 0);
+      });
 
     return json({
       ok: true,
-      exchange: "BINANCE",
-      accountType: "SPOT",
-      keyId: key.id,
-      balances: nonZero,
-      // если хочешь видеть всё:
-      // raw: data,
+      exchange: key.exchange,
+      label: key.label,
+      balances,
+      raw: {
+        // можно убрать позже, но пока полезно для дебага
+        canTrade: data?.canTrade,
+        canWithdraw: data?.canWithdraw,
+        canDeposit: data?.canDeposit,
+        updateTime: data?.updateTime,
+      },
     });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
