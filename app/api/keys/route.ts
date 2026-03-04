@@ -33,7 +33,6 @@ function normalizeLabel(label: unknown): string | null {
 
 export async function GET(req: Request) {
   try {
-    // ✅ requireUser(req) -> AuthedUser
     const user = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
@@ -57,7 +56,6 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // ✅ requireUser(req) -> AuthedUser
     const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
@@ -74,19 +72,11 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    // ✅ шифруем один раз
-    const apiKeyCipher = encryptString(body.apiKey);
-    const apiSecretCipher = encryptString(body.apiSecret);
-    const passCipher = body.passphrase ? encryptString(body.passphrase) : null;
-
-    // ✅ заполняем реальные NOT NULL поля БД + legacy nullable
-    const dataToSave = {
-      apiKey: apiKeyCipher, // NOT NULL
-      secretEnc: apiSecretCipher, // NOT NULL
-      passphraseEnc: passCipher,
-
-      apiKeyEnc: apiKeyCipher, // legacy nullable
-      apiSecretEnc: apiSecretCipher, // legacy nullable
+    // ✅ кладём в реальные поля БД
+    const dataEncrypted = {
+      apiKey: encryptString(body.apiKey),
+      secretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
     };
 
     const selectPublic = {
@@ -100,18 +90,15 @@ export async function POST(req: Request) {
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: dataToSave,
+          data: dataEncrypted,
           select: selectPublic,
         })
       : await prisma.userKey.create({
           data: {
+            userId: user.id,
             exchange: body.exchange,
             label,
-            ...dataToSave,
-
-            // ✅ если Prisma ругнётся на userId: тогда оставь ТОЛЬКО connect
-            // userId: user.id,
-            user: { connect: { id: user.id } },
+            ...dataEncrypted,
           },
           select: selectPublic,
         });
