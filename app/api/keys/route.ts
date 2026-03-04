@@ -1,3 +1,4 @@
+// app/api/keys/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    // ✅ кладём в реальные поля БД
+    // поля как в БД (NOT NULL)
     const dataEncrypted = {
       apiKey: encryptString(body.apiKey),
       secretEnc: encryptString(body.apiSecret),
@@ -95,10 +96,11 @@ export async function POST(req: Request) {
         })
       : await prisma.userKey.create({
           data: {
-            userId: user.id,
+            ...dataEncrypted,
             exchange: body.exchange,
             label,
-            ...dataEncrypted,
+            // ✅ ВАЖНО: через relation connect (иначе userId = never)
+            user: { connect: { id: user.id } },
           },
           select: selectPublic,
         });
