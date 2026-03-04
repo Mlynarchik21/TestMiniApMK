@@ -26,6 +26,12 @@ function fail(status: number, error: string, message?: string) {
   );
 }
 
+function normalizeLabel(label: unknown): string | null {
+  if (typeof label !== "string") return null;
+  const v = label.trim();
+  return v.length ? v.slice(0, 64) : null;
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
@@ -59,49 +65,58 @@ export async function POST(req: Request) {
     if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
     if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
-    const label =
-      typeof body.label === "string" && body.label.trim().length
-        ? body.label.trim().slice(0, 64)
-        : null;
+    const label = normalizeLabel(body.label);
 
     // unique у тебя: @@unique([userId, exchange, label])
     const existing = await prisma.userKey.findFirst({
-      where: { userId: user.id, exchange: body.exchange, label },
+      where: {
+        userId: user.id,
+        exchange: body.exchange,
+        label,
+      },
       select: { id: true },
     });
 
-    const enc = {
-      apiKeyEnc: encryptString(body.apiKey), // ✅ ВАЖНО: именно apiKeyEnc
-      apiSecretEnc: encryptString(body.apiSecret), // ✅ ВАЖНО: именно apiSecretEnc
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    // ✅ Пишем в РЕАЛЬНЫЕ NOT NULL колонки БД: apiKey + secretEnc
+    // + дублируем в legacy nullable колонки apiKeyEnc/apiSecretEnc (если они есть в схеме Prisma)
+    const apiKeyEncrypted = encryptString(body.apiKey);
+    const apiSecretEncrypted = encryptString(body.apiSecret);
+    const passphraseEncrypted = body.passphrase ? encryptString(body.passphrase) : null;
+
+    const dataEncrypted = {
+      // актуальные поля (NOT NULL)
+      apiKey: apiKeyEncrypted,
+      secretEnc: apiSecretEncrypted,
+      passphraseEnc: passphraseEncrypted,
+
+      // legacy поля (nullable) — пусть тоже заполняются
+      apiKeyEnc: apiKeyEncrypted,
+      apiSecretEnc: apiSecretEncrypted,
     };
+
+    const selectPublic = {
+      id: true,
+      exchange: true,
+      label: true,
+      createdAt: true,
+      updatedAt: true,
+    } as const;
 
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: { ...enc },
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
+          data: dataEncrypted,
+          select: selectPublic,
         })
       : await prisma.userKey.create({
           data: {
-            userId: user.id, // если у тебя userId доступен (судя по прошлым версиям — да)
+            ...dataEncrypted,
             exchange: body.exchange,
             label,
-            ...enc,
+            // ✅ ВАЖНО: через relation connect (иначе в некоторых схемах userId становится never)
+            user: { connect: { id: user.id } },
           },
-          select: {
-            id: true,
-            exchange: true,
-            label: true,
-            createdAt: true,
-            updatedAt: true,
-          },
+          select: selectPublic,
         });
 
     return ok({ key: row });
