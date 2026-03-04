@@ -1,3 +1,4 @@
+// app/api/keys/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
@@ -19,21 +20,12 @@ function ok(data: any) {
 }
 
 function fail(status: number, error: string, message?: string) {
-  return NextResponse.json(
-    { ok: false, error, ...(message ? { message } : {}) },
-    { status }
-  );
-}
-
-function normalizeLabel(label: unknown): string | null {
-  if (typeof label !== "string") return null;
-  const v = label.trim();
-  return v.length ? v.slice(0, 64) : null;
+  return NextResponse.json({ ok: false, error, ...(message ? { message } : {}) }, { status });
 }
 
 export async function GET(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    const user = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -56,7 +48,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -64,60 +56,44 @@ export async function POST(req: Request) {
     if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
     if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
-    const label = normalizeLabel(body.label);
+    const label =
+      typeof body.label === "string" && body.label.trim().length
+        ? body.label.trim().slice(0, 64)
+        : null;
 
-    // unique: @@unique([userId, exchange, label])
+    // @@unique([userId, exchange, label]) → апсерт вручную
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    // ✅ шифруем один раз
-    const apiKeyCipher = encryptString(body.apiKey);
-    const apiSecretCipher = encryptString(body.apiSecret);
-    const passCipher = body.passphrase ? encryptString(body.passphrase) : null;
-
-    // ✅ ВАЖНО: заполняем NOT NULL колонки БД + legacy nullable
-    const dataToSave = {
-      apiKey: apiKeyCipher,              // NOT NULL в БД
-      secretEnc: apiSecretCipher,        // NOT NULL в БД
-      passphraseEnc: passCipher,
-
-      apiKeyEnc: apiKeyCipher,           // legacy (nullable)
-      apiSecretEnc: apiSecretCipher,     // legacy (nullable)
+    const dataEncrypted = {
+      // ✅ ПИШЕМ В РЕАЛЬНЫЕ КОЛОНКИ БД (как на твоём скрине Supabase)
+      apiKey: encryptString(body.apiKey),
+      secretEnc: encryptString(body.apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
     };
-
-    const selectPublic = {
-      id: true,
-      exchange: true,
-      label: true,
-      createdAt: true,
-      updatedAt: true,
-    } as const;
 
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: dataToSave,
-          select: selectPublic,
+          data: dataEncrypted,
+          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
         })
       : await prisma.userKey.create({
           data: {
+            ...dataEncrypted,
             exchange: body.exchange,
             label,
-            ...dataToSave,
+            // ✅ через relation connect, чтобы не было userId: never
             user: { connect: { id: user.id } },
-          },
-          select: selectPublic,
+          } as any,
+          select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
         });
 
     return ok({ key: row });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
