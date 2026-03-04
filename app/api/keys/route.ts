@@ -33,7 +33,8 @@ function normalizeLabel(label: unknown): string | null {
 
 export async function GET(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    // ✅ requireUser(req) -> AuthedUser
+    const user = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -56,7 +57,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireUser(req);
+    // ✅ requireUser(req) -> AuthedUser
+    const user = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -77,14 +79,14 @@ export async function POST(req: Request) {
     const apiSecretCipher = encryptString(body.apiSecret);
     const passCipher = body.passphrase ? encryptString(body.passphrase) : null;
 
-    // ✅ ВАЖНО: заполняем NOT NULL колонки БД + legacy nullable
+    // ✅ заполняем реальные NOT NULL поля БД + legacy nullable
     const dataToSave = {
-      apiKey: apiKeyCipher,              // NOT NULL в БД
-      secretEnc: apiSecretCipher,        // NOT NULL в БД
+      apiKey: apiKeyCipher, // NOT NULL
+      secretEnc: apiSecretCipher, // NOT NULL
       passphraseEnc: passCipher,
 
-      apiKeyEnc: apiKeyCipher,           // legacy (nullable)
-      apiSecretEnc: apiSecretCipher,     // legacy (nullable)
+      apiKeyEnc: apiKeyCipher, // legacy nullable
+      apiSecretEnc: apiSecretCipher, // legacy nullable
     };
 
     const selectPublic = {
@@ -106,6 +108,9 @@ export async function POST(req: Request) {
             exchange: body.exchange,
             label,
             ...dataToSave,
+
+            // ✅ если Prisma ругнётся на userId: тогда оставь ТОЛЬКО connect
+            // userId: user.id,
             user: { connect: { id: user.id } },
           },
           select: selectPublic,
