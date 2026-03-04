@@ -1,4 +1,3 @@
-// app/api/keys/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
@@ -34,7 +33,7 @@ function normalizeLabel(label: unknown): string | null {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireUser(req);
+    const { user } = await requireUser(req);
 
     const rows = await prisma.userKey.findMany({
       where: { userId: user.id },
@@ -57,7 +56,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireUser(req);
+    const { user } = await requireUser(req);
 
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
@@ -67,17 +66,25 @@ export async function POST(req: Request) {
 
     const label = normalizeLabel(body.label);
 
-    // unique у тебя: @@unique([userId, exchange, label])
+    // unique: @@unique([userId, exchange, label])
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
-    // ✅ Сохраняем ровно в те поля, которые Prisma ожидает
-    const enc = {
-      apiKeyEnc: encryptString(body.apiKey),
-      apiSecretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+    // ✅ шифруем один раз
+    const apiKeyCipher = encryptString(body.apiKey);
+    const apiSecretCipher = encryptString(body.apiSecret);
+    const passCipher = body.passphrase ? encryptString(body.passphrase) : null;
+
+    // ✅ ВАЖНО: заполняем NOT NULL колонки БД + legacy nullable
+    const dataToSave = {
+      apiKey: apiKeyCipher,              // NOT NULL в БД
+      secretEnc: apiSecretCipher,        // NOT NULL в БД
+      passphraseEnc: passCipher,
+
+      apiKeyEnc: apiKeyCipher,           // legacy (nullable)
+      apiSecretEnc: apiSecretCipher,     // legacy (nullable)
     };
 
     const selectPublic = {
@@ -91,14 +98,14 @@ export async function POST(req: Request) {
     const row = existing
       ? await prisma.userKey.update({
           where: { id: existing.id },
-          data: enc,
+          data: dataToSave,
           select: selectPublic,
         })
       : await prisma.userKey.create({
           data: {
-            ...enc,
             exchange: body.exchange,
             label,
+            ...dataToSave,
             user: { connect: { id: user.id } },
           },
           select: selectPublic,
