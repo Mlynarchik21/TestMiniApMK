@@ -22,8 +22,23 @@ function sign(query: string, secret: string) {
   return crypto.createHmac("sha256", secret).update(query).digest("hex");
 }
 
+function getBinanceBase(): { base: string; proxyToken?: string } {
+  // Если задан BINANCE_PROXY_BASE_URL — ходим через Cloudflare Worker
+  const proxyBase = (process.env.BINANCE_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
+  const proxyToken = (process.env.PROXY_TOKEN || "").trim();
+
+  if (proxyBase) {
+    // /binance/... — это маршрут, который ты должен проксировать в воркере
+    return { base: `${proxyBase}/binance`, proxyToken };
+  }
+
+  // fallback (будет падать на Vercel в restricted-регионах)
+  return { base: "https://api.binance.com" };
+}
+
 async function binanceSpotAccount(apiKey: string, apiSecret: string) {
-  const base = "https://api.binance.com";
+  const { base, proxyToken } = getBinanceBase();
+
   const timestamp = Date.now();
   const recvWindow = 10_000;
 
@@ -35,11 +50,16 @@ async function binanceSpotAccount(apiKey: string, apiSecret: string) {
   const signature = sign(qs, apiSecret);
   const url = `${base}/api/v3/account?${qs}&signature=${signature}`;
 
+  const headers: Record<string, string> = {
+    "X-MBX-APIKEY": apiKey,
+  };
+
+  // Если идём через воркер — добавляем токен защиты прокси
+  if (proxyToken) headers["x-proxy-token"] = proxyToken;
+
   const r = await fetch(url, {
     method: "GET",
-    headers: {
-      "X-MBX-APIKEY": apiKey,
-    },
+    headers,
     cache: "no-store",
   });
 
@@ -75,7 +95,6 @@ export async function GET(req: Request) {
         label: true,
         apiKey: true,
         secretEnc: true,
-        passphraseEnc: true,
       },
     });
 
@@ -86,13 +105,9 @@ export async function GET(req: Request) {
     }
 
     const apiSecret = decryptString(key.secretEnc);
-
     const account = await binanceSpotAccount(key.apiKey, apiSecret);
 
-    // Binance отдаёт balances: [{asset, free, locked}, ...]
     const balances = Array.isArray(account?.balances) ? account.balances : [];
-
-    // отфильтруем нулевые, чтобы было читабельно
     const nonZero = balances.filter((b: any) => {
       const free = Number(b?.free || 0);
       const locked = Number(b?.locked || 0);
@@ -105,6 +120,7 @@ export async function GET(req: Request) {
       label: key.label ?? null,
       balances: nonZero,
       raw: { canTrade: account?.canTrade, accountType: account?.accountType },
+      viaProxy: Boolean((process.env.BINANCE_PROXY_BASE_URL || "").trim()),
     });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
