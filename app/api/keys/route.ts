@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     return ok({ keys: rows });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message);
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
 
@@ -61,16 +61,16 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // @@unique([userId, exchange, label]) → апсерт вручную
+    // ищем существующий ключ по @@unique([userId, exchange, label])
     const existing = await prisma.userKey.findFirst({
       where: { userId: user.id, exchange: body.exchange, label },
       select: { id: true },
     });
 
+    // ✅ ПИШЕМ В РЕАЛЬНЫЕ ПОЛЯ БД (NOT NULL)
     const dataEncrypted = {
-      // ✅ ПИШЕМ В РЕАЛЬНЫЕ КОЛОНКИ БД (как на твоём скрине Supabase)
-      apiKey: encryptString(body.apiKey),
-      secretEnc: encryptString(body.apiSecret),
+      apiKey: encryptString(body.apiKey), // <-- в колонку apiKey
+      secretEnc: encryptString(body.apiSecret), // <-- в колонку secretEnc
       passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
     };
 
@@ -82,12 +82,12 @@ export async function POST(req: Request) {
         })
       : await prisma.userKey.create({
           data: {
-            ...dataEncrypted,
             exchange: body.exchange,
             label,
-            // ✅ через relation connect, чтобы не было userId: never
+            ...dataEncrypted,
+            // ⚠️ ВАЖНО: связываем по relation (так TS не ругается на userId)
             user: { connect: { id: user.id } },
-          } as any,
+          },
           select: { id: true, exchange: true, label: true, createdAt: true, updatedAt: true },
         });
 
