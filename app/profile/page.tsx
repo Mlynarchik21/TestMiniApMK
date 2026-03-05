@@ -1,9 +1,14 @@
 // app/profile/page.tsx
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
+
+function sha256hex(input: string) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
 
 export default async function ProfilePage() {
   const token = cookies().get("session")?.value;
@@ -12,8 +17,11 @@ export default async function ProfilePage() {
     redirect("/"); // или "/login" если есть
   }
 
+  const tokenHash = sha256hex(token);
+
   const session = await prisma.session.findUnique({
-    where: { token },
+    // ✅ уникальный ключ в БД
+    where: { tokenHash },
     include: { user: true },
   });
 
@@ -38,7 +46,8 @@ export default async function ProfilePage() {
           <b>Username:</b> {user.username ?? "-"}
         </div>
         <div>
-          <b>Name:</b> {[user.firstName, user.lastName].filter(Boolean).join(" ") || "-"}
+          <b>Name:</b>{" "}
+          {[user.firstName, user.lastName].filter(Boolean).join(" ") || "-"}
         </div>
       </div>
     </main>
