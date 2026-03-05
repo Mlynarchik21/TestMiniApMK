@@ -75,16 +75,10 @@ export async function GET(req: Request) {
     const exchangeParam = url.searchParams.get("exchange");
     const statusParam = url.searchParams.get("status");
 
-    const filters: Prisma.Sql[] = [Prisma.sql`"userId" = ${user.id}`];
+    const exchange = exchangeParam && isExchange(exchangeParam) ? exchangeParam : null;
+    const status = statusParam && isStatus(statusParam) ? statusParam : null;
 
-    if (exchangeParam && isExchange(exchangeParam)) {
-      filters.push(Prisma.sql`"exchange" = ${exchangeParam}::"Exchange"`);
-    }
-    if (statusParam && isStatus(statusParam)) {
-      filters.push(Prisma.sql`"status" = ${statusParam}::"TradeStatus"`);
-    }
-
-    // cursor: берём openedAt у cursorId, чтобы корректно продолжать сортировку (openedAt desc, id desc)
+    // cursor openedAt
     let cursorOpenedAt: Date | null = null;
     if (cursorId) {
       const c = await prisma.$queryRaw<{ openedAt: Date }[]>(
@@ -97,20 +91,6 @@ export async function GET(req: Request) {
       );
       cursorOpenedAt = c?.[0]?.openedAt ?? null;
     }
-
-    if (cursorId && cursorOpenedAt) {
-      // следующие записи после курсора при сортировке desc:
-      // openedAt < cursorOpenedAt OR (openedAt = cursorOpenedAt AND id < cursorId)
-      filters.push(
-        Prisma.sql`(
-          "openedAt" < ${cursorOpenedAt}
-          OR ("openedAt" = ${cursorOpenedAt} AND "id" < ${cursorId})
-        )`
-      );
-    }
-
-    const whereSql =
-      filters.length === 1 ? filters[0] : Prisma.sql`${Prisma.join(filters, Prisma.sql` AND `)}`;
 
     const rows = await prisma.$queryRaw<any[]>(
       Prisma.sql`
@@ -129,7 +109,18 @@ export async function GET(req: Request) {
           "createdAt",
           "updatedAt"
         from "Trade"
-        where ${whereSql}
+        where
+          "userId" = ${user.id}
+          ${exchange ? Prisma.sql`and "exchange" = ${exchange}::"Exchange"` : Prisma.sql``}
+          ${status ? Prisma.sql`and "status" = ${status}::"TradeStatus"` : Prisma.sql``}
+          ${
+            cursorId && cursorOpenedAt
+              ? Prisma.sql`and (
+                  "openedAt" < ${cursorOpenedAt}
+                  or ("openedAt" = ${cursorOpenedAt} and "id" < ${cursorId})
+                )`
+              : Prisma.sql``
+          }
         order by "openedAt" desc, "id" desc
         limit ${take + 1}
       `
@@ -162,20 +153,6 @@ export async function GET(req: Request) {
   }
 }
 
-/**
- * POST /api/trades (manual MVP)
- * body:
- * {
- *   exchange: "BINANCE",
- *   symbol: "BTCUSDT",
- *   side: "BUY",
- *   status?: "OPEN"|"CLOSED"|"CANCELED",
- *   qty: "0.01",
- *   entryPrice?: "65000",
- *   exitPrice?: "66000",
- *   realizedPnl?: "10.5"
- * }
- */
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -214,7 +191,6 @@ export async function POST(req: Request) {
     const tradeId = crypto.randomUUID();
     const now = new Date();
 
-    // Insert Trade
     await prisma.$executeRaw(
       Prisma.sql`
         insert into "Trade" (
@@ -251,7 +227,6 @@ export async function POST(req: Request) {
       `
     );
 
-    // Insert TradeEvent
     const eventId = crypto.randomUUID();
     const payload = {
       tradeId,
@@ -283,7 +258,6 @@ export async function POST(req: Request) {
       `
     );
 
-    // Return created trade (read back)
     const rows = await prisma.$queryRaw<any[]>(
       Prisma.sql`
         select
