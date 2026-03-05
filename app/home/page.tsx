@@ -87,16 +87,17 @@ export default function HomePage() {
             {loading ? "..." : "Проверить /api/me"}
           </button>
 
-          <button
-            onClick={() => router.replace("/settings")}
-            disabled={loading}
-            style={btnGhost()}
-          >
+          <button onClick={() => router.replace("/settings")} disabled={loading} style={btnGhost()}>
             Settings
           </button>
 
           <button onClick={() => router.replace("/keys")} disabled={loading} style={btnGhost()}>
             Keys
+          </button>
+
+          {/* ✅ NEW */}
+          <button onClick={() => router.replace("/history")} disabled={loading} style={btnGhost()}>
+            History
           </button>
         </div>
 
