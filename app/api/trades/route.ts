@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
-import { Exchange, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ function str(v: unknown) {
   return typeof v === "string" ? v : "";
 }
 
-function isExchange(v: unknown): v is Exchange {
+function isExchange(v: unknown): v is "BINANCE" | "BYBIT" | "OKX" {
   return v === "BINANCE" || v === "BYBIT" || v === "OKX";
 }
 
@@ -53,9 +54,13 @@ function parseDate(v: unknown): Date | null {
   return d;
 }
 
-// ВАЖНО: на Vercel типы Prisma иногда "залипают" и не видят новые модели.
-// Для MVP кастуем prisma в any, чтобы TypeScript не блокировал билд.
-const db: any = prisma;
+function toStr(v: any) {
+  if (v == null) return null;
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  if (typeof v?.toString === "function") return v.toString();
+  return String(v);
+}
 
 // GET /api/trades?cursor=<id>&take=20&exchange=BINANCE&status=OPEN
 export async function GET(req: Request) {
@@ -66,51 +71,88 @@ export async function GET(req: Request) {
     const takeRaw = url.searchParams.get("take");
     const take = Math.max(1, Math.min(50, Number(takeRaw || "20") || 20));
 
-    const cursor = str(url.searchParams.get("cursor") || "");
+    const cursorId = str(url.searchParams.get("cursor") || "").trim();
     const exchangeParam = url.searchParams.get("exchange");
     const statusParam = url.searchParams.get("status");
 
-    const where: any = { userId: user.id };
-    if (exchangeParam && isExchange(exchangeParam)) where.exchange = exchangeParam;
-    if (statusParam && isStatus(statusParam)) where.status = statusParam;
+    const filters: Prisma.Sql[] = [Prisma.sql`"userId" = ${user.id}`];
 
-    const rows = await db.trade.findMany({
-      where,
-      orderBy: [{ openedAt: "desc" }, { id: "desc" }],
-      take: take + 1,
-      ...(cursor
-        ? {
-            cursor: { id: cursor },
-            skip: 1,
-          }
-        : {}),
-      select: {
-        id: true,
-        exchange: true,
-        symbol: true,
-        side: true,
-        status: true,
-        qty: true,
-        entryPrice: true,
-        exitPrice: true,
-        realizedPnl: true,
-        openedAt: true,
-        closedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    if (exchangeParam && isExchange(exchangeParam)) {
+      filters.push(Prisma.sql`"exchange" = ${exchangeParam}::"Exchange"`);
+    }
+    if (statusParam && isStatus(statusParam)) {
+      filters.push(Prisma.sql`"status" = ${statusParam}::"TradeStatus"`);
+    }
+
+    // cursor: берём openedAt у cursorId, чтобы корректно продолжать сортировку (openedAt desc, id desc)
+    let cursorOpenedAt: Date | null = null;
+    if (cursorId) {
+      const c = await prisma.$queryRaw<{ openedAt: Date }[]>(
+        Prisma.sql`
+          select "openedAt"
+          from "Trade"
+          where "id" = ${cursorId} and "userId" = ${user.id}
+          limit 1
+        `
+      );
+      cursorOpenedAt = c?.[0]?.openedAt ?? null;
+    }
+
+    if (cursorId && cursorOpenedAt) {
+      // следующие записи после курсора при сортировке desc:
+      // openedAt < cursorOpenedAt OR (openedAt = cursorOpenedAt AND id < cursorId)
+      filters.push(
+        Prisma.sql`(
+          "openedAt" < ${cursorOpenedAt}
+          OR ("openedAt" = ${cursorOpenedAt} AND "id" < ${cursorId})
+        )`
+      );
+    }
+
+    const whereSql =
+      filters.length === 1 ? filters[0] : Prisma.sql`${Prisma.join(filters, Prisma.sql` AND `)}`;
+
+    const rows = await prisma.$queryRaw<any[]>(
+      Prisma.sql`
+        select
+          "id",
+          "exchange",
+          "symbol",
+          "side",
+          "status",
+          "qty",
+          "entryPrice",
+          "exitPrice",
+          "realizedPnl",
+          "openedAt",
+          "closedAt",
+          "createdAt",
+          "updatedAt"
+        from "Trade"
+        where ${whereSql}
+        order by "openedAt" desc, "id" desc
+        limit ${take + 1}
+      `
+    );
 
     const hasMore = rows.length > take;
     const items = hasMore ? rows.slice(0, take) : rows;
     const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
 
     const out = items.map((t: any) => ({
-      ...t,
-      qty: t.qty?.toString?.() ?? String(t.qty),
-      entryPrice: t.entryPrice?.toString?.() ?? (t.entryPrice ?? null),
-      exitPrice: t.exitPrice?.toString?.() ?? (t.exitPrice ?? null),
-      realizedPnl: t.realizedPnl?.toString?.() ?? (t.realizedPnl ?? null),
+      id: String(t.id),
+      exchange: String(t.exchange),
+      symbol: String(t.symbol),
+      side: String(t.side),
+      status: String(t.status),
+      qty: toStr(t.qty) ?? "0",
+      entryPrice: toStr(t.entryPrice),
+      exitPrice: toStr(t.exitPrice),
+      realizedPnl: toStr(t.realizedPnl),
+      openedAt: new Date(t.openedAt).toISOString(),
+      closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
+      createdAt: new Date(t.createdAt).toISOString(),
+      updatedAt: new Date(t.updatedAt).toISOString(),
     }));
 
     return ok({ trades: out, nextCursor });
@@ -122,6 +164,17 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/trades (manual MVP)
+ * body:
+ * {
+ *   exchange: "BINANCE",
+ *   symbol: "BTCUSDT",
+ *   side: "BUY",
+ *   status?: "OPEN"|"CLOSED"|"CANCELED",
+ *   qty: "0.01",
+ *   entryPrice?: "65000",
+ *   exitPrice?: "66000",
+ *   realizedPnl?: "10.5"
+ * }
  */
 export async function POST(req: Request) {
   try {
@@ -158,60 +211,119 @@ export async function POST(req: Request) {
     const closedAt = body.closedAt ? parseDate(body.closedAt) : null;
     if (body.closedAt && !closedAt) return fail(400, "BAD_REQUEST", "closedAt invalid ISO date");
 
-    const trade = await db.trade.create({
-      data: {
-        user: { connect: { id: user.id } },
-        exchange,
-        symbol,
-        side,
-        status,
-        qty: new Prisma.Decimal(qtyStr),
-        entryPrice: entryStr ? new Prisma.Decimal(entryStr) : null,
-        exitPrice: exitStr ? new Prisma.Decimal(exitStr) : null,
-        realizedPnl: pnlStr ? new Prisma.Decimal(pnlStr) : null,
-        openedAt: openedAt ?? undefined,
-        closedAt: closedAt ?? undefined,
-      },
-      select: {
-        id: true,
-        exchange: true,
-        symbol: true,
-        side: true,
-        status: true,
-        qty: true,
-        entryPrice: true,
-        exitPrice: true,
-        realizedPnl: true,
-        openedAt: true,
-        closedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const tradeId = crypto.randomUUID();
+    const now = new Date();
 
-    await db.tradeEvent.create({
-      data: {
-        user: { connect: { id: user.id } },
-        exchange,
-        type: "MANUAL_CREATE",
-        trade: { connect: { id: trade.id } },
-        payload: {
-          tradeId: trade.id,
-          symbol,
-          side,
-          status,
-        },
-      },
-      select: { id: true },
-    });
+    // Insert Trade
+    await prisma.$executeRaw(
+      Prisma.sql`
+        insert into "Trade" (
+          "id",
+          "userId",
+          "exchange",
+          "symbol",
+          "side",
+          "status",
+          "qty",
+          "entryPrice",
+          "exitPrice",
+          "realizedPnl",
+          "openedAt",
+          "closedAt",
+          "createdAt",
+          "updatedAt"
+        ) values (
+          ${tradeId},
+          ${user.id},
+          ${exchange}::"Exchange",
+          ${symbol},
+          ${side}::"TradeSide",
+          ${status}::"TradeStatus",
+          ${qtyStr}::numeric,
+          ${entryStr ? Prisma.sql`${entryStr}::numeric` : Prisma.sql`null`},
+          ${exitStr ? Prisma.sql`${exitStr}::numeric` : Prisma.sql`null`},
+          ${pnlStr ? Prisma.sql`${pnlStr}::numeric` : Prisma.sql`null`},
+          ${openedAt ?? now},
+          ${closedAt ?? Prisma.sql`null`},
+          ${now},
+          ${now}
+        )
+      `
+    );
+
+    // Insert TradeEvent
+    const eventId = crypto.randomUUID();
+    const payload = {
+      tradeId,
+      symbol,
+      side,
+      status,
+      source: "manual",
+    };
+
+    await prisma.$executeRaw(
+      Prisma.sql`
+        insert into "TradeEvent" (
+          "id",
+          "userId",
+          "exchange",
+          "type",
+          "tradeId",
+          "payload",
+          "createdAt"
+        ) values (
+          ${eventId},
+          ${user.id},
+          ${exchange}::"Exchange",
+          ${"MANUAL_CREATE"}::"TradeEventType",
+          ${tradeId},
+          ${JSON.stringify(payload)}::jsonb,
+          ${now}
+        )
+      `
+    );
+
+    // Return created trade (read back)
+    const rows = await prisma.$queryRaw<any[]>(
+      Prisma.sql`
+        select
+          "id",
+          "exchange",
+          "symbol",
+          "side",
+          "status",
+          "qty",
+          "entryPrice",
+          "exitPrice",
+          "realizedPnl",
+          "openedAt",
+          "closedAt",
+          "createdAt",
+          "updatedAt"
+        from "Trade"
+        where "id" = ${tradeId} and "userId" = ${user.id}
+        limit 1
+      `
+    );
+
+    const t = rows?.[0];
+    if (!t) return fail(500, "SERVER_ERROR", "trade not found after insert");
 
     return ok({
       trade: {
-        ...trade,
-        qty: trade.qty?.toString?.() ?? String(trade.qty),
-        entryPrice: trade.entryPrice?.toString?.() ?? (trade.entryPrice ?? null),
-        exitPrice: trade.exitPrice?.toString?.() ?? (trade.exitPrice ?? null),
-        realizedPnl: trade.realizedPnl?.toString?.() ?? (trade.realizedPnl ?? null),
+        id: String(t.id),
+        exchange: String(t.exchange),
+        symbol: String(t.symbol),
+        side: String(t.side),
+        status: String(t.status),
+        qty: toStr(t.qty) ?? "0",
+        entryPrice: toStr(t.entryPrice),
+        exitPrice: toStr(t.exitPrice),
+        realizedPnl: toStr(t.realizedPnl),
+        openedAt: new Date(t.openedAt).toISOString(),
+        closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
+        createdAt: new Date(t.createdAt).toISOString(),
+        updatedAt: new Date(t.updatedAt).toISOString(),
       },
     });
   } catch (e: AnyJson) {
