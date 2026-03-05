@@ -43,8 +43,12 @@ function getCookieFromHeader(cookieHeader: string, name: string): string {
  * Работает и в route handlers (с req), и в server components (без req).
  */
 export async function requireUser(req?: Request): Promise<AuthedUser> {
-  const authHeader = req ? req.headers.get("authorization") || "" : headers().get("authorization") || "";
-  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const authHeader = req
+    ? req.headers.get("authorization") || ""
+    : headers().get("authorization") || "";
+  const bearerToken = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
 
   const cookieToken = req
     ? getCookieFromHeader(req.headers.get("cookie") || "", "session")
@@ -56,16 +60,16 @@ export async function requireUser(req?: Request): Promise<AuthedUser> {
   const tokenHash = sha256Hex(rawToken);
 
   const session = await prisma.session.findUnique({
-    where: { token: tokenHash },
+    // ✅ unique key в БД: tokenHash
+    where: { tokenHash },
     include: { user: true },
   });
 
   if (!session?.user) throw unauthorized("UNAUTHORIZED");
 
-  // если expiresAt есть — проверяем
   const expiresAt: Date | undefined = (session as any).expiresAt;
   if (expiresAt instanceof Date && expiresAt < new Date()) {
-    await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
+    await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
     throw unauthorized("UNAUTHORIZED");
   }
 
