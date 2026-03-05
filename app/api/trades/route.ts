@@ -40,7 +40,6 @@ function parseDecimalString(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim();
   if (!s) return null;
-  // допускаем только числа/точку/минус (для pnl)
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
   return s;
 }
@@ -67,7 +66,8 @@ export async function GET(req: Request) {
     const exchangeParam = url.searchParams.get("exchange");
     const statusParam = url.searchParams.get("status");
 
-    const where: Prisma.TradeWhereInput = { userId: user.id };
+    // ✅ НЕ используем Prisma.TradeWhereInput (у тебя он не экспортируется)
+    const where: any = { userId: user.id };
 
     if (exchangeParam && isExchange(exchangeParam)) where.exchange = exchangeParam;
     if (statusParam && isStatus(statusParam)) where.status = statusParam;
@@ -103,7 +103,6 @@ export async function GET(req: Request) {
     const items = hasMore ? rows.slice(0, take) : rows;
     const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
 
-    // Decimal -> string (чтобы не было проблем в JSON)
     const out = items.map((t) => ({
       ...t,
       qty: t.qty.toString(),
@@ -115,29 +114,12 @@ export async function GET(req: Request) {
     return ok({ trades: out, nextCursor });
   } catch (e: AnyJson) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
 
 /**
  * POST /api/trades (manual MVP)
- * body:
- * {
- *   exchange: "BINANCE",
- *   symbol: "BTCUSDT",
- *   side: "BUY",
- *   status?: "OPEN"|"CLOSED"|"CANCELED",
- *   qty: "0.01",
- *   entryPrice?: "65000",
- *   exitPrice?: "66000",
- *   realizedPnl?: "10.5",
- *   openedAt?: "2026-03-05T12:00:00.000Z",
- *   closedAt?: "2026-03-05T13:00:00.000Z"
- * }
  */
 export async function POST(req: Request) {
   try {
@@ -205,7 +187,6 @@ export async function POST(req: Request) {
       },
     });
 
-    // Логируем событие (MVP)
     await prisma.tradeEvent.create({
       data: {
         user: { connect: { id: user.id } },
@@ -233,10 +214,6 @@ export async function POST(req: Request) {
     });
   } catch (e: AnyJson) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", e?.message ?? String(e));
   }
 }
