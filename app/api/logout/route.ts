@@ -19,7 +19,9 @@ export async function POST(req: Request) {
 
   if (token) {
     const tokenHash = sha256hex(token);
-    await prisma.session.delete({ where: { token: tokenHash } }).catch(() => {});
+
+    // ✅ Session unique key в текущей БД: tokenHash
+    await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
   }
 
   const res = NextResponse.json({ ok: true });
