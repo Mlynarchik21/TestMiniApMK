@@ -1,1 +1,1 @@
-// lib/db.ts export { prisma } from "@/lib/prisma";
+export { prisma } from "@/lib/prisma";
