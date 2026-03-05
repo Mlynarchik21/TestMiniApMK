@@ -19,7 +19,8 @@ export async function GET() {
   const tokenHash = sha256hex(token);
 
   const session = await prisma.session.findUnique({
-    where: { token: tokenHash },
+    // ✅ unique в текущей БД: tokenHash
+    where: { tokenHash },
     include: { user: true },
   });
 
