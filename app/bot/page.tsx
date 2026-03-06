@@ -20,6 +20,7 @@ export default function BotPage() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
   const [keys, setKeys] = useState<any[]>([]);
@@ -42,7 +43,6 @@ export default function BotPage() {
       });
 
       const data = await res.json();
-
       const list = Array.isArray(data?.keys) ? data.keys : [];
       setKeys(list);
 
@@ -126,6 +126,35 @@ export default function BotPage() {
     }
   }
 
+  async function changeBotState(action: "start" | "stop") {
+    setSwitching(true);
+
+    const token = getToken();
+
+    try {
+      const res = await fetch("/api/bot", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      const data = (await res.json()) as AnyResp;
+      setStatus(res.status);
+      setResult(data);
+
+      if (data.ok) {
+        await loadBot();
+      }
+    } catch (e: any) {
+      setResult({ ok: false, error: e?.message ?? "fetch error" });
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   useEffect(() => {
     loadBot();
     loadKeys();
@@ -146,6 +175,7 @@ export default function BotPage() {
   const state = bot?.state ?? null;
   const positions = Array.isArray(bot?.positions) ? bot.positions : [];
   const filteredKeys = keys.filter((k: any) => k.exchange === exchange);
+  const isEnabled = !!config?.enabled;
 
   return (
     <main
@@ -174,6 +204,34 @@ export default function BotPage() {
             <b>HTTP статус:</b> {status ?? "—"}
           </div>
         </div>
+
+        <section style={card()}>
+          <div style={sectionTitle()}>Управление ботом</div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => changeBotState("start")}
+              disabled={!config || switching || isEnabled}
+              style={btnPrimary(!config || switching || isEnabled)}
+            >
+              {switching ? "..." : "Start"}
+            </button>
+
+            <button
+              onClick={() => changeBotState("stop")}
+              disabled={!config || switching || !isEnabled}
+              style={btnGhostDisabled(!config || switching || !isEnabled)}
+            >
+              {switching ? "..." : "Stop"}
+            </button>
+          </div>
+
+          {!config ? (
+            <div style={{ opacity: 0.7, fontSize: 13, marginTop: 10 }}>
+              Сначала создай конфиг бота ниже.
+            </div>
+          ) : null}
+        </section>
 
         <section style={card()}>
           <div style={sectionTitle()}>
@@ -476,5 +534,20 @@ function btnGhost(): React.CSSProperties {
     color: "#fff",
     fontWeight: 900,
     cursor: "pointer",
+  };
+}
+
+function btnGhostDisabled(disabled: boolean): React.CSSProperties {
+  return {
+    flex: 1,
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.25)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
   };
 }
