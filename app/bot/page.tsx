@@ -19,8 +19,43 @@ export default function BotPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
+  const [keys, setKeys] = useState<any[]>([]);
+
+  const [exchange, setExchange] = useState("BINANCE");
+  const [keyId, setKeyId] = useState("");
+  const [maxActiveSymbols, setMaxActiveSymbols] = useState("10");
+  const [budgetPerSymbol, setBudgetPerSymbol] = useState("100");
+  const [gridStepPct, setGridStepPct] = useState("5");
+  const [takeProfitPct, setTakeProfitPct] = useState("5");
+
+  async function loadKeys() {
+    const token = getToken();
+
+    try {
+      const res = await fetch("/api/keys", {
+        method: "GET",
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const data = await res.json();
+
+      const list = Array.isArray(data?.keys) ? data.keys : [];
+      setKeys(list);
+
+      if (!keyId) {
+        const firstForExchange = list.find((k: any) => k.exchange === exchange);
+        if (firstForExchange?.id) {
+          setKeyId(firstForExchange.id);
+        }
+      }
+    } catch {
+      setKeys([]);
+    }
+  }
 
   async function loadBot() {
     setLoading(true);
@@ -38,6 +73,16 @@ export default function BotPage() {
       const data = (await res.json()) as AnyResp;
       setStatus(res.status);
       setResult(data);
+
+      const config = data && data.ok ? data.bot?.config : null;
+      if (config) {
+        setExchange(config.exchange ?? "BINANCE");
+        setKeyId(config.keyId ?? "");
+        setMaxActiveSymbols(String(config.maxActiveSymbols ?? 10));
+        setBudgetPerSymbol(String(config.budgetPerSymbol ?? 100));
+        setGridStepPct(String(config.gridStepPct ?? 5));
+        setTakeProfitPct(String(config.takeProfitPct ?? 5));
+      }
     } catch (e: any) {
       setResult({ ok: false, error: e?.message ?? "fetch error" });
     } finally {
@@ -45,14 +90,62 @@ export default function BotPage() {
     }
   }
 
+  async function initBot() {
+    setSaving(true);
+
+    const token = getToken();
+
+    try {
+      const res = await fetch("/api/bot", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          exchange,
+          keyId,
+          maxActiveSymbols: Number(maxActiveSymbols),
+          budgetPerSymbol: Number(budgetPerSymbol),
+          gridStepPct: Number(gridStepPct),
+          takeProfitPct: Number(takeProfitPct),
+        }),
+      });
+
+      const data = (await res.json()) as AnyResp;
+      setStatus(res.status);
+      setResult(data);
+
+      if (data.ok) {
+        await loadBot();
+      }
+    } catch (e: any) {
+      setResult({ ok: false, error: e?.message ?? "fetch error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
     loadBot();
+    loadKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const firstForExchange = keys.find((k: any) => k.exchange === exchange);
+    if (firstForExchange?.id) {
+      setKeyId(firstForExchange.id);
+    } else {
+      setKeyId("");
+    }
+  }, [exchange, keys]);
 
   const bot = result && result.ok ? result.bot : null;
   const config = bot?.config ?? null;
   const state = bot?.state ?? null;
   const positions = Array.isArray(bot?.positions) ? bot.positions : [];
+  const filteredKeys = keys.filter((k: any) => k.exchange === exchange);
 
   return (
     <main
@@ -81,6 +174,89 @@ export default function BotPage() {
             <b>HTTP статус:</b> {status ?? "—"}
           </div>
         </div>
+
+        <section style={card()}>
+          <div style={sectionTitle()}>
+            {config ? "Редактирование бота" : "Создать бота"}
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Биржа</span>
+              <select value={exchange} onChange={(e) => setExchange(e.target.value)} style={input()}>
+                <option value="BINANCE">BINANCE</option>
+                <option value="BYBIT">BYBIT</option>
+                <option value="OKX">OKX</option>
+              </select>
+            </label>
+
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Ключ</span>
+              <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
+                <option value="">Выбери ключ</option>
+                {filteredKeys.map((k: any) => (
+                  <option key={k.id} value={k.id}>
+                    {k.label ? `${k.label} (${k.exchange})` : `${k.exchange} / ${k.id.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Макс. активных монет</span>
+              <input
+                value={maxActiveSymbols}
+                onChange={(e) => setMaxActiveSymbols(e.target.value)}
+                inputMode="numeric"
+                style={input()}
+                placeholder="10"
+              />
+            </label>
+
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Бюджет на монету</span>
+              <input
+                value={budgetPerSymbol}
+                onChange={(e) => setBudgetPerSymbol(e.target.value)}
+                inputMode="decimal"
+                style={input()}
+                placeholder="100"
+              />
+            </label>
+
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Шаг сетки %</span>
+              <input
+                value={gridStepPct}
+                onChange={(e) => setGridStepPct(e.target.value)}
+                inputMode="decimal"
+                style={input()}
+                placeholder="5"
+              />
+            </label>
+
+            <label style={fieldWrap()}>
+              <span style={fieldLabel()}>Take Profit %</span>
+              <input
+                value={takeProfitPct}
+                onChange={(e) => setTakeProfitPct(e.target.value)}
+                inputMode="decimal"
+                style={input()}
+                placeholder="5"
+              />
+            </label>
+
+            <button onClick={initBot} disabled={saving || !keyId} style={btnPrimary(saving || !keyId)}>
+              {saving ? "..." : config ? "Сохранить конфиг" : "Создать бота"}
+            </button>
+
+            {!keyId ? (
+              <div style={{ opacity: 0.7, fontSize: 13 }}>
+                Сначала добавь API ключ на странице Keys и выбери его здесь.
+              </div>
+            ) : null}
+          </div>
+        </section>
 
         <section style={card()}>
           <div style={sectionTitle()}>Состояние</div>
@@ -248,9 +424,36 @@ function positionCard(): React.CSSProperties {
   };
 }
 
+function fieldWrap(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 6,
+  };
+}
+
+function fieldLabel(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    opacity: 0.85,
+  };
+}
+
+function input(): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.15)",
+    background: "#000",
+    color: "#fff",
+    outline: "none",
+  };
+}
+
 function btnPrimary(disabled: boolean): React.CSSProperties {
   return {
     flex: 1,
+    width: "100%",
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.25)",
@@ -265,6 +468,7 @@ function btnPrimary(disabled: boolean): React.CSSProperties {
 function btnGhost(): React.CSSProperties {
   return {
     flex: 1,
+    width: "100%",
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.25)",
