@@ -24,6 +24,10 @@ function sign(query: string, secret: string) {
   return crypto.createHmac("sha256", secret).update(query).digest("hex");
 }
 
+function getBinanceBaseUrl(testnet: boolean) {
+  return testnet ? "https://testnet.binance.vision" : "https://api.binance.com";
+}
+
 /**
  * Если BINANCE_PROXY_URL задан — ходим через прокси (Cloudflare Worker),
  * иначе — напрямую в Binance.
@@ -44,7 +48,6 @@ async function fetchViaOptionalProxy(url: string, init?: RequestInit) {
   const proxyToken = process.env.PROXY_TOKEN?.trim();
   if (proxyToken) headers.set("X-Proxy-Token", proxyToken);
 
-  // Важно: при проксировании НЕ передавать лишние поля cache/credentials
   return fetch(pUrl.toString(), {
     method: init?.method || "GET",
     headers,
@@ -52,8 +55,8 @@ async function fetchViaOptionalProxy(url: string, init?: RequestInit) {
   });
 }
 
-async function binanceServerTime(): Promise<number> {
-  const base = "https://api.binance.com";
+async function binanceServerTime(testnet: boolean): Promise<number> {
+  const base = getBinanceBaseUrl(testnet);
   const url = `${base}/api/v3/time`;
 
   const r = await fetchViaOptionalProxy(url, { method: "GET" });
@@ -73,12 +76,11 @@ async function binanceServerTime(): Promise<number> {
   return t;
 }
 
-async function binanceSpotAccount(apiKey: string, apiSecret: string) {
-  const base = "https://api.binance.com";
+async function binanceSpotAccount(apiKey: string, apiSecret: string, testnet: boolean) {
+  const base = getBinanceBaseUrl(testnet);
   const recvWindow = 10_000;
 
-  // 1) сначала берём serverTime, чтобы не ловить -1021
-  const serverTime = await binanceServerTime();
+  const serverTime = await binanceServerTime(testnet);
 
   const qs = new URLSearchParams({
     timestamp: String(serverTime),
@@ -102,10 +104,7 @@ async function binanceSpotAccount(apiKey: string, apiSecret: string) {
   } catch {}
 
   if (!r.ok) {
-    // Binance обычно отдаёт { code, msg }
     const msg = json?.msg || text || `Binance error: ${r.status}`;
-
-    // Очень полезно вернуть code (если есть)
     const code = json?.code;
     const err = new Error(msg);
     (err as AnyJson).binanceCode = code;
@@ -121,6 +120,9 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const keyId = (url.searchParams.get("keyId") || "").trim();
+    const testnetRaw = (url.searchParams.get("testnet") || "").trim();
+    const testnet = testnetRaw === "1" || testnetRaw === "true";
+
     if (!keyId) return fail(400, "BAD_REQUEST", "keyId required");
 
     const key = await prisma.userKey.findFirst({
@@ -129,9 +131,9 @@ export async function GET(req: Request) {
         id: true,
         exchange: true,
         label: true,
-        apiKey: true,       // plain
-        secretEnc: true,    // encrypted secret
-        passphraseEnc: true // optional
+        apiKey: true,
+        secretEnc: true,
+        passphraseEnc: true,
       },
     });
 
@@ -144,10 +146,8 @@ export async function GET(req: Request) {
     if (!key.apiKey) return fail(500, "SERVER_ERROR", "apiKey is empty in DB");
     if (!key.secretEnc) return fail(500, "SERVER_ERROR", "secretEnc is empty in DB");
 
-    // decrypt secret
     const apiSecret = decryptString(key.secretEnc);
-
-    const account = await binanceSpotAccount(key.apiKey, apiSecret);
+    const account = await binanceSpotAccount(key.apiKey, apiSecret, testnet);
 
     const balances = Array.isArray(account?.balances) ? account.balances : [];
     const nonZero = balances
@@ -164,6 +164,7 @@ export async function GET(req: Request) {
 
     return ok({
       exchange: "BINANCE",
+      network: testnet ? "TESTNET" : "MAINNET",
       keyId: key.id,
       label: key.label ?? null,
       balances: nonZero,
@@ -177,7 +178,6 @@ export async function GET(req: Request) {
   } catch (e: AnyJson) {
     const msg = e?.message ?? String(e);
 
-    // Если Binance ругается на гео — отдадим понятный текст
     if (typeof msg === "string" && msg.toLowerCase().includes("restricted location")) {
       return fail(
         502,
