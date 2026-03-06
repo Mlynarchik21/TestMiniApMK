@@ -87,6 +87,10 @@ export default function HomePage() {
             {loading ? "..." : "Проверить /api/me"}
           </button>
 
+          <button onClick={() => router.replace("/bot")} disabled={loading} style={btnGhost()}>
+            Bot
+          </button>
+
           <button onClick={() => router.replace("/keys")} disabled={loading} style={btnGhost()}>
             Keys
           </button>
