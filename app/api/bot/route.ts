@@ -26,35 +26,34 @@ function fail(status: number, error: string, extra?: any) {
   return json({ ok: false, error, ...(extra ? { extra } : {}) }, { status });
 }
 
+async function loadBot(userId: string) {
+  const [config, state, positions] = await Promise.all([
+    prisma.botConfig.findUnique({
+      where: { userId },
+    }),
+
+    prisma.botState.findUnique({
+      where: { userId },
+    }),
+
+    prisma.botPosition.findMany({
+      where: {
+        userId,
+        status: "OPEN",
+      },
+      orderBy: { openedAt: "desc" },
+    }),
+  ]);
+
+  return { config, state, positions };
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
+    const bot = await loadBot(user.id);
 
-    const [config, state, positions] = await Promise.all([
-      prisma.botConfig.findUnique({
-        where: { userId: user.id },
-      }),
-
-      prisma.botState.findUnique({
-        where: { userId: user.id },
-      }),
-
-      prisma.botPosition.findMany({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-        },
-        orderBy: { openedAt: "desc" },
-      }),
-    ]);
-
-    return ok({
-      bot: {
-        config,
-        state,
-        positions,
-      },
-    });
+    return ok({ bot });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
 
@@ -126,7 +125,7 @@ export async function POST(req: Request) {
       return fail(404, "KEY_NOT_FOUND");
     }
 
-    const [config, state] = await Promise.all([
+    await Promise.all([
       prisma.botConfig.upsert({
         where: { userId: user.id },
         create: {
@@ -161,13 +160,103 @@ export async function POST(req: Request) {
       }),
     ]);
 
-    return ok({
-      bot: {
-        config,
-        state,
-        positions: [],
+    const bot = await loadBot(user.id);
+
+    return ok({ bot });
+  } catch (e: any) {
+    const status = typeof e?.status === "number" ? e.status : 500;
+
+    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
+      message: e?.message ?? String(e),
+    });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const user = await requireUser(req);
+    const body = await req.json().catch(() => null);
+
+    const action =
+      body?.action === "start" || body?.action === "stop" ? body.action : "";
+
+    if (!action) {
+      return fail(400, "ACTION_REQUIRED");
+    }
+
+    const config = await prisma.botConfig.findUnique({
+      where: { userId: user.id },
+      select: {
+        id: true,
+        userId: true,
+        keyId: true,
+        exchange: true,
       },
     });
+
+    if (!config) {
+      return fail(404, "BOT_CONFIG_NOT_FOUND");
+    }
+
+    const key = await prisma.userKey.findFirst({
+      where: {
+        id: config.keyId,
+        userId: user.id,
+        exchange: config.exchange,
+      },
+      select: { id: true },
+    });
+
+    if (!key) {
+      return fail(404, "KEY_NOT_FOUND");
+    }
+
+    if (action === "start") {
+      await Promise.all([
+        prisma.botConfig.update({
+          where: { userId: user.id },
+          data: { enabled: true },
+        }),
+        prisma.botState.upsert({
+          where: { userId: user.id },
+          create: {
+            userId: user.id,
+            status: "RUNNING",
+            lastError: null,
+            lastSyncAt: null,
+          },
+          update: {
+            status: "RUNNING",
+            lastError: null,
+          },
+        }),
+      ]);
+    }
+
+    if (action === "stop") {
+      await Promise.all([
+        prisma.botConfig.update({
+          where: { userId: user.id },
+          data: { enabled: false },
+        }),
+        prisma.botState.upsert({
+          where: { userId: user.id },
+          create: {
+            userId: user.id,
+            status: "STOPPED",
+            lastError: null,
+            lastSyncAt: null,
+          },
+          update: {
+            status: "STOPPED",
+          },
+        }),
+      ]);
+    }
+
+    const bot = await loadBot(user.id);
+
+    return ok({ bot });
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
 
