@@ -113,7 +113,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "bad_tg_id" }, { status: 400 });
     }
 
-    // ✅ tgId for Prisma as BigInt (User.tgId = BigInt)
+    // tgId for Prisma as BigInt
     const tgId = BigInt(v.user.id);
 
     // 2) subscription check
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, subscribed: false, joinUrl });
     }
 
-    // 3) upsert user (BigInt!)
+    // 3) upsert user
     const username = typeof v.user.username === "string" ? v.user.username : null;
     const firstName = typeof v.user.first_name === "string" ? v.user.first_name : null;
     const lastName = typeof v.user.last_name === "string" ? v.user.last_name : null;
@@ -146,34 +146,33 @@ export async function POST(req: Request) {
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 
-    // 4) create session (store hash in DB, return raw token to client)
+    // 4) create session
     const rawToken = randomToken(32);
     const tokenHash = sha256Hex(rawToken);
-
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
     await prisma.session.create({
       data: {
         userId: user.id,
-        token: tokenHash,
+        tokenHash,
+        token: rawToken,
         expiresAt,
       },
     });
 
-    // 5) response (+ optional cookie)
+    // 5) response
     const res = NextResponse.json({
       ok: true,
       subscribed: true,
       sessionToken: rawToken,
       user: {
-        tgId: tgIdNumber, // для фронта оставляем number
+        tgId: tgIdNumber,
         username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
       },
     });
 
-    // В Telegram cookie часто не работают — но пусть будет.
     res.cookies.set("session", rawToken, {
       httpOnly: true,
       secure: true,
