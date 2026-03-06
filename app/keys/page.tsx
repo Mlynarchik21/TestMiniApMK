@@ -45,7 +45,6 @@ async function api(
     },
   });
 
-  // на случай если сервер вернул HTML/пусто — не падаем
   let json: AnyResp = { ok: false, error: "BAD_RESPONSE", message: "Invalid JSON response" };
   try {
     json = (await res.json()) as AnyResp;
@@ -73,6 +72,22 @@ function formatTime(ts: number | null): string {
   }
 }
 
+function isBinanceTestnetKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
+  return key.exchange === ("BINANCE" as Exchange) && /testnet/i.test(key.label || "");
+}
+
+function buildStoredLabel(rawLabel: string, exchange: Exchange, isTestnet: boolean): string | null {
+  const clean = rawLabel.trim();
+
+  if (exchange === ("BINANCE" as Exchange) && isTestnet) {
+    if (!clean) return "[TESTNET]";
+    if (/testnet/i.test(clean)) return clean;
+    return `[TESTNET] ${clean}`;
+  }
+
+  return clean || null;
+}
+
 export default function KeysPage() {
   const router = useRouter();
 
@@ -80,7 +95,6 @@ export default function KeysPage() {
   const [resp, setResp] = useState<AnyResp | null>(null);
   const [keys, setKeys] = useState<KeyRow[]>([]);
 
-  // баланс по keyId
   const [balancesByKey, setBalancesByKey] = useState<Record<string, BalanceRow[]>>({});
   const [balanceLoading, setBalanceLoading] = useState<Record<string, boolean>>({});
   const [balanceErrorByKey, setBalanceErrorByKey] = useState<Record<string, string>>({});
@@ -91,8 +105,8 @@ export default function KeysPage() {
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [isTestnet, setIsTestnet] = useState(false);
 
-  // чтобы превью токена обновлялось — держим его в state
   const [tokenState, setTokenState] = useState<string>("");
 
   useEffect(() => {
@@ -100,6 +114,12 @@ export default function KeysPage() {
     const t = setInterval(() => setTokenState(getToken()), 800);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (exchange !== ("BINANCE" as Exchange)) {
+      setIsTestnet(false);
+    }
+  }, [exchange]);
 
   const tokenPreview = useMemo(() => {
     const t = tokenState;
@@ -120,22 +140,27 @@ export default function KeysPage() {
   async function addKey() {
     setLoading(true);
     try {
+      const storedLabel = buildStoredLabel(label, exchange, isTestnet);
+
       const r = await api("/api/keys", {
         method: "POST",
         body: JSON.stringify({
           exchange,
-          label: label || null,
+          label: storedLabel,
           apiKey,
           apiSecret,
           passphrase: passphrase || null,
         }),
       });
+
       setResp(r.json);
 
       if (r.json.ok) {
+        setLabel("");
         setApiKey("");
         setApiSecret("");
         setPassphrase("");
+        setIsTestnet(false);
         await reload();
       }
     } finally {
@@ -149,7 +174,6 @@ export default function KeysPage() {
       const r = await api(`/api/keys/${id}`, { method: "DELETE" });
       setResp(r.json);
 
-      // чистим состояние по этому ключу
       setBalancesByKey((m) => {
         const copy = { ...m };
         delete copy[id];
@@ -172,13 +196,13 @@ export default function KeysPage() {
     }
   }
 
-  async function refreshBalance(keyId: string) {
-    // сброс ошибок по ключу перед запросом
+  async function refreshBalance(keyId: string, testnet: boolean) {
     setBalanceErrorByKey((m) => ({ ...m, [keyId]: "" }));
     setBalanceLoading((m) => ({ ...m, [keyId]: true }));
 
     try {
-      const r = await api(`/api/balance?keyId=${encodeURIComponent(keyId)}`, {
+      const suffix = testnet ? "&testnet=1" : "";
+      const r = await api(`/api/balance?keyId=${encodeURIComponent(keyId)}${suffix}`, {
         method: "GET",
       });
 
@@ -197,13 +221,10 @@ export default function KeysPage() {
   }
 
   async function refreshAllBinance() {
-    // обновляем только BINANCE, чтобы не вводить в заблуждение (остальные пока не поддержаны в balance API)
     const binanceKeys = keys.filter((k) => k.exchange === ("BINANCE" as Exchange));
     for (const k of binanceKeys) {
-      // последовательно, чтобы не устроить "шторма" запросов
-      // (позже можно распараллелить с ограничением)
-      // eslint-disable-next-line no-await-in-loop
-      await refreshBalance(k.id);
+      const testnet = isBinanceTestnetKey(k);
+      await refreshBalance(k.id, testnet);
     }
   }
 
@@ -234,7 +255,7 @@ export default function KeysPage() {
               disabled={loading || keys.every((k) => k.exchange !== ("BINANCE" as Exchange))}
               onClick={refreshAllBinance}
               style={btnGhost()}
-              title="Обновляет баланс только для BINANCE ключей"
+              title="Обновляет баланс для всех BINANCE ключей, включая TESTNET"
             >
               Обновить баланс (BINANCE)
             </button>
@@ -261,6 +282,17 @@ export default function KeysPage() {
               <option value="BYBIT">BYBIT</option>
               <option value="OKX">OKX</option>
             </select>
+
+            {exchange === ("BINANCE" as Exchange) ? (
+              <label style={checkboxWrap()}>
+                <input
+                  type="checkbox"
+                  checked={isTestnet}
+                  onChange={(e) => setIsTestnet(e.target.checked)}
+                />
+                <span>Это Binance Testnet ключ</span>
+              </label>
+            ) : null}
 
             <input
               placeholder="label (optional)"
@@ -297,7 +329,8 @@ export default function KeysPage() {
             </button>
 
             <div style={{ opacity: 0.65, fontSize: 12, lineHeight: 1.4 }}>
-              Важно: секреты не отображаются после сохранения. Если ошибся — удали ключ и добавь заново.
+              Важно: секреты не отображаются после сохранения. Если ошибся — удали ключ и добавь
+              заново.
             </div>
           </div>
         </div>
@@ -311,6 +344,7 @@ export default function KeysPage() {
               const bl = !!balanceLoading[k.id];
               const err = (balanceErrorByKey[k.id] || "").trim();
               const updatedAt = balanceUpdatedAtByKey[k.id] ?? null;
+              const isTestnetKey = isBinanceTestnetKey(k);
 
               return (
                 <div
@@ -326,9 +360,15 @@ export default function KeysPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <div style={{ display: "grid" }}>
                       <div style={{ fontWeight: 900 }}>
-                        {k.exchange} {k.label ? `· ${k.label}` : ""}
+                        {k.exchange}
+                        {k.label ? ` · ${k.label}` : ""}
                       </div>
-                      <div style={{ opacity: 0.7, fontSize: 12 }}>{k.id}</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                        <span style={networkBadge(isTestnetKey)}>
+                          {isTestnetKey ? "TESTNET" : "MAINNET"}
+                        </span>
+                      </div>
+                      <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>{k.id}</div>
                       <div style={{ opacity: 0.65, fontSize: 12 }}>
                         Последнее обновление баланса: <b>{formatTime(updatedAt)}</b>
                       </div>
@@ -337,12 +377,14 @@ export default function KeysPage() {
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                       <button
                         disabled={loading || bl || k.exchange !== ("BINANCE" as Exchange)}
-                        onClick={() => refreshBalance(k.id)}
+                        onClick={() => refreshBalance(k.id, isTestnetKey)}
                         style={btnGhost()}
                         title={
                           k.exchange !== ("BINANCE" as Exchange)
                             ? "Пока поддерживается баланс только для BINANCE"
-                            : "Запросить баланс"
+                            : isTestnetKey
+                              ? "Запросить баланс Binance TESTNET"
+                              : "Запросить баланс Binance MAINNET"
                         }
                       >
                         {bl ? "..." : "Обновить баланс"}
@@ -355,7 +397,9 @@ export default function KeysPage() {
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 800 }}>Баланс (Spot)</div>
+                      <div style={{ fontWeight: 800 }}>
+                        Баланс (Spot) {isTestnetKey ? "· TESTNET" : "· MAINNET"}
+                      </div>
                       {!!b.length && (
                         <div style={{ opacity: 0.7, fontSize: 12 }}>Монет: {b.length}</div>
                       )}
@@ -446,6 +490,30 @@ function input(): React.CSSProperties {
     background: "#000",
     color: "#fff",
     outline: "none",
+  };
+}
+
+function checkboxWrap(): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 14,
+    opacity: 0.95,
+  };
+}
+
+function networkBadge(testnet: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: testnet ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 0.3,
   };
 }
 
