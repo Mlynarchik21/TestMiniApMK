@@ -176,6 +176,7 @@ export default function BotPage() {
   const positions = Array.isArray(bot?.positions) ? bot.positions : [];
   const filteredKeys = keys.filter((k: any) => k.exchange === exchange);
   const isEnabled = !!config?.enabled;
+  const stateText = isEnabled ? "RUNNING" : "STOPPED";
 
   return (
     <main
@@ -208,13 +209,18 @@ export default function BotPage() {
         <section style={card()}>
           <div style={sectionTitle()}>Управление ботом</div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={statusBadge(isEnabled)}>
+            <span style={statusDot(isEnabled)} />
+            <span>{isEnabled ? "Бот запущен" : "Бот остановлен"}</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button
               onClick={() => changeBotState("start")}
               disabled={!config || switching || isEnabled}
               style={btnPrimary(!config || switching || isEnabled)}
             >
-              {switching ? "..." : "Start"}
+              {switching ? "..." : isEnabled ? "Уже запущен" : "Start"}
             </button>
 
             <button
@@ -222,7 +228,7 @@ export default function BotPage() {
               disabled={!config || switching || !isEnabled}
               style={btnGhostDisabled(!config || switching || !isEnabled)}
             >
-              {switching ? "..." : "Stop"}
+              {switching ? "..." : !isEnabled ? "Уже остановлен" : "Stop"}
             </button>
           </div>
 
@@ -321,7 +327,7 @@ export default function BotPage() {
 
           <div style={row()}>
             <span style={label()}>Статус</span>
-            <span>{state?.status ?? "STOPPED"}</span>
+            <span>{state?.status ?? stateText}</span>
           </div>
 
           <div style={row()}>
@@ -549,5 +555,29 @@ function btnGhostDisabled(disabled: boolean): React.CSSProperties {
     fontWeight: 900,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function statusBadge(active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: active ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
+    fontSize: 14,
+    fontWeight: 700,
+  };
+}
+
+function statusDot(active: boolean): React.CSSProperties {
+  return {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: active ? "#22c55e" : "#6b7280",
+    display: "inline-block",
   };
 }
