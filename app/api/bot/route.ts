@@ -178,7 +178,11 @@ export async function PATCH(req: Request) {
     const body = await req.json().catch(() => null);
 
     const action =
-      body?.action === "start" || body?.action === "stop" ? body.action : "";
+      body?.action === "start" ||
+      body?.action === "stop" ||
+      body?.action === "reset"
+        ? body.action
+        : "";
 
     if (!action) {
       return fail(400, "ACTION_REQUIRED");
@@ -193,6 +197,19 @@ export async function PATCH(req: Request) {
         exchange: true,
       },
     });
+
+    if (action === "reset") {
+      await prisma.botState.deleteMany({
+        where: { userId: user.id },
+      });
+
+      await prisma.botConfig.deleteMany({
+        where: { userId: user.id },
+      });
+
+      const bot = await loadBot(user.id);
+      return ok({ bot });
+    }
 
     if (!config) {
       return fail(404, "BOT_CONFIG_NOT_FOUND");
