@@ -21,6 +21,7 @@ export default function BotPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
   const [keys, setKeys] = useState<any[]>([]);
@@ -155,6 +156,37 @@ export default function BotPage() {
     }
   }
 
+  async function resetBot() {
+    setResetting(true);
+
+    const token = getToken();
+
+    try {
+      const res = await fetch("/api/bot", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action: "reset" }),
+      });
+
+      const data = (await res.json()) as AnyResp;
+      setStatus(res.status);
+      setResult(data);
+
+      if (data.ok) {
+        setKeyId("");
+        await loadBot();
+        await loadKeys();
+      }
+    } catch (e: any) {
+      setResult({ ok: false, error: e?.message ?? "fetch error" });
+    } finally {
+      setResetting(false);
+    }
+  }
+
   useEffect(() => {
     loadBot();
     loadKeys();
@@ -232,11 +264,25 @@ export default function BotPage() {
             </button>
           </div>
 
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={resetBot}
+              disabled={resetting || switching}
+              style={btnDanger(resetting || switching)}
+            >
+              {resetting ? "..." : "Сбросить бота"}
+            </button>
+          </div>
+
           {!config ? (
             <div style={{ opacity: 0.7, fontSize: 13, marginTop: 10 }}>
               Сначала создай конфиг бота ниже.
             </div>
-          ) : null}
+          ) : (
+            <div style={{ opacity: 0.7, fontSize: 13, marginTop: 10 }}>
+              Сброс удалит конфиг и состояние бота. После этого можно удалить все ключи.
+            </div>
+          )}
         </section>
 
         <section style={card()}>
@@ -550,6 +596,20 @@ function btnGhostDisabled(disabled: boolean): React.CSSProperties {
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.25)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function btnDanger(disabled: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,0,0,0.35)",
     background: "transparent",
     color: "#fff",
     fontWeight: 900,
