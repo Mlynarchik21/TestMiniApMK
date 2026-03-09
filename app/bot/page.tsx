@@ -7,6 +7,12 @@ type AnyResp =
   | { ok: true; [k: string]: any }
   | { ok: false; error: string; message?: string; [k: string]: any };
 
+type KeyRow = {
+  id: string;
+  exchange: string;
+  label: string | null;
+};
+
 function getToken() {
   try {
     return localStorage.getItem("sessionToken") || "";
@@ -15,200 +21,170 @@ function getToken() {
   }
 }
 
+async function api(path: string, init?: RequestInit): Promise<{ status: number; json: AnyResp }> {
+  const token = getToken();
+
+  const res = await fetch(path, {
+    cache: "no-store",
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...(init?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  let json: AnyResp = { ok: false, error: "BAD_RESPONSE", message: "Invalid JSON response" };
+  try {
+    json = (await res.json()) as AnyResp;
+  } catch {}
+
+  return { status: res.status, json };
+}
+
+function humanizeError(r: AnyResp): string {
+  if (!r || (r as any).ok) return "";
+  const code = (r as any).error || "ERROR";
+  const msg = (r as any).message ? `: ${(r as any).message}` : "";
+  return `${code}${msg}`;
+}
+
 export default function BotPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [switching, setSwitching] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [status, setStatus] = useState<number | null>(null);
-  const [result, setResult] = useState<AnyResp | null>(null);
-  const [keys, setKeys] = useState<any[]>([]);
+  const [resp, setResp] = useState<AnyResp | null>(null);
+  const [err, setErr] = useState("");
+
+  const [keys, setKeys] = useState<KeyRow[]>([]);
+
+  const [config, setConfig] = useState<any>(null);
+  const [state, setState] = useState<any>(null);
+  const [positions, setPositions] = useState<any[]>([]);
 
   const [exchange, setExchange] = useState("BINANCE");
   const [keyId, setKeyId] = useState("");
   const [maxActiveSymbols, setMaxActiveSymbols] = useState("10");
-  const [budgetPerSymbol, setBudgetPerSymbol] = useState("100");
-  const [gridStepPct, setGridStepPct] = useState("5");
-  const [takeProfitPct, setTakeProfitPct] = useState("5");
+  const [budgetPerSymbol, setBudgetPerSymbol] = useState("50");
+  const [maxTotalBudget, setMaxTotalBudget] = useState("");
+  const [syncIntervalMin, setSyncIntervalMin] = useState("5");
 
   async function loadKeys() {
-    const token = getToken();
-
-    try {
-      const res = await fetch("/api/keys", {
-        method: "GET",
-        cache: "no-store",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      const data = await res.json();
-      const list = Array.isArray(data?.keys) ? data.keys : [];
-      setKeys(list);
-
-      if (!keyId) {
-        const firstForExchange = list.find((k: any) => k.exchange === exchange);
-        if (firstForExchange?.id) {
-          setKeyId(firstForExchange.id);
-        }
-      }
-    } catch {
-      setKeys([]);
+    const r = await api("/api/keys", { method: "GET" });
+    if (r.json.ok) {
+      setKeys(((r.json as any).keys ?? []) as KeyRow[]);
     }
   }
 
   async function loadBot() {
     setLoading(true);
-    setStatus(null);
-
-    const token = getToken();
-
+    setErr("");
     try {
-      const res = await fetch("/api/bot", {
-        method: "GET",
-        cache: "no-store",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const r = await api("/api/bot", { method: "GET" });
+      setResp(r.json);
 
-      const data = (await res.json()) as AnyResp;
-      setStatus(res.status);
-      setResult(data);
-
-      const config = data && data.ok ? data.bot?.config : null;
-      if (config) {
-        setExchange(config.exchange ?? "BINANCE");
-        setKeyId(config.keyId ?? "");
-        setMaxActiveSymbols(String(config.maxActiveSymbols ?? 10));
-        setBudgetPerSymbol(String(config.budgetPerSymbol ?? 100));
-        setGridStepPct(String(config.gridStepPct ?? 5));
-        setTakeProfitPct(String(config.takeProfitPct ?? 5));
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
       }
-    } catch (e: any) {
-      setResult({ ok: false, error: e?.message ?? "fetch error" });
+
+      const c = (r.json as any).config ?? null;
+      const s = (r.json as any).state ?? null;
+      const p = (r.json as any).positions ?? [];
+
+      setConfig(c);
+      setState(s);
+      setPositions(p);
+
+      if (c) {
+        setExchange(c.exchange ?? "BINANCE");
+        setKeyId(c.keyId ?? "");
+        setMaxActiveSymbols(String(c.maxActiveSymbols ?? 10));
+        setBudgetPerSymbol(String(c.budgetPerSymbol ?? "50"));
+        setMaxTotalBudget(c.maxTotalBudget != null ? String(c.maxTotalBudget) : "");
+        setSyncIntervalMin(String(c.syncIntervalMin ?? 5));
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  async function initBot() {
-    setSaving(true);
-
-    const token = getToken();
-
+  async function saveConfig() {
+    setLoading(true);
+    setErr("");
     try {
-      const res = await fetch("/api/bot", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          exchange,
-          keyId,
-          maxActiveSymbols: Number(maxActiveSymbols),
-          budgetPerSymbol: Number(budgetPerSymbol),
-          gridStepPct: Number(gridStepPct),
-          takeProfitPct: Number(takeProfitPct),
-        }),
+      const body: any = {
+        exchange,
+        keyId: keyId || null,
+        maxActiveSymbols: Number(maxActiveSymbols),
+        budgetPerSymbol,
+        syncIntervalMin: Number(syncIntervalMin),
+      };
+
+      if (maxTotalBudget.trim()) {
+        body.maxTotalBudget = maxTotalBudget.trim();
+      } else {
+        body.maxTotalBudget = null;
+      }
+
+      const r = await api("/api/bot", {
+        method: "PATCH",
+        body: JSON.stringify(body),
       });
 
-      const data = (await res.json()) as AnyResp;
-      setStatus(res.status);
-      setResult(data);
+      setResp(r.json);
 
-      if (data.ok) {
-        await loadBot();
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
       }
-    } catch (e: any) {
-      setResult({ ok: false, error: e?.message ?? "fetch error" });
+
+      await loadBot();
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  async function changeBotState(action: "start" | "stop") {
-    setSwitching(true);
-
-    const token = getToken();
-
+  async function startBot() {
+    setLoading(true);
+    setErr("");
     try {
-      const res = await fetch("/api/bot", {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ action }),
-      });
+      const r = await api("/api/bot/start", { method: "POST" });
+      setResp(r.json);
 
-      const data = (await res.json()) as AnyResp;
-      setStatus(res.status);
-      setResult(data);
-
-      if (data.ok) {
-        await loadBot();
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
       }
-    } catch (e: any) {
-      setResult({ ok: false, error: e?.message ?? "fetch error" });
+
+      await loadBot();
     } finally {
-      setSwitching(false);
+      setLoading(false);
     }
   }
 
-  async function resetBot() {
-    setResetting(true);
-
-    const token = getToken();
-
+  async function stopBot() {
+    setLoading(true);
+    setErr("");
     try {
-      const res = await fetch("/api/bot", {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ action: "reset" }),
-      });
+      const r = await api("/api/bot/stop", { method: "POST" });
+      setResp(r.json);
 
-      const data = (await res.json()) as AnyResp;
-      setStatus(res.status);
-      setResult(data);
-
-      if (data.ok) {
-        setKeyId("");
-        await loadBot();
-        await loadKeys();
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
       }
-    } catch (e: any) {
-      setResult({ ok: false, error: e?.message ?? "fetch error" });
+
+      await loadBot();
     } finally {
-      setResetting(false);
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadBot();
     loadKeys();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadBot();
   }, []);
-
-  useEffect(() => {
-    const firstForExchange = keys.find((k: any) => k.exchange === exchange);
-    if (firstForExchange?.id) {
-      setKeyId(firstForExchange.id);
-    } else {
-      setKeyId("");
-    }
-  }, [exchange, keys]);
-
-  const bot = result && result.ok ? result.bot : null;
-  const config = bot?.config ?? null;
-  const state = bot?.state ?? null;
-  const positions = Array.isArray(bot?.positions) ? bot.positions : [];
-  const filteredKeys = keys.filter((k: any) => k.exchange === exchange);
-  const isEnabled = !!config?.enabled;
-  const stateText = isEnabled ? "RUNNING" : "STOPPED";
 
   return (
     <main
@@ -217,266 +193,152 @@ export default function BotPage() {
         padding: 16,
         background: "#000",
         color: "#fff",
-        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        fontFamily: "system-ui",
       }}
     >
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-          <button onClick={() => router.replace("/home")} style={btnGhost()}>
-            Home
-          </button>
-          <button onClick={loadBot} disabled={loading} style={btnPrimary(loading)}>
-            {loading ? "..." : "Обновить"}
-          </button>
-        </div>
-
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Bot</div>
-
-        <div style={{ opacity: 0.85, fontSize: 13, marginBottom: 14 }}>
-          <div>
-            <b>HTTP статус:</b> {status ?? "—"}
+      <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 900 }}>Bot</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => router.replace("/home")} style={btnGhost()}>
+              Home
+            </button>
+            <button onClick={() => router.replace("/history")} style={btnGhost()}>
+              History
+            </button>
           </div>
         </div>
 
-        <section style={card()}>
-          <div style={sectionTitle()}>Управление ботом</div>
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot status</div>
 
-          <div style={statusBadge(isEnabled)}>
-            <span style={statusDot(isEnabled)} />
-            <span>{isEnabled ? "Бот запущен" : "Бот остановлен"}</span>
+          <div style={{ display: "grid", gap: 6, fontSize: 14 }}>
+            <div>
+              <b>Config enabled:</b> {config?.enabled ? "YES" : "NO"}
+            </div>
+            <div>
+              <b>Run status:</b> {state?.status ?? "IDLE"}
+            </div>
+            <div>
+              <b>Last sync:</b> {state?.lastSyncAt ?? "—"}
+            </div>
+            <div>
+              <b>Last error:</b> {state?.lastError ?? "—"}
+            </div>
+            <div>
+              <b>Active positions:</b> {positions.length}
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <button
-              onClick={() => changeBotState("start")}
-              disabled={!config || switching || isEnabled}
-              style={btnPrimary(!config || switching || isEnabled)}
-            >
-              {switching ? "..." : isEnabled ? "Уже запущен" : "Start"}
+            <button disabled={loading} onClick={startBot} style={btnPrimary(loading)}>
+              {loading ? "..." : "Start bot"}
             </button>
-
-            <button
-              onClick={() => changeBotState("stop")}
-              disabled={!config || switching || !isEnabled}
-              style={btnGhostDisabled(!config || switching || !isEnabled)}
-            >
-              {switching ? "..." : !isEnabled ? "Уже остановлен" : "Stop"}
+            <button disabled={loading} onClick={stopBot} style={btnDanger()}>
+              Stop bot
             </button>
           </div>
+        </div>
 
-          <div style={{ marginTop: 10 }}>
-            <button
-              onClick={resetBot}
-              disabled={resetting || switching}
-              style={btnDanger(resetting || switching)}
-            >
-              {resetting ? "..." : "Сбросить бота"}
-            </button>
-          </div>
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot config</div>
 
-          {!config ? (
-            <div style={{ opacity: 0.7, fontSize: 13, marginTop: 10 }}>
-              Сначала создай конфиг бота ниже.
-            </div>
-          ) : (
-            <div style={{ opacity: 0.7, fontSize: 13, marginTop: 10 }}>
-              Сброс удалит конфиг и состояние бота. После этого можно удалить все ключи.
-            </div>
-          )}
-        </section>
+          <div style={{ display: "grid", gap: 8 }}>
+            <select value={exchange} onChange={(e) => setExchange(e.target.value)} style={input()}>
+              <option value="BINANCE">BINANCE</option>
+              <option value="BYBIT">BYBIT</option>
+              <option value="OKX">OKX</option>
+            </select>
 
-        <section style={card()}>
-          <div style={sectionTitle()}>
-            {config ? "Редактирование бота" : "Создать бота"}
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Биржа</span>
-              <select value={exchange} onChange={(e) => setExchange(e.target.value)} style={input()}>
-                <option value="BINANCE">BINANCE</option>
-                <option value="BYBIT">BYBIT</option>
-                <option value="OKX">OKX</option>
-              </select>
-            </label>
-
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Ключ</span>
-              <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
-                <option value="">Выбери ключ</option>
-                {filteredKeys.map((k: any) => (
+            <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
+              <option value="">Select API key</option>
+              {keys
+                .filter((k) => k.exchange === exchange)
+                .map((k) => (
                   <option key={k.id} value={k.id}>
-                    {k.label ? `${k.label} (${k.exchange})` : `${k.exchange} / ${k.id.slice(0, 8)}`}
+                    {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
                   </option>
                 ))}
-              </select>
-            </label>
+            </select>
 
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Макс. активных монет</span>
-              <input
-                value={maxActiveSymbols}
-                onChange={(e) => setMaxActiveSymbols(e.target.value)}
-                inputMode="numeric"
-                style={input()}
-                placeholder="10"
-              />
-            </label>
+            <input
+              value={maxActiveSymbols}
+              onChange={(e) => setMaxActiveSymbols(e.target.value)}
+              placeholder="maxActiveSymbols (1..10)"
+              style={input()}
+            />
 
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Бюджет на монету</span>
-              <input
-                value={budgetPerSymbol}
-                onChange={(e) => setBudgetPerSymbol(e.target.value)}
-                inputMode="decimal"
-                style={input()}
-                placeholder="100"
-              />
-            </label>
+            <input
+              value={budgetPerSymbol}
+              onChange={(e) => setBudgetPerSymbol(e.target.value)}
+              placeholder="budgetPerSymbol"
+              style={input()}
+            />
 
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Шаг сетки %</span>
-              <input
-                value={gridStepPct}
-                onChange={(e) => setGridStepPct(e.target.value)}
-                inputMode="decimal"
-                style={input()}
-                placeholder="5"
-              />
-            </label>
+            <input
+              value={maxTotalBudget}
+              onChange={(e) => setMaxTotalBudget(e.target.value)}
+              placeholder="maxTotalBudget (optional)"
+              style={input()}
+            />
 
-            <label style={fieldWrap()}>
-              <span style={fieldLabel()}>Take Profit %</span>
-              <input
-                value={takeProfitPct}
-                onChange={(e) => setTakeProfitPct(e.target.value)}
-                inputMode="decimal"
-                style={input()}
-                placeholder="5"
-              />
-            </label>
+            <input
+              value={syncIntervalMin}
+              onChange={(e) => setSyncIntervalMin(e.target.value)}
+              placeholder="syncIntervalMin (1..60)"
+              style={input()}
+            />
 
-            <button onClick={initBot} disabled={saving || !keyId} style={btnPrimary(saving || !keyId)}>
-              {saving ? "..." : config ? "Сохранить конфиг" : "Создать бота"}
+            <button disabled={loading} onClick={saveConfig} style={btnPrimary(loading)}>
+              {loading ? "..." : "Save config"}
             </button>
-
-            {!keyId ? (
-              <div style={{ opacity: 0.7, fontSize: 13 }}>
-                Сначала добавь API ключ на странице Keys и выбери его здесь.
-              </div>
-            ) : null}
           </div>
-        </section>
+        </div>
 
-        <section style={card()}>
-          <div style={sectionTitle()}>Состояние</div>
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Active positions</div>
 
-          <div style={row()}>
-            <span style={label()}>Статус</span>
-            <span>{state?.status ?? stateText}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Включен</span>
-            <span>{config?.enabled ? "YES" : "NO"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Последняя синхронизация</span>
-            <span>{state?.lastSyncAt ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Последняя ошибка</span>
-            <span>{state?.lastError ?? "—"}</span>
-          </div>
-        </section>
-
-        <section style={card()}>
-          <div style={sectionTitle()}>Конфиг</div>
-
-          <div style={row()}>
-            <span style={label()}>Биржа</span>
-            <span>{config?.exchange ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Key ID</span>
-            <span>{config?.keyId ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Макс. активных монет</span>
-            <span>{config?.maxActiveSymbols ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Бюджет на монету</span>
-            <span>{config?.budgetPerSymbol ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Шаг сетки %</span>
-            <span>{config?.gridStepPct ?? "—"}</span>
-          </div>
-
-          <div style={row()}>
-            <span style={label()}>Take Profit %</span>
-            <span>{config?.takeProfitPct ?? "—"}</span>
-          </div>
-        </section>
-
-        <section style={card()}>
-          <div style={sectionTitle()}>Активные позиции</div>
-
-          {positions.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>Пока пусто</div>
+          {!positions.length ? (
+            <div style={{ opacity: 0.7 }}>Пока пусто. Trading Engine ещё не подключён.</div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {positions.map((p: any) => (
-                <div key={p.id} style={positionCard()}>
-                  <div style={{ fontWeight: 900, marginBottom: 6 }}>{p.symbol}</div>
-                  <div style={smallRow()}>
-                    <span style={label()}>Статус</span>
-                    <span>{p.status}</span>
+            <div style={{ display: "grid", gap: 8 }}>
+              {positions.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    padding: 10,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <div style={{ fontWeight: 800 }}>
+                    {p.exchange} · {p.symbol} · {p.status}
                   </div>
-                  <div style={smallRow()}>
-                    <span style={label()}>Qty</span>
-                    <span>{p.qty}</span>
+                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                    avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
                   </div>
-                  <div style={smallRow()}>
-                    <span style={label()}>Avg Price</span>
-                    <span>{p.avgPrice}</span>
-                  </div>
-                  <div style={smallRow()}>
-                    <span style={label()}>TP Price</span>
-                    <span>{p.tpPrice}</span>
-                  </div>
-                  <div style={smallRow()}>
-                    <span style={label()}>Adds Count</span>
-                    <span>{p.addsCount}</span>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    addsCount: {p.addsCount} · openedAt: {p.openedAt}
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </section>
+        </div>
 
-        <section style={card()}>
-          <div style={sectionTitle()}>Raw JSON</div>
-          <div
-            style={{
-              whiteSpace: "pre-wrap",
-              background: "#111",
-              padding: 12,
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.12)",
-              minHeight: 160,
-            }}
-          >
-            {result ? JSON.stringify(result, null, 2) : "—"}
+        {err && (
+          <div style={errorBox()}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Ошибка</div>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{err}</pre>
           </div>
-        </section>
+        )}
+
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>Last response</div>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+            {resp ? JSON.stringify(resp, null, 2) : "—"}
+          </pre>
+        </div>
       </div>
     </main>
   );
@@ -484,86 +346,37 @@ export default function BotPage() {
 
 function card(): React.CSSProperties {
   return {
-    background: "#0f0f0f",
+    background: "#111",
     border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: 16,
     padding: 14,
-    marginBottom: 14,
-  };
-}
-
-function sectionTitle(): React.CSSProperties {
-  return {
-    fontSize: 16,
-    fontWeight: 900,
-    marginBottom: 12,
-  };
-}
-
-function row(): React.CSSProperties {
-  return {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "8px 0",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-  };
-}
-
-function smallRow(): React.CSSProperties {
-  return {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "4px 0",
-  };
-}
-
-function label(): React.CSSProperties {
-  return {
-    opacity: 0.7,
-  };
-}
-
-function positionCard(): React.CSSProperties {
-  return {
-    background: "#111",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 14,
-    padding: 12,
-  };
-}
-
-function fieldWrap(): React.CSSProperties {
-  return {
-    display: "grid",
-    gap: 6,
-  };
-}
-
-function fieldLabel(): React.CSSProperties {
-  return {
-    fontSize: 13,
-    opacity: 0.85,
   };
 }
 
 function input(): React.CSSProperties {
   return {
     width: "100%",
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.15)",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.18)",
     background: "#000",
     color: "#fff",
     outline: "none",
   };
 }
 
+function errorBox(): React.CSSProperties {
+  return {
+    background: "rgba(255,0,0,0.08)",
+    border: "1px solid rgba(255,0,0,0.25)",
+    borderRadius: 12,
+    padding: 10,
+  };
+}
+
 function btnPrimary(disabled: boolean): React.CSSProperties {
   return {
     flex: 1,
-    width: "100%",
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.25)",
@@ -577,9 +390,7 @@ function btnPrimary(disabled: boolean): React.CSSProperties {
 
 function btnGhost(): React.CSSProperties {
   return {
-    flex: 1,
-    width: "100%",
-    padding: "12px 14px",
+    padding: "10px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.25)",
     background: "transparent",
@@ -589,55 +400,15 @@ function btnGhost(): React.CSSProperties {
   };
 }
 
-function btnGhostDisabled(disabled: boolean): React.CSSProperties {
+function btnDanger(): React.CSSProperties {
   return {
     flex: 1,
-    width: "100%",
-    padding: "12px 14px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-  };
-}
-
-function btnDanger(disabled: boolean): React.CSSProperties {
-  return {
-    width: "100%",
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,0,0,0.35)",
     background: "transparent",
     color: "#fff",
     fontWeight: 900,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-  };
-}
-
-function statusBadge(active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: active ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
-    fontSize: 14,
-    fontWeight: 700,
-  };
-}
-
-function statusDot(active: boolean): React.CSSProperties {
-  return {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    background: active ? "#22c55e" : "#6b7280",
-    display: "inline-block",
+    cursor: "pointer",
   };
 }
