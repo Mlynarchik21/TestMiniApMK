@@ -2,42 +2,69 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 
-function sha256hex(input: string) {
+function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-export async function GET() {
-  const token = cookies().get("session")?.value;
-  if (!token) {
-    return NextResponse.json({ ok: false, error: "no session" }, { status: 401 });
+function getRawToken(req: Request) {
+  const auth = req.headers.get("authorization") || "";
+
+  if (auth.startsWith("Bearer ")) {
+    return auth.slice("Bearer ".length).trim();
   }
 
-  const tokenHash = sha256hex(token);
+  const cookie = req.headers.get("cookie") || "";
+  const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
 
-  const session = await prisma.session.findUnique({
-    // ✅ unique в текущей БД: tokenHash
-    where: { tokenHash },
-    include: { user: true },
-  });
-
-  if (!session || session.expiresAt < new Date()) {
-    return NextResponse.json({ ok: false, error: "invalid session" }, { status: 401 });
+  if (match?.[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
   }
 
-  return NextResponse.json({
-    ok: true,
-    profile: {
-      userId: session.user.id,
-      tgId: session.user.tgId,
-      username: session.user.username,
-      firstName: session.user.firstName,
-      lastName: session.user.lastName,
-      // временно нет отдельной таблицы profile
-      settings: {},
-    },
-  });
+  return "";
+}
+
+export async function GET(req: Request) {
+  try {
+    const rawToken = getRawToken(req);
+
+    if (!rawToken) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const tokenHash = sha256Hex(rawToken);
+
+    const session = await prisma.session.findUnique({
+      where: { token: tokenHash },
+      include: { user: true },
+    });
+
+    if (!session) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const user = session.user;
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        id: user.id,
+        tgId: user.tgId.toString(),
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || e) },
+      { status: 500 }
+    );
+  }
 }
