@@ -1,284 +1,277 @@
 // app/api/bot/route.ts
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
+import { Exchange, Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
-// BigInt-safe JSON
-function json(data: any, init?: ResponseInit) {
-  return new Response(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-    {
-      ...init,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        ...(init?.headers || {}),
-      },
-    }
+type AnyJson = any;
+
+function ok(data: AnyJson) {
+  return NextResponse.json({ ok: true, ...data });
+}
+
+function fail(status: number, error: string, message?: string, extra?: AnyJson) {
+  return NextResponse.json(
+    { ok: false, error, ...(message ? { message } : {}), ...(extra ?? {}) },
+    { status }
   );
 }
 
-function ok(data: any) {
-  return json({ ok: true, ...data });
+function isExchange(v: unknown): v is Exchange {
+  return v === "BINANCE" || v === "BYBIT" || v === "OKX";
 }
 
-function fail(status: number, error: string, extra?: any) {
-  return json({ ok: false, error, ...(extra ? { extra } : {}) }, { status });
+function parseIntSafe(v: unknown): number | null {
+  if (typeof v === "number" && Number.isInteger(v)) return v;
+  if (typeof v !== "string") return null;
+  const n = Number(v.trim());
+  return Number.isInteger(n) ? n : null;
 }
 
-async function loadBot(userId: string) {
-  const [config, state, positions] = await Promise.all([
-    prisma.botConfig.findUnique({
-      where: { userId },
-    }),
-
-    prisma.botState.findUnique({
-      where: { userId },
-    }),
-
-    prisma.botPosition.findMany({
-      where: {
-        userId,
-        status: "OPEN",
-      },
-      orderBy: { openedAt: "desc" },
-    }),
-  ]);
-
-  return { config, state, positions };
+function parseDecimalString(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+  return s;
 }
 
+// GET /api/bot
+// Возвращает config + state + positions текущего пользователя
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
-    const bot = await loadBot(user.id);
 
-    return ok({ bot });
-  } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 500;
-
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
-      message: e?.message ?? String(e),
-    });
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const user = await requireUser(req);
-
-    const body = await req.json().catch(() => null);
-
-    const exchange =
-      body?.exchange === "BINANCE" ||
-      body?.exchange === "BYBIT" ||
-      body?.exchange === "OKX"
-        ? body.exchange
-        : "BINANCE";
-
-    const keyId =
-      typeof body?.keyId === "string" && body.keyId.trim().length > 0
-        ? body.keyId.trim()
-        : "";
-
-    const maxActiveSymbolsRaw = Number(body?.maxActiveSymbols);
-    const maxActiveSymbols =
-      Number.isFinite(maxActiveSymbolsRaw) && maxActiveSymbolsRaw > 0
-        ? Math.floor(maxActiveSymbolsRaw)
-        : 10;
-
-    const budgetPerSymbolRaw = Number(body?.budgetPerSymbol);
-    const budgetPerSymbol =
-      Number.isFinite(budgetPerSymbolRaw) && budgetPerSymbolRaw >= 0
-        ? budgetPerSymbolRaw.toString()
-        : "0";
-
-    const gridStepPctRaw = Number(body?.gridStepPct);
-    const gridStepPct =
-      Number.isFinite(gridStepPctRaw) && gridStepPctRaw > 0
-        ? gridStepPctRaw.toString()
-        : "5";
-
-    const takeProfitPctRaw = Number(body?.takeProfitPct);
-    const takeProfitPct =
-      Number.isFinite(takeProfitPctRaw) && takeProfitPctRaw > 0
-        ? takeProfitPctRaw.toString()
-        : "5";
-
-    if (!keyId) {
-      return fail(400, "KEY_ID_REQUIRED");
-    }
-
-    const key = await prisma.userKey.findFirst({
-      where: {
-        id: keyId,
-        userId: user.id,
-        exchange,
-      },
-      select: {
-        id: true,
-        exchange: true,
-      },
-    });
-
-    if (!key) {
-      return fail(404, "KEY_NOT_FOUND");
-    }
-
-    await Promise.all([
-      prisma.botConfig.upsert({
+    const [config, state, positions] = await Promise.all([
+      prisma.botConfig.findUnique({
         where: { userId: user.id },
-        create: {
-          userId: user.id,
-          exchange,
-          keyId: key.id,
-          enabled: false,
-          maxActiveSymbols,
-          budgetPerSymbol,
-          gridStepPct,
-          takeProfitPct,
-        },
-        update: {
-          exchange,
-          keyId: key.id,
-          maxActiveSymbols,
-          budgetPerSymbol,
-          gridStepPct,
-          takeProfitPct,
+        select: {
+          id: true,
+          userId: true,
+          exchange: true,
+          keyId: true,
+          enabled: true,
+          maxActiveSymbols: true,
+          budgetPerSymbol: true,
+          maxTotalBudget: true,
+          syncIntervalMin: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
-
-      prisma.botState.upsert({
+      prisma.botState.findUnique({
         where: { userId: user.id },
-        create: {
-          userId: user.id,
-          status: "STOPPED",
-          lastError: null,
-          lastSyncAt: null,
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          lastSyncAt: true,
+          lastError: true,
+          createdAt: true,
+          updatedAt: true,
         },
-        update: {},
+      }),
+      prisma.botPosition.findMany({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          exchange: true,
+          symbol: true,
+          status: true,
+          avgPrice: true,
+          qty: true,
+          tpPrice: true,
+          addsCount: true,
+          openedAt: true,
+          closedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       }),
     ]);
 
-    const bot = await loadBot(user.id);
-
-    return ok({ bot });
-  } catch (e: any) {
-    const status = typeof e?.status === "number" ? e.status : 500;
-
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
-      message: e?.message ?? String(e),
+    return ok({
+      config: config
+        ? {
+            ...config,
+            budgetPerSymbol: config.budgetPerSymbol.toString(),
+            maxTotalBudget: config.maxTotalBudget?.toString() ?? null,
+          }
+        : null,
+      state,
+      positions: positions.map((p) => ({
+        ...p,
+        avgPrice: p.avgPrice.toString(),
+        qty: p.qty.toString(),
+        tpPrice: p.tpPrice.toString(),
+      })),
     });
+  } catch (e: AnyJson) {
+    const status = typeof e?.status === "number" ? e.status : 500;
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
 
+// PATCH /api/bot
+// Обновляет только настройки пользователя, а НЕ логику стратегии
+// body:
+// {
+//   exchange?: "BINANCE" | "BYBIT" | "OKX",
+//   keyId?: string | null,
+//   maxActiveSymbols?: number,
+//   budgetPerSymbol?: string,
+//   maxTotalBudget?: string | null,
+//   syncIntervalMin?: number
+// }
 export async function PATCH(req: Request) {
   try {
     const user = await requireUser(req);
-    const body = await req.json().catch(() => null);
+    const body = (await req.json().catch(() => null)) as AnyJson | null;
 
-    const action =
-      body?.action === "start" ||
-      body?.action === "stop" ||
-      body?.action === "reset"
-        ? body.action
-        : "";
-
-    if (!action) {
-      return fail(400, "ACTION_REQUIRED");
+    if (!body) {
+      return fail(400, "BAD_REQUEST", "JSON body required");
     }
 
-    const config = await prisma.botConfig.findUnique({
+    let exchange: Exchange | undefined;
+    if (body.exchange != null) {
+      if (!isExchange(body.exchange)) {
+        return fail(400, "BAD_REQUEST", "exchange invalid");
+      }
+      exchange = body.exchange;
+    }
+
+    let keyId: string | null | undefined = undefined;
+    if (body.keyId !== undefined) {
+      if (body.keyId === null || body.keyId === "") {
+        keyId = null;
+      } else if (typeof body.keyId === "string") {
+        keyId = body.keyId.trim();
+      } else {
+        return fail(400, "BAD_REQUEST", "keyId invalid");
+      }
+    }
+
+    let maxActiveSymbols: number | undefined;
+    if (body.maxActiveSymbols != null) {
+      const n = parseIntSafe(body.maxActiveSymbols);
+      if (n == null || n < 1 || n > 10) {
+        return fail(400, "BAD_REQUEST", "maxActiveSymbols must be integer 1..10");
+      }
+      maxActiveSymbols = n;
+    }
+
+    let budgetPerSymbol: Prisma.Decimal | undefined;
+    if (body.budgetPerSymbol != null) {
+      const s = parseDecimalString(body.budgetPerSymbol);
+      if (!s) return fail(400, "BAD_REQUEST", "budgetPerSymbol invalid");
+      budgetPerSymbol = new Prisma.Decimal(s);
+      if (budgetPerSymbol.lte(0)) {
+        return fail(400, "BAD_REQUEST", "budgetPerSymbol must be > 0");
+      }
+    }
+
+    let maxTotalBudget: Prisma.Decimal | null | undefined = undefined;
+    if (body.maxTotalBudget !== undefined) {
+      if (body.maxTotalBudget === null || body.maxTotalBudget === "") {
+        maxTotalBudget = null;
+      } else {
+        const s = parseDecimalString(body.maxTotalBudget);
+        if (!s) return fail(400, "BAD_REQUEST", "maxTotalBudget invalid");
+        maxTotalBudget = new Prisma.Decimal(s);
+        if (maxTotalBudget.lte(0)) {
+          return fail(400, "BAD_REQUEST", "maxTotalBudget must be > 0");
+        }
+      }
+    }
+
+    let syncIntervalMin: number | undefined;
+    if (body.syncIntervalMin != null) {
+      const n = parseIntSafe(body.syncIntervalMin);
+      if (n == null || n < 1 || n > 60) {
+        return fail(400, "BAD_REQUEST", "syncIntervalMin must be integer 1..60");
+      }
+      syncIntervalMin = n;
+    }
+
+    // если keyId передан — проверяем, что это ключ текущего пользователя
+    if (keyId) {
+      const key = await prisma.userKey.findFirst({
+        where: { id: keyId, userId: user.id },
+        select: { id: true },
+      });
+
+      if (!key) {
+        return fail(404, "NOT_FOUND", "key not found");
+      }
+    }
+
+    // BotConfig должен существовать даже до запуска
+    const config = await prisma.botConfig.upsert({
       where: { userId: user.id },
+      create: {
+        user: { connect: { id: user.id } },
+        exchange: exchange ?? "BINANCE",
+        keyId: keyId ?? null,
+        enabled: false,
+        maxActiveSymbols: maxActiveSymbols ?? 10,
+        budgetPerSymbol: budgetPerSymbol ?? new Prisma.Decimal("50"),
+        maxTotalBudget: maxTotalBudget ?? null,
+        syncIntervalMin: syncIntervalMin ?? 5,
+      },
+      update: {
+        ...(exchange !== undefined ? { exchange } : {}),
+        ...(keyId !== undefined ? { keyId } : {}),
+        ...(maxActiveSymbols !== undefined ? { maxActiveSymbols } : {}),
+        ...(budgetPerSymbol !== undefined ? { budgetPerSymbol } : {}),
+        ...(maxTotalBudget !== undefined ? { maxTotalBudget } : {}),
+        ...(syncIntervalMin !== undefined ? { syncIntervalMin } : {}),
+      },
       select: {
         id: true,
         userId: true,
-        keyId: true,
         exchange: true,
+        keyId: true,
+        enabled: true,
+        maxActiveSymbols: true,
+        budgetPerSymbol: true,
+        maxTotalBudget: true,
+        syncIntervalMin: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
-    if (action === "reset") {
-      await prisma.botState.deleteMany({
-        where: { userId: user.id },
-      });
-
-      await prisma.botConfig.deleteMany({
-        where: { userId: user.id },
-      });
-
-      const bot = await loadBot(user.id);
-      return ok({ bot });
-    }
-
-    if (!config) {
-      return fail(404, "BOT_CONFIG_NOT_FOUND");
-    }
-
-    const key = await prisma.userKey.findFirst({
-      where: {
-        id: config.keyId,
-        userId: user.id,
-        exchange: config.exchange,
+    // создаём BotState, если его ещё нет
+    await prisma.botState.upsert({
+      where: { userId: user.id },
+      create: {
+        user: { connect: { id: user.id } },
+        status: "IDLE",
       },
-      select: { id: true },
+      update: {},
     });
 
-    if (!key) {
-      return fail(404, "KEY_NOT_FOUND");
-    }
-
-    if (action === "start") {
-      await Promise.all([
-        prisma.botConfig.update({
-          where: { userId: user.id },
-          data: { enabled: true },
-        }),
-        prisma.botState.upsert({
-          where: { userId: user.id },
-          create: {
-            userId: user.id,
-            status: "RUNNING",
-            lastError: null,
-            lastSyncAt: null,
-          },
-          update: {
-            status: "RUNNING",
-            lastError: null,
-          },
-        }),
-      ]);
-    }
-
-    if (action === "stop") {
-      await Promise.all([
-        prisma.botConfig.update({
-          where: { userId: user.id },
-          data: { enabled: false },
-        }),
-        prisma.botState.upsert({
-          where: { userId: user.id },
-          create: {
-            userId: user.id,
-            status: "STOPPED",
-            lastError: null,
-            lastSyncAt: null,
-          },
-          update: {
-            status: "STOPPED",
-          },
-        }),
-      ]);
-    }
-
-    const bot = await loadBot(user.id);
-
-    return ok({ bot });
-  } catch (e: any) {
+    return ok({
+      config: {
+        ...config,
+        budgetPerSymbol: config.budgetPerSymbol.toString(),
+        maxTotalBudget: config.maxTotalBudget?.toString() ?? null,
+      },
+    });
+  } catch (e: AnyJson) {
     const status = typeof e?.status === "number" ? e.status : 500;
-
-    return fail(status, status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR", {
-      message: e?.message ?? String(e),
-    });
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e)
+    );
   }
 }
