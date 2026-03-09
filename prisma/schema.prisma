@@ -7,217 +7,79 @@ datasource db {
 }
 
 model User {
-  id          String        @id @default(cuid())
-  tgId        BigInt        @unique
-  username    String?
-  firstName   String?
-  lastName    String?
-  createdAt   DateTime      @default(now())
-  lastSeenAt  DateTime      @default(now())
-  status      UserStatus    @default(ACTIVE)
-  updatedAt   DateTime      @default(now()) @updatedAt @db.Timestamptz(6)
+  id        String   @id @default(cuid())
+  tgId      BigInt   @unique
+  username  String?
+  firstName String?
+  lastName  String?
 
-  Profile     Profile?
-  sessions    Session[]
+  sessions  Session[]
+  settings  UserSettings?
+  keys      UserKey[]
+
   trades      Trade[]
   tradeEvents TradeEvent[]
-  keys        UserKey[]
-  settings    UserSettings?
 
-  // ✅ Bot control (NEW)
-  botConfig BotConfig?
-  botState  BotState?
-  positions BotPosition[]
+  // ✅ NEW
+  botConfig    BotConfig?
+  botState     BotState?
+  botPositions BotPosition[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Session {
   id        String   @id @default(cuid())
+  token     String   @unique
   userId    String
-  tokenHash String?  @unique
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-  token     String?  @default("")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model UserSettings {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  timezone  String   @default("UTC")
-  currency  String   @default("USD")
-  riskMode  String   @default("normal")
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-}
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-model UserKey {
-  id            String   @id @default(cuid())
-  userId        String
-  exchange      Exchange
-  label         String?
-  apiKey        String
-  secretEnc     String
-  passphraseEnc String?
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-
-  // legacy columns in DB
-  apiKeyEnc     String?
-  apiSecretEnc  String?
-
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  // ✅ Bot configs that use this key (NEW)
-  botConfigs BotConfig[]
-
-  @@unique([userId, exchange, apiKey])
-  @@index([userId])
-}
-
-model Profile {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  settings  Json     @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Trade {
-  id          String       @id @default(cuid())
-  userId      String
-  exchange    Exchange
-  symbol      String       @db.VarChar(32)
-  side        TradeSide
-  status      TradeStatus  @default(OPEN)
-  qty         Decimal      @db.Decimal(38, 18)
-  entryPrice  Decimal?     @db.Decimal(38, 18)
-  exitPrice   Decimal?     @db.Decimal(38, 18)
-  realizedPnl Decimal?     @db.Decimal(38, 18)
-  openedAt    DateTime     @default(now())
-  closedAt    DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @default(now()) @updatedAt
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  events      TradeEvent[]
-
-  @@index([userId])
-  @@index([userId, exchange])
-  @@index([userId, openedAt])
-  @@index([userId, status])
-}
-
-model TradeEvent {
-  id        String         @id @default(cuid())
-  userId    String
-  exchange  Exchange
-  type      TradeEventType
-  tradeId   String?
-  payload   Json
-  createdAt DateTime       @default(now())
-  trade     Trade?         @relation(fields: [tradeId], references: [id])
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([userId, exchange, createdAt])
-  @@index([tradeId])
-}
-
-//
-// ✅ Bot control layer (NEW)
-//
-
-enum BotRunStatus {
-  STOPPED
-  RUNNING
-  ERROR
-}
-
-enum BotPositionStatus {
-  OPEN
-  CLOSED
-}
-
-model BotConfig {
-  id      String   @id @default(cuid())
-  userId  String   @unique
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  exchange Exchange
-  keyId    String
-  key      UserKey  @relation(fields: [keyId], references: [id], onDelete: Restrict)
-
-  enabled  Boolean  @default(false)
-
-  // risk params (минимальный набор)
-  maxActiveSymbols Int     @default(10)
-  budgetPerSymbol  Decimal @default(0) @db.Decimal(38, 18)
-
-  // стратегия v1: сетка -5% и TP +5%
-  gridStepPct   Decimal @default(5) @db.Decimal(10, 4)
-  takeProfitPct Decimal @default(5) @db.Decimal(10, 4)
+  timezone String @default("UTC")
+  currency String @default("USD")
+  riskMode String @default("normal")
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  @@index([keyId])
-  @@index([exchange])
-}
-
-model BotState {
-  id        String       @id @default(cuid())
-  userId    String       @unique
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  status    BotRunStatus @default(STOPPED)
-  lastSyncAt DateTime?
-  lastError String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-}
-
-model BotPosition {
-  id        String            @id @default(cuid())
-  userId    String
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  exchange  Exchange
-  symbol    String            @db.VarChar(32)
-
-  status    BotPositionStatus @default(OPEN)
-
-  qty       Decimal           @db.Decimal(38, 18)
-  avgPrice  Decimal           @db.Decimal(38, 18)
-  tpPrice   Decimal           @db.Decimal(38, 18)
-
-  addsCount Int               @default(0)
-
-  openedAt  DateTime          @default(now())
-  closedAt  DateTime?
-
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @default(now()) @updatedAt
-
-  @@index([userId])
-  @@index([userId, exchange])
-  @@index([userId, status])
-  @@index([userId, symbol])
-}
-
-enum UserStatus {
-  ACTIVE
-  BANNED
+  updatedAt DateTime @updatedAt
 }
 
 enum Exchange {
   BINANCE
   BYBIT
   OKX
+}
+
+model UserKey {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange      Exchange
+  label         String?
+
+  apiKey        String
+  secretEnc     String
+  passphraseEnc String?
+
+  // ✅ NEW
+  botConfigs    BotConfig[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@unique([userId, exchange, label])
 }
 
 enum TradeSide {
@@ -239,4 +101,142 @@ enum TradeEventType {
   ORDER_PLACED
   ORDER_FILLED
   ORDER_CANCELED
+}
+
+model Trade {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange    Exchange
+  symbol      String      @db.VarChar(32)
+  side        TradeSide
+  status      TradeStatus @default(OPEN)
+
+  qty         Decimal     @db.Decimal(38, 18)
+  entryPrice  Decimal?    @db.Decimal(38, 18)
+  exitPrice   Decimal?    @db.Decimal(38, 18)
+  realizedPnl Decimal?    @db.Decimal(38, 18)
+
+  openedAt    DateTime    @default(now())
+  closedAt    DateTime?
+
+  events      TradeEvent[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([userId, exchange])
+  @@index([userId, openedAt])
+  @@index([userId, status])
+}
+
+model TradeEvent {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange  Exchange
+  type      TradeEventType
+
+  tradeId   String?
+  trade     Trade?         @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  payload   Json
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+  @@index([userId, exchange, createdAt])
+  @@index([tradeId])
+}
+
+//
+// ✅ NEW: Bot control layer
+// Стратегия одна.
+// Пользователь меняет только risk/capital config.
+//
+
+enum BotRunStatus {
+  IDLE
+  RUNNING
+  STOPPED
+  ERROR
+}
+
+enum BotPositionStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  ERROR
+}
+
+model BotConfig {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange         Exchange  @default(BINANCE)
+
+  // какой ключ использовать для бота
+  keyId            String?
+  key              UserKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
+
+  // бот включён/выключен
+  enabled          Boolean   @default(false)
+
+  // пользователь НЕ меняет стратегию, только риск-параметры
+  maxActiveSymbols Int       @default(10)
+  budgetPerSymbol  Decimal   @db.Decimal(38, 18)
+  maxTotalBudget   Decimal?  @db.Decimal(38, 18)
+
+  // задел под engine
+  syncIntervalMin  Int       @default(5)
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, exchange])
+  @@index([keyId])
+}
+
+model BotState {
+  id         String       @id @default(cuid())
+  userId     String       @unique
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status     BotRunStatus @default(IDLE)
+  lastSyncAt DateTime?
+  lastError  String?
+
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model BotPosition {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange    Exchange
+  symbol      String            @db.VarChar(32)
+  status      BotPositionStatus @default(OPEN)
+
+  avgPrice    Decimal           @db.Decimal(38, 18)
+  qty         Decimal           @db.Decimal(38, 18)
+  tpPrice     Decimal           @db.Decimal(38, 18)
+  addsCount   Int               @default(0)
+
+  openedAt    DateTime          @default(now())
+  closedAt    DateTime?
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, exchange])
+  @@index([userId, symbol])
 }
