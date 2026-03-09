@@ -5,35 +5,56 @@ import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-function sha256hex(input: string) {
+function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-export async function POST(req: Request) {
-  const cookie = req.headers.get("cookie") || "";
-  const token = cookie
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("session="))
-    ?.split("=")[1];
-
-  if (token) {
-    const tokenHash = sha256hex(token);
-
-    // ✅ Session unique key в текущей БД: tokenHash
-    await prisma.session.delete({ where: { tokenHash } }).catch(() => {});
+function getRawToken(req: Request) {
+  const auth = req.headers.get("authorization") || "";
+  if (auth.startsWith("Bearer ")) {
+    return auth.slice("Bearer ".length).trim();
   }
 
-  const res = NextResponse.json({ ok: true });
+  const cookie = req.headers.get("cookie") || "";
+  const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
+  if (match?.[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
 
-  // удаляем cookie
-  res.cookies.set("session", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
+  return "";
+}
 
-  return res;
+export async function POST(req: Request) {
+  try {
+    const rawToken = getRawToken(req);
+
+    if (rawToken) {
+      const tokenHash = sha256Hex(rawToken);
+
+      await prisma.session.deleteMany({
+        where: { token: tokenHash },
+      });
+    }
+
+    const res = NextResponse.json({ ok: true });
+
+    res.cookies.set("session", "", {
+      path: "/",
+      maxAge: 0,
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+
+    return res;
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || e) },
+      { status: 500 }
+    );
+  }
 }
