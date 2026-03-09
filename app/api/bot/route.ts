@@ -40,7 +40,6 @@ function parseDecimalString(v: unknown): string | null {
 }
 
 // GET /api/bot
-// Возвращает config + state + positions текущего пользователя
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
@@ -121,16 +120,6 @@ export async function GET(req: Request) {
 }
 
 // PATCH /api/bot
-// Обновляет только настройки пользователя, а НЕ логику стратегии
-// body:
-// {
-//   exchange?: "BINANCE" | "BYBIT" | "OKX",
-//   keyId?: string | null,
-//   maxActiveSymbols?: number,
-//   budgetPerSymbol?: string,
-//   maxTotalBudget?: string | null,
-//   syncIntervalMin?: number
-// }
 export async function PATCH(req: Request) {
   try {
     const user = await requireUser(req);
@@ -201,7 +190,7 @@ export async function PATCH(req: Request) {
       syncIntervalMin = n;
     }
 
-    // если keyId передан — проверяем, что это ключ текущего пользователя
+    // если keyId передан — проверяем, что ключ принадлежит текущему пользователю
     if (keyId) {
       const key = await prisma.userKey.findFirst({
         where: { id: keyId, userId: user.id },
@@ -213,11 +202,10 @@ export async function PATCH(req: Request) {
       }
     }
 
-    // BotConfig должен существовать даже до запуска
     const config = await prisma.botConfig.upsert({
       where: { userId: user.id },
       create: {
-        user: { connect: { id: user.id } },
+        userId: user.id,
         exchange: exchange ?? "BINANCE",
         keyId: keyId ?? null,
         enabled: false,
@@ -249,11 +237,10 @@ export async function PATCH(req: Request) {
       },
     });
 
-    // создаём BotState, если его ещё нет
     await prisma.botState.upsert({
       where: { userId: user.id },
       create: {
-        user: { connect: { id: user.id } },
+        userId: user.id,
         status: "IDLE",
       },
       update: {},
