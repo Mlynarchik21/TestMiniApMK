@@ -70,7 +70,6 @@ function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-// 32 bytes -> hex string (64 chars)
 function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("hex");
 }
@@ -107,13 +106,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // tg id as number for Telegram API call
     const tgIdNumber = Number(v.user.id);
     if (!Number.isFinite(tgIdNumber)) {
       return NextResponse.json({ ok: false, error: "bad_tg_id" }, { status: 400 });
     }
 
-    // tgId for Prisma as BigInt
     const tgId = BigInt(v.user.id);
 
     // 2) subscription check
@@ -154,8 +151,7 @@ export async function POST(req: Request) {
     await prisma.session.create({
       data: {
         userId: user.id,
-        tokenHash,
-        token: rawToken,
+        token: tokenHash,
         expiresAt,
       },
     });
