@@ -88,6 +88,7 @@ export default function BotPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [resp, setResp] = useState<AnyResp | null>(null);
   const [err, setErr] = useState("");
 
@@ -96,6 +97,7 @@ export default function BotPage() {
   const [config, setConfig] = useState<any>(null);
   const [state, setState] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
+
   const [stats, setStats] = useState<any>(null);
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [statsOpenPositions, setStatsOpenPositions] = useState<any[]>([]);
@@ -114,63 +116,74 @@ export default function BotPage() {
 
   async function loadKeys() {
     const r = await api("/api/keys", { method: "GET" });
-    setResp(r.json);
-
-    if (!r.json.ok) return;
-
-    const rows = ((r.json as any).keys ?? []) as KeyRow[];
-    setKeys(rows);
+    if (r.json.ok) {
+      const rows = ((r.json as any).keys ?? []) as KeyRow[];
+      setKeys(rows);
+    }
+    return r;
   }
 
   async function loadBot() {
-    setLoading(true);
-    setErr("");
+    const r = await api("/api/bot", { method: "GET" });
 
-    try {
-      const r = await api("/api/bot", { method: "GET" });
-      setResp(r.json);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      const c = (r.json as any).config ?? null;
-      const s = (r.json as any).state ?? null;
-      const p = (r.json as any).positions ?? [];
-
-      setConfig(c);
-      setState(s);
-      setPositions(p);
-
-      if (c) {
-        setExchange(c.exchange ?? "BINANCE");
-        setKeyId(c.keyId ?? "");
-        setMaxActiveSymbols(String(c.maxActiveSymbols ?? 10));
-        setBudgetPerSymbol(String(c.budgetPerSymbol ?? "50"));
-        setMaxTotalBudget(c.maxTotalBudget != null ? String(c.maxTotalBudget) : "");
-        setSyncIntervalMin(String(c.syncIntervalMin ?? 5));
-      }
-    } finally {
-      setLoading(false);
+    if (!r.json.ok) {
+      setErr(humanizeError(r.json));
+      return r;
     }
+
+    const c = (r.json as any).config ?? null;
+    const s = (r.json as any).state ?? null;
+    const p = (r.json as any).positions ?? [];
+
+    setConfig(c);
+    setState(s);
+    setPositions(p);
+
+    if (c) {
+      setExchange(c.exchange ?? "BINANCE");
+      setKeyId(c.keyId ?? "");
+      setMaxActiveSymbols(String(c.maxActiveSymbols ?? 10));
+      setBudgetPerSymbol(String(c.budgetPerSymbol ?? "50"));
+      setMaxTotalBudget(c.maxTotalBudget != null ? String(c.maxTotalBudget) : "");
+      setSyncIntervalMin(String(c.syncIntervalMin ?? 5));
+    }
+
+    return r;
   }
 
   async function loadStats() {
     const r = await api("/api/bot/stats", { method: "GET" });
-    setResp(r.json);
 
-    if (!r.json.ok) {
-      return;
+    if (r.json.ok) {
+      setStats((r.json as any).stats ?? null);
+      setRecentTrades(((r.json as any).recentTrades ?? []) as any[]);
+      setStatsOpenPositions(((r.json as any).openPositions ?? []) as any[]);
     }
 
-    setStats((r.json as any).stats ?? null);
-    setRecentTrades(((r.json as any).recentTrades ?? []) as any[]);
-    setStatsOpenPositions(((r.json as any).openPositions ?? []) as any[]);
+    return r;
   }
 
-  async function reloadAll() {
-    await Promise.all([loadKeys(), loadBot(), loadStats()]);
+  async function reloadAll(showGlobalLoader = false) {
+    if (showGlobalLoader) setPageLoading(true);
+    setErr("");
+
+    try {
+      const [keysRes, botRes, statsRes] = await Promise.all([loadKeys(), loadBot(), loadStats()]);
+
+      if (!botRes.json.ok) {
+        setResp(botRes.json);
+      } else if (!statsRes.json.ok) {
+        setResp(statsRes.json);
+      } else {
+        setResp(botRes.json);
+      }
+
+      if (!keysRes.json.ok && !botRes.json.ok) {
+        setErr(humanizeError(botRes.json));
+      }
+    } finally {
+      if (showGlobalLoader) setPageLoading(false);
+    }
   }
 
   async function saveConfig() {
@@ -191,11 +204,7 @@ export default function BotPage() {
         syncIntervalMin: Number(syncIntervalMin),
       };
 
-      if (maxTotalBudget.trim()) {
-        body.maxTotalBudget = maxTotalBudget.trim();
-      } else {
-        body.maxTotalBudget = null;
-      }
+      body.maxTotalBudget = maxTotalBudget.trim() ? maxTotalBudget.trim() : null;
 
       const r = await api("/api/bot", {
         method: "PATCH",
@@ -254,7 +263,15 @@ export default function BotPage() {
   }
 
   useEffect(() => {
-    reloadAll();
+    reloadAll(true);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      reloadAll(false);
+    }, 15000);
+
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -300,242 +317,281 @@ export default function BotPage() {
           </div>
         </div>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot status</div>
-
-          <div style={{ display: "grid", gap: 6, fontSize: 14 }}>
-            <div>
-              <b>Config enabled:</b> {config?.enabled ? "YES" : "NO"}
-            </div>
-            <div>
-              <b>Run status:</b> {state?.status ?? "IDLE"}
-            </div>
-            <div>
-              <b>Last sync:</b> {state?.lastSyncAt ?? "—"}
-            </div>
-            <div>
-              <b>Last error:</b> {state?.lastError ?? "—"}
-            </div>
-            <div>
-              <b>Active positions:</b> {positions.length}
-            </div>
+        {pageLoading ? (
+          <div style={card()}>
+            <div style={{ opacity: 0.7 }}>Loading bot dashboard...</div>
           </div>
+        ) : (
+          <>
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot status</div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <button disabled={loading} onClick={startBot} style={btnPrimary(loading)}>
-              {loading ? "..." : "Start bot"}
-            </button>
-            <button disabled={loading} onClick={stopBot} style={btnDanger()}>
-              Stop bot
-            </button>
-          </div>
-        </div>
+              <div style={{ display: "grid", gap: 6, fontSize: 14 }}>
+                <div>
+                  <b>Config enabled:</b> {config?.enabled ? "YES" : "NO"}
+                </div>
+                <div>
+                  <b>Run status:</b> {state?.status ?? "IDLE"}
+                </div>
+                <div>
+                  <b>Last sync:</b> {state?.lastSyncAt ?? "—"}
+                </div>
+                <div>
+                  <b>Last error:</b> {state?.lastError ?? "—"}
+                </div>
+                <div>
+                  <b>Active positions:</b> {positions.length}
+                </div>
+              </div>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot statistics</div>
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <button disabled={loading} onClick={startBot} style={btnPrimary(loading)}>
+                  {loading ? "..." : "Start bot"}
+                </button>
+                <button disabled={loading} onClick={stopBot} style={btnDanger()}>
+                  Stop bot
+                </button>
+              </div>
+            </div>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 10,
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-            }}
-          >
-            <StatCard title="Total PnL" value={formatUsd(stats?.totalPnl ?? 0)} color={pnlColor(stats?.totalPnl)} />
-            <StatCard title="PnL Today" value={formatUsd(stats?.pnlToday ?? 0)} color={pnlColor(stats?.pnlToday)} />
-            <StatCard title="PnL 7d" value={formatUsd(stats?.pnl7d ?? 0)} color={pnlColor(stats?.pnl7d)} />
-            <StatCard title="PnL 30d" value={formatUsd(stats?.pnl30d ?? 0)} color={pnlColor(stats?.pnl30d)} />
-            <StatCard title="Win rate" value={formatPct(stats?.winRate ?? 0)} />
-            <StatCard title="Closed trades" value={formatNum(stats?.closedTrades ?? 0, 0)} />
-            <StatCard title="Open positions" value={formatNum(stats?.openPositions ?? 0, 0)} />
-            <StatCard title="Capital in work" value={formatUsd(stats?.capitalInWork ?? 0)} />
-            <StatCard title="Avg trade PnL" value={formatUsd(stats?.avgTradePnl ?? 0)} color={pnlColor(stats?.avgTradePnl)} />
-            <StatCard title="Best trade" value={formatUsd(stats?.bestTradePnl ?? 0)} color={pnlColor(stats?.bestTradePnl)} />
-            <StatCard title="Worst trade" value={formatUsd(stats?.worstTradePnl ?? 0)} color={pnlColor(stats?.worstTradePnl)} />
-          </div>
-        </div>
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot statistics</div>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot config</div>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                }}
+              >
+                <StatCard
+                  title="Total PnL"
+                  value={formatUsd(stats?.totalPnl ?? 0)}
+                  color={pnlColor(stats?.totalPnl)}
+                />
+                <StatCard
+                  title="PnL Today"
+                  value={formatUsd(stats?.pnlToday ?? 0)}
+                  color={pnlColor(stats?.pnlToday)}
+                />
+                <StatCard
+                  title="PnL 7d"
+                  value={formatUsd(stats?.pnl7d ?? 0)}
+                  color={pnlColor(stats?.pnl7d)}
+                />
+                <StatCard
+                  title="PnL 30d"
+                  value={formatUsd(stats?.pnl30d ?? 0)}
+                  color={pnlColor(stats?.pnl30d)}
+                />
+                <StatCard title="Win rate" value={formatPct(stats?.winRate ?? 0)} />
+                <StatCard title="Closed trades" value={formatNum(stats?.closedTrades ?? 0, 0)} />
+                <StatCard title="Open positions" value={formatNum(stats?.openPositions ?? 0, 0)} />
+                <StatCard
+                  title="Capital in work"
+                  value={formatUsd(stats?.capitalInWork ?? 0)}
+                />
+                <StatCard
+                  title="Avg trade PnL"
+                  value={formatUsd(stats?.avgTradePnl ?? 0)}
+                  color={pnlColor(stats?.avgTradePnl)}
+                />
+                <StatCard
+                  title="Best trade"
+                  value={formatUsd(stats?.bestTradePnl ?? 0)}
+                  color={pnlColor(stats?.bestTradePnl)}
+                />
+                <StatCard
+                  title="Worst trade"
+                  value={formatUsd(stats?.worstTradePnl ?? 0)}
+                  color={pnlColor(stats?.worstTradePnl)}
+                />
+              </div>
+            </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
-            <select value={exchange} onChange={(e) => setExchange(e.target.value)} style={input()}>
-              <option value="BINANCE">BINANCE</option>
-              <option value="BYBIT">BYBIT</option>
-              <option value="OKX">OKX</option>
-            </select>
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot config</div>
 
-            <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
-              <option value="">Select API key</option>
-              {filteredKeys.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
-                </option>
-              ))}
-            </select>
+              <div style={{ display: "grid", gap: 8 }}>
+                <select value={exchange} onChange={(e) => setExchange(e.target.value)} style={input()}>
+                  <option value="BINANCE">BINANCE</option>
+                  <option value="BYBIT">BYBIT</option>
+                  <option value="OKX">OKX</option>
+                </select>
 
-            {!filteredKeys.length && (
-              <div style={{ opacity: 0.7, fontSize: 13 }}>
-                Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
+                <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
+                  <option value="">Select API key</option>
+                  {filteredKeys.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+
+                {!filteredKeys.length && (
+                  <div style={{ opacity: 0.7, fontSize: 13 }}>
+                    Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
+                  </div>
+                )}
+
+                <input
+                  value={maxActiveSymbols}
+                  onChange={(e) => setMaxActiveSymbols(e.target.value)}
+                  placeholder="maxActiveSymbols (1..10)"
+                  style={input()}
+                />
+
+                <input
+                  value={budgetPerSymbol}
+                  onChange={(e) => setBudgetPerSymbol(e.target.value)}
+                  placeholder="budgetPerSymbol"
+                  style={input()}
+                />
+
+                <input
+                  value={maxTotalBudget}
+                  onChange={(e) => setMaxTotalBudget(e.target.value)}
+                  placeholder="maxTotalBudget (optional)"
+                  style={input()}
+                />
+
+                <input
+                  value={syncIntervalMin}
+                  onChange={(e) => setSyncIntervalMin(e.target.value)}
+                  placeholder="syncIntervalMin (1..60)"
+                  style={input()}
+                />
+
+                <button disabled={!canSave} onClick={saveConfig} style={btnPrimary(!canSave)}>
+                  {loading ? "..." : "Save config"}
+                </button>
+              </div>
+            </div>
+
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Active positions</div>
+
+              {!positions.length ? (
+                <div style={{ opacity: 0.7 }}>Пока пусто. Trading Engine ещё не подключён.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {positions.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>
+                        {p.exchange} · {p.symbol} · {p.status}
+                      </div>
+                      <div style={{ fontSize: 13, opacity: 0.9 }}>
+                        avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
+                      </div>
+                      <div style={{ fontSize: 13, opacity: 0.9 }}>
+                        investedQuote: {p.investedQuote ?? "0"}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        addsCount: {p.addsCount} · openedAt: {p.openedAt}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Open positions snapshot</div>
+
+              {!statsOpenPositions.length ? (
+                <div style={{ opacity: 0.7 }}>Нет открытых позиций.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {statsOpenPositions.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>{p.symbol}</div>
+                      <div style={{ fontSize: 13, opacity: 0.9 }}>
+                        avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
+                      </div>
+                      <div style={{ fontSize: 13, opacity: 0.9 }}>
+                        investedQuote: {p.investedQuote}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        addsCount: {p.addsCount} · openedAt: {p.openedAt}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Recent closed trades</div>
+
+              {!recentTrades.length ? (
+                <div style={{ opacity: 0.7 }}>Закрытых сделок пока нет.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {recentTrades.map((t) => (
+                    <div
+                      key={t.id}
+                      style={{
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800 }}>
+                          {t.exchange} · {t.symbol}
+                        </div>
+                        <div style={{ fontWeight: 900, color: pnlColor(t.pnl) }}>
+                          {formatUsd(t.pnl)} · {formatPct(t.pnlPercent)}
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
+                        entryValue: {t.entryValue} · exitValue: {t.exitValue}
+                      </div>
+                      <div style={{ fontSize: 13, opacity: 0.9 }}>
+                        avgEntryPrice: {t.avgEntryPrice} · exitPrice: {t.exitPrice}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        qty: {t.qty} · addsCount: {t.addsCount} · closeReason: {t.closeReason}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        openedAt: {t.openedAt} · closedAt: {t.closedAt}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {err && (
+              <div style={errorBox()}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Ошибка</div>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{err}</pre>
               </div>
             )}
 
-            <input
-              value={maxActiveSymbols}
-              onChange={(e) => setMaxActiveSymbols(e.target.value)}
-              placeholder="maxActiveSymbols (1..10)"
-              style={input()}
-            />
-
-            <input
-              value={budgetPerSymbol}
-              onChange={(e) => setBudgetPerSymbol(e.target.value)}
-              placeholder="budgetPerSymbol"
-              style={input()}
-            />
-
-            <input
-              value={maxTotalBudget}
-              onChange={(e) => setMaxTotalBudget(e.target.value)}
-              placeholder="maxTotalBudget (optional)"
-              style={input()}
-            />
-
-            <input
-              value={syncIntervalMin}
-              onChange={(e) => setSyncIntervalMin(e.target.value)}
-              placeholder="syncIntervalMin (1..60)"
-              style={input()}
-            />
-
-            <button disabled={!canSave} onClick={saveConfig} style={btnPrimary(!canSave)}>
-              {loading ? "..." : "Save config"}
-            </button>
-          </div>
-        </div>
-
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Active positions</div>
-
-          {!positions.length ? (
-            <div style={{ opacity: 0.7 }}>Пока пусто. Trading Engine ещё не подключён.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {positions.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <div style={{ fontWeight: 800 }}>
-                    {p.exchange} · {p.symbol} · {p.status}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    investedQuote: {p.investedQuote ?? "0"}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    addsCount: {p.addsCount} · openedAt: {p.openedAt}
-                  </div>
-                </div>
-              ))}
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Last response</div>
+              <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                {resp ? JSON.stringify(resp, null, 2) : "—"}
+              </pre>
             </div>
-          )}
-        </div>
-
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Open positions snapshot</div>
-
-          {!statsOpenPositions.length ? (
-            <div style={{ opacity: 0.7 }}>Нет открытых позиций.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {statsOpenPositions.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <div style={{ fontWeight: 800 }}>{p.symbol}</div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    investedQuote: {p.investedQuote}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    addsCount: {p.addsCount} · openedAt: {p.openedAt}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Recent closed trades</div>
-
-          {!recentTrades.length ? (
-            <div style={{ opacity: 0.7 }}>Закрытых сделок пока нет.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {recentTrades.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontWeight: 800 }}>
-                      {t.exchange} · {t.symbol}
-                    </div>
-                    <div style={{ fontWeight: 900, color: pnlColor(t.pnl) }}>
-                      {formatUsd(t.pnl)} · {formatPct(t.pnlPercent)}
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
-                    entryValue: {t.entryValue} · exitValue: {t.exitValue}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    avgEntryPrice: {t.avgEntryPrice} · exitPrice: {t.exitPrice}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    qty: {t.qty} · addsCount: {t.addsCount} · closeReason: {t.closeReason}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    openedAt: {t.openedAt} · closedAt: {t.closedAt}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {err && (
-          <div style={errorBox()}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Ошибка</div>
-            <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{err}</pre>
-          </div>
+          </>
         )}
-
-        <div style={card()}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>Last response</div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-            {resp ? JSON.stringify(resp, null, 2) : "—"}
-          </pre>
-        </div>
       </div>
     </main>
   );
