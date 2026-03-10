@@ -30,24 +30,15 @@ export async function GET(req: Request) {
 
     const [openPositions, recentTrades, allTrades] = await Promise.all([
       prisma.botPosition.findMany({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-        },
+        where: { userId: user.id, status: "OPEN" },
       }),
-
       prisma.botTrade.findMany({
-        where: {
-          userId: user.id,
-        },
+        where: { userId: user.id },
         orderBy: { closedAt: "desc" },
         take: 20,
       }),
-
       prisma.botTrade.findMany({
-        where: {
-          userId: user.id,
-        },
+        where: { userId: user.id },
       }),
     ]);
 
@@ -69,10 +60,7 @@ export async function GET(req: Request) {
     const winRate = closedTrades ? (profitableTrades / closedTrades) * 100 : 0;
     const avgTradePnl = closedTrades ? totalPnl / closedTrades : 0;
 
-    const capitalInWork = openPositions.reduce(
-      (s, p) => s + toNum(p.investedQuote),
-      0
-    );
+    const capitalInWork = openPositions.reduce((s, p) => s + toNum(p.investedQuote), 0);
 
     return NextResponse.json({
       ok: true,
@@ -94,11 +82,7 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "SERVER_ERROR",
-        message: e?.message ?? String(e),
-      },
+      { ok: false, error: "SERVER_ERROR", message: e?.message ?? String(e) },
       { status: 500 }
     );
   }
