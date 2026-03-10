@@ -85,6 +85,7 @@ export async function GET(req: Request) {
           qty: true,
           tpPrice: true,
           addsCount: true,
+          investedQuote: true,
           openedAt: true,
           closedAt: true,
           createdAt: true,
@@ -107,6 +108,7 @@ export async function GET(req: Request) {
         avgPrice: p.avgPrice.toString(),
         qty: p.qty.toString(),
         tpPrice: p.tpPrice.toString(),
+        investedQuote: p.investedQuote.toString(),
       })),
     });
   } catch (e: AnyJson) {
@@ -190,7 +192,6 @@ export async function PATCH(req: Request) {
       syncIntervalMin = n;
     }
 
-    // если keyId передан — проверяем, что ключ принадлежит текущему пользователю
     if (keyId) {
       const key = await prisma.userKey.findFirst({
         where: { id: keyId, userId: user.id },
