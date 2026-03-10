@@ -6,8 +6,9 @@ import { decryptString } from "@/lib/crypto/secretBox";
 
 export const runtime = "nodejs";
 
-// ✅ Важно: без /api в base
 const BINANCE_TESTNET_BASE = "https://testnet.binance.vision";
+const CMC_LISTINGS_URL =
+  "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
 
 const STABLE_ASSETS = new Set([
   "USDT",
@@ -20,8 +21,30 @@ const STABLE_ASSETS = new Set([
 
 type AnyJson = any;
 
+type CmcCoin = {
+  id: number;
+  name: string;
+  symbol: string;
+  cmc_rank: number;
+  quote?: {
+    USD?: {
+      market_cap?: number;
+    };
+  };
+};
+
+type BinanceTicker24h = {
+  symbol: string;
+  priceChangePercent: string;
+};
+
 function sign(query: string, secret: string) {
   return crypto.createHmac("sha256", secret).update(query).digest("hex");
+}
+
+function toNum(v: unknown) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 async function binanceServerTime(): Promise<number> {
@@ -82,9 +105,59 @@ async function binanceSpotTestnetAccount(apiKey: string, apiSecret: string) {
   return json;
 }
 
-function toNum(v: unknown) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+async function binanceTicker24hAll(): Promise<BinanceTicker24h[]> {
+  const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/ticker/24hr`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok) {
+    throw new Error(json?.msg || text || `Binance ticker error: ${r.status}`);
+  }
+
+  return Array.isArray(json) ? (json as BinanceTicker24h[]) : [];
+}
+
+async function cmcTop100(): Promise<CmcCoin[]> {
+  const apiKey = process.env.CMC_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("CMC_API_KEY missing");
+  }
+
+  const url = new URL(CMC_LISTINGS_URL);
+  url.searchParams.set("start", "1");
+  url.searchParams.set("limit", "100");
+  url.searchParams.set("convert", "USD");
+  url.searchParams.set("sort", "market_cap");
+  url.searchParams.set("sort_dir", "desc");
+
+  const r = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "X-CMC_PRO_API_KEY": apiKey,
+      Accept: "application/json",
+    },
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok) {
+    throw new Error(json?.status?.error_message || text || `CMC error: ${r.status}`);
+  }
+
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  return rows as CmcCoin[];
 }
 
 function calcStableBalances(account: AnyJson) {
@@ -177,6 +250,61 @@ async function getLastEntryAt(userId: string) {
 
 function minutesDiff(from: Date, to: Date) {
   return Math.floor((to.getTime() - from.getTime()) / 1000 / 60);
+}
+
+function pickCandidate(cmcCoins: CmcCoin[], tickers: BinanceTicker24h[]) {
+  const tickerMap = new Map<string, BinanceTicker24h>();
+
+  for (const t of tickers) {
+    tickerMap.set(String(t.symbol), t);
+  }
+
+  const candidates: Array<{
+    symbol: string;
+    baseSymbol: string;
+    marketCap: number;
+    rank: number;
+    priceChangePercent: number;
+    cmcId: number;
+    name: string;
+  }> = [];
+
+  for (const coin of cmcCoins) {
+    const baseSymbol = String(coin.symbol || "").toUpperCase().trim();
+    if (!baseSymbol) continue;
+    if (STABLE_ASSETS.has(baseSymbol)) continue;
+
+    const pair = `${baseSymbol}USDT`;
+    const ticker = tickerMap.get(pair);
+    if (!ticker) continue;
+
+    const drop24h = toNum(ticker.priceChangePercent);
+    if (drop24h > -10) continue;
+
+    const marketCap = toNum(coin.quote?.USD?.market_cap);
+
+    candidates.push({
+      symbol: pair,
+      baseSymbol,
+      marketCap,
+      rank: toNum(coin.cmc_rank),
+      priceChangePercent: drop24h,
+      cmcId: toNum(coin.id),
+      name: String(coin.name || baseSymbol),
+    });
+  }
+
+  candidates.sort((a, b) => {
+    if (b.marketCap !== a.marketCap) return b.marketCap - a.marketCap;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.symbol.localeCompare(b.symbol);
+  });
+
+  return {
+    candidate: candidates[0] ?? null,
+    candidatesCount: candidates.length,
+    top5: candidates.slice(0, 5),
+  };
 }
 
 async function runEngineTick() {
@@ -354,8 +482,30 @@ async function runEngineTick() {
         continue;
       }
 
-      // На этом шаге только подтверждаем готовность к market scan.
-      await finishCycle(cycleId, "SUCCESS", "ready for market scan", {
+      const cmcCoins = await cmcTop100();
+      const tickers = await binanceTicker24hAll();
+      const scan = pickCandidate(cmcCoins, tickers);
+
+      if (!scan.candidate) {
+        await finishCycle(cycleId, "SKIPPED", "no market candidate found", {
+          activePositions,
+          totalStable: stable.totalStable,
+          freeStable: stable.freeStable,
+          candidatesCount: scan.candidatesCount,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "no market candidate found",
+          candidatesCount: scan.candidatesCount,
+        });
+        continue;
+      }
+
+      await finishCycle(cycleId, "SUCCESS", "candidate found", {
         activePositions,
         totalStable: stable.totalStable,
         freeStable: stable.freeStable,
@@ -363,6 +513,8 @@ async function runEngineTick() {
         budgetPerSymbol: bot.budgetPerSymbol.toString(),
         maxTotalBudget: bot.maxTotalBudget?.toString() ?? null,
         syncIntervalMin: bot.syncIntervalMin,
+        candidate: scan.candidate,
+        top5: scan.top5,
       });
 
       results.push({
@@ -370,8 +522,10 @@ async function runEngineTick() {
         exchange: bot.exchange,
         cycleId,
         status: "SUCCESS",
-        message: "ready for market scan",
+        message: "candidate found",
         balances: stable,
+        candidate: scan.candidate,
+        top5: scan.top5,
       });
     } catch (e: any) {
       if (cycleId) {
