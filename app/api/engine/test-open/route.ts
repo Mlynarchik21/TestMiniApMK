@@ -494,6 +494,7 @@ async function runTestOpen(req: Request) {
       qty: new Prisma.Decimal(executedQty.toFixed(18)),
       tpPrice: new Prisma.Decimal(Number(tpPrice).toFixed(18)),
       addsCount: 0,
+      investedQuote: new Prisma.Decimal(quoteSpent.toFixed(18)),
     },
     select: {
       id: true,
@@ -505,6 +506,7 @@ async function runTestOpen(req: Request) {
       qty: true,
       tpPrice: true,
       addsCount: true,
+      investedQuote: true,
       openedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -526,6 +528,7 @@ async function runTestOpen(req: Request) {
     meta: {
       symbol,
       firstOrderUsdt,
+      quoteSpent,
       rawOrder: marketOrder,
     },
     placedAt: true,
@@ -653,6 +656,7 @@ async function runTestOpen(req: Request) {
       avgPrice: position.avgPrice.toString(),
       qty: position.qty.toString(),
       tpPrice: position.tpPrice.toString(),
+      investedQuote: position.investedQuote.toString(),
     },
     entryOrder: {
       symbol: marketOrder?.symbol ?? symbol,
