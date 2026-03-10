@@ -6,9 +6,12 @@ export const runtime = "nodejs";
 
 function isAuthorized(req: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim();
+
+  // если секрет не задан — разрешаем
   if (!cronSecret) return true;
 
   const authHeader = req.headers.get("authorization") || "";
+
   const bearer = authHeader.startsWith("Bearer ")
     ? authHeader.slice("Bearer ".length).trim()
     : "";
@@ -17,8 +20,17 @@ function isAuthorized(req: Request) {
 }
 
 async function runEngine() {
-  const tick = await runEngineTick();
-  const manage = await runManage();
+  const tick = await runEngineTick().catch((e) => ({
+    ok: false,
+    error: "TICK_ERROR",
+    message: String(e?.message || e),
+  }));
+
+  const manage = await runManage().catch((e) => ({
+    ok: false,
+    error: "MANAGE_ERROR",
+    message: String(e?.message || e),
+  }));
 
   return {
     ok: true,
