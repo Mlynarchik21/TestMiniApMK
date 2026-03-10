@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type AnyResp =
@@ -69,16 +69,27 @@ export default function BotPage() {
   const [maxTotalBudget, setMaxTotalBudget] = useState("");
   const [syncIntervalMin, setSyncIntervalMin] = useState("5");
 
+  const filteredKeys = useMemo(
+    () => keys.filter((k) => k.exchange === exchange),
+    [keys, exchange]
+  );
+
   async function loadKeys() {
     const r = await api("/api/keys", { method: "GET" });
-    if (r.json.ok) {
-      setKeys(((r.json as any).keys ?? []) as KeyRow[]);
+    setResp(r.json);
+
+    if (!r.json.ok) {
+      return;
     }
+
+    const rows = ((r.json as any).keys ?? []) as KeyRow[];
+    setKeys(rows);
   }
 
   async function loadBot() {
     setLoading(true);
     setErr("");
+
     try {
       const r = await api("/api/bot", { method: "GET" });
       setResp(r.json);
@@ -110,12 +121,18 @@ export default function BotPage() {
   }
 
   async function saveConfig() {
+    if (!keyId) {
+      setErr("Сначала выбери API key");
+      return;
+    }
+
     setLoading(true);
     setErr("");
+
     try {
       const body: any = {
         exchange,
-        keyId: keyId || null,
+        keyId,
         maxActiveSymbols: Number(maxActiveSymbols),
         budgetPerSymbol,
         syncIntervalMin: Number(syncIntervalMin),
@@ -148,6 +165,7 @@ export default function BotPage() {
   async function startBot() {
     setLoading(true);
     setErr("");
+
     try {
       const r = await api("/api/bot/start", { method: "POST" });
       setResp(r.json);
@@ -166,6 +184,7 @@ export default function BotPage() {
   async function stopBot() {
     setLoading(true);
     setErr("");
+
     try {
       const r = await api("/api/bot/stop", { method: "POST" });
       setResp(r.json);
@@ -185,6 +204,28 @@ export default function BotPage() {
     loadKeys();
     loadBot();
   }, []);
+
+  // Если ключи загрузились позже, а keyId пустой — выберем первый ключ текущей биржи
+  useEffect(() => {
+    if (!keyId && filteredKeys.length > 0) {
+      setKeyId(filteredKeys[0].id);
+    }
+  }, [filteredKeys, keyId]);
+
+  // Если биржу сменили, а текущий keyId не подходит — выберем первый доступный
+  useEffect(() => {
+    if (!filteredKeys.length) {
+      setKeyId("");
+      return;
+    }
+
+    const existsInCurrentExchange = filteredKeys.some((k) => k.id === keyId);
+    if (!existsInCurrentExchange) {
+      setKeyId(filteredKeys[0].id);
+    }
+  }, [exchange, filteredKeys, keyId]);
+
+  const canSave = !loading && !!keyId;
 
   return (
     <main
@@ -252,14 +293,18 @@ export default function BotPage() {
 
             <select value={keyId} onChange={(e) => setKeyId(e.target.value)} style={input()}>
               <option value="">Select API key</option>
-              {keys
-                .filter((k) => k.exchange === exchange)
-                .map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
-                  </option>
-                ))}
+              {filteredKeys.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
+                </option>
+              ))}
             </select>
+
+            {!filteredKeys.length && (
+              <div style={{ opacity: 0.7, fontSize: 13 }}>
+                Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
+              </div>
+            )}
 
             <input
               value={maxActiveSymbols}
@@ -289,7 +334,7 @@ export default function BotPage() {
               style={input()}
             />
 
-            <button disabled={loading} onClick={saveConfig} style={btnPrimary(loading)}>
+            <button disabled={!canSave} onClick={saveConfig} style={btnPrimary(!canSave)}>
               {loading ? "..." : "Save config"}
             </button>
           </div>
