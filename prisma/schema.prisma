@@ -20,10 +20,11 @@ model User {
   trades      Trade[]
   tradeEvents TradeEvent[]
 
-  // ✅ NEW
+  // ✅ Bot
   botConfig    BotConfig?
   botState     BotState?
   botPositions BotPosition[]
+  botTrades    BotTrade[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -72,7 +73,6 @@ model UserKey {
   secretEnc     String
   passphraseEnc String?
 
-  // ✅ NEW
   botConfigs    BotConfig[]
 
   createdAt     DateTime @default(now())
@@ -152,9 +152,7 @@ model TradeEvent {
 }
 
 //
-// ✅ NEW: Bot control layer
-// Стратегия одна.
-// Пользователь меняет только risk/capital config.
+// ✅ Bot control layer
 //
 
 enum BotRunStatus {
@@ -171,6 +169,13 @@ enum BotPositionStatus {
   ERROR
 }
 
+enum BotCloseReason {
+  TP
+  MANUAL
+  STOP
+  OTHER
+}
+
 model BotConfig {
   id               String    @id @default(cuid())
   userId           String    @unique
@@ -178,19 +183,15 @@ model BotConfig {
 
   exchange         Exchange  @default(BINANCE)
 
-  // какой ключ использовать для бота
   keyId            String?
   key              UserKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
 
-  // бот включён/выключен
   enabled          Boolean   @default(false)
 
-  // пользователь НЕ меняет стратегию, только риск-параметры
   maxActiveSymbols Int       @default(10)
   budgetPerSymbol  Decimal   @db.Decimal(38, 18)
   maxTotalBudget   Decimal?  @db.Decimal(38, 18)
 
-  // задел под engine
   syncIntervalMin  Int       @default(5)
 
   createdAt        DateTime  @default(now())
@@ -216,27 +217,69 @@ model BotState {
 }
 
 model BotPosition {
-  id          String            @id @default(cuid())
-  userId      String
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  exchange    Exchange
-  symbol      String            @db.VarChar(32)
-  status      BotPositionStatus @default(OPEN)
+  exchange      Exchange
+  symbol        String            @db.VarChar(32)
+  status        BotPositionStatus @default(OPEN)
 
-  avgPrice    Decimal           @db.Decimal(38, 18)
-  qty         Decimal           @db.Decimal(38, 18)
-  tpPrice     Decimal           @db.Decimal(38, 18)
-  addsCount   Int               @default(0)
+  avgPrice      Decimal           @db.Decimal(38, 18)
+  qty           Decimal           @db.Decimal(38, 18)
+  tpPrice       Decimal           @db.Decimal(38, 18)
+  addsCount     Int               @default(0)
 
-  openedAt    DateTime          @default(now())
-  closedAt    DateTime?
+  // ✅ сколько всего USDT реально вложено в позицию
+  investedQuote Decimal           @default(0) @db.Decimal(38, 18)
 
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  openedAt      DateTime          @default(now())
+  closedAt      DateTime?
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  trades        BotTrade[]
 
   @@index([userId])
   @@index([userId, status])
   @@index([userId, exchange])
   @@index([userId, symbol])
+  @@index([userId, exchange, symbol, status])
+}
+
+model BotTrade {
+  id             String          @id @default(cuid())
+
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  botPositionId  String?
+  botPosition    BotPosition?    @relation(fields: [botPositionId], references: [id], onDelete: SetNull)
+
+  exchange       Exchange
+  symbol         String          @db.VarChar(32)
+
+  entryValue     Decimal         @db.Decimal(38, 18)
+  exitValue      Decimal         @db.Decimal(38, 18)
+
+  qty            Decimal         @db.Decimal(38, 18)
+  avgEntryPrice  Decimal         @db.Decimal(38, 18)
+  exitPrice      Decimal         @db.Decimal(38, 18)
+
+  pnl            Decimal         @db.Decimal(38, 18)
+  pnlPercent     Decimal         @db.Decimal(38, 18)
+
+  addsCount      Int             @default(0)
+  closeReason    BotCloseReason  @default(TP)
+
+  openedAt       DateTime
+  closedAt       DateTime
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId, closedAt])
+  @@index([userId, symbol, closedAt])
+  @@index([userId, exchange, closedAt])
 }
