@@ -4,29 +4,35 @@ import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
 
 const BINANCE_TESTNET_BASE = "https://testnet.binance.vision";
+const CMC_LISTINGS_URL =
+  "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
+
+const STABLE_ASSETS = new Set([
+  "USDT",
+  "USDC",
+  "FDUSD",
+  "TUSD",
+  "BUSD",
+  "USDP",
+]);
 
 type AnyJson = any;
 
-type SymbolFilters = {
-  tickSize: number;
-  stepSize: number;
-  minQty: number;
+type CmcCoin = {
+  id: number;
+  name: string;
+  symbol: string;
+  cmc_rank: number;
+  quote?: {
+    USD?: {
+      market_cap?: number;
+    };
+  };
 };
 
-type RawBotOrder = {
-  id: string;
-  userId: string;
-  botPositionId: string | null;
-  exchange: string;
+type BinanceTicker24h = {
   symbol: string;
-  kind: "ENTRY" | "GRID" | "TP";
-  side: "BUY" | "SELL";
-  status: string;
-  price: string | null;
-  qty: string;
-  exchangeOrderId: string | null;
-  clientOrderId: string | null;
-  meta: AnyJson;
+  priceChangePercent: string;
 };
 
 function sign(query: string, secret: string) {
@@ -36,22 +42,6 @@ function sign(query: string, secret: string) {
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
-}
-
-function floorToStep(value: number, step: number) {
-  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
-  return Math.floor(value / step) * step;
-}
-
-function decimalsFromStep(step: number) {
-  const s = String(step);
-  if (!s.includes(".")) return 0;
-  return s.split(".")[1].replace(/0+$/, "").length;
-}
-
-function formatByStep(value: number, step: number) {
-  const d = decimalsFromStep(step);
-  return floorToStep(value, step).toFixed(d);
 }
 
 async function binanceServerTime(): Promise<number> {
@@ -66,19 +56,36 @@ async function binanceServerTime(): Promise<number> {
     json = JSON.parse(text);
   } catch {}
 
-  if (!r.ok) throw new Error(json?.msg || text || `Binance time error: ${r.status}`);
+  if (!r.ok) {
+    throw new Error(json?.msg || text || `Binance time error: ${r.status}`);
+  }
 
   const t = Number(json?.serverTime);
-  if (!Number.isFinite(t)) throw new Error("Binance serverTime missing");
+  if (!Number.isFinite(t)) {
+    throw new Error("Binance serverTime missing");
+  }
+
   return t;
 }
 
-async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
+async function binanceSpotTestnetAccount(apiKey: string, apiSecret: string) {
+  const serverTime = await binanceServerTime();
+
+  const qs = new URLSearchParams({
+    timestamp: String(serverTime),
+    recvWindow: "10000",
+  }).toString();
+
+  const signature = sign(qs, apiSecret);
+
   const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`,
+    `${BINANCE_TESTNET_BASE}/api/v3/account?${qs}&signature=${signature}`,
     {
       method: "GET",
       cache: "no-store",
+      headers: {
+        "X-MBX-APIKEY": apiKey,
+      },
     }
   );
 
@@ -88,550 +95,228 @@ async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
     json = JSON.parse(text);
   } catch {}
 
-  if (!r.ok) throw new Error(json?.msg || text || `exchangeInfo error: ${r.status}`);
+  if (!r.ok) {
+    throw new Error(json?.msg || text || `Binance account error: ${r.status}`);
+  }
 
-  const sym = Array.isArray(json?.symbols) ? json.symbols[0] : null;
-  if (!sym) throw new Error(`symbol ${symbol} not found in exchangeInfo`);
+  return json;
+}
 
-  const filters = Array.isArray(sym?.filters) ? sym.filters : [];
-  const priceFilter = filters.find((f: AnyJson) => f?.filterType === "PRICE_FILTER");
-  const lotSize = filters.find((f: AnyJson) => f?.filterType === "LOT_SIZE");
+async function binanceTicker24hAll(): Promise<BinanceTicker24h[]> {
+  const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/ticker/24hr`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok) {
+    throw new Error(json?.msg || text || `Binance ticker error: ${r.status}`);
+  }
+
+  return Array.isArray(json) ? (json as BinanceTicker24h[]) : [];
+}
+
+async function cmcTop100(): Promise<CmcCoin[]> {
+  const apiKey = process.env.CMC_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("CMC_API_KEY missing");
+  }
+
+  const url = new URL(CMC_LISTINGS_URL);
+  url.searchParams.set("start", "1");
+  url.searchParams.set("limit", "100");
+  url.searchParams.set("convert", "USD");
+  url.searchParams.set("sort", "market_cap");
+  url.searchParams.set("sort_dir", "desc");
+
+  const r = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "X-CMC_PRO_API_KEY": apiKey,
+      Accept: "application/json",
+    },
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok) {
+    throw new Error(json?.status?.error_message || text || `CMC error: ${r.status}`);
+  }
+
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  return rows as CmcCoin[];
+}
+
+function calcStableBalances(account: AnyJson) {
+  const balances = Array.isArray(account?.balances) ? account.balances : [];
+
+  let totalStable = 0;
+  let freeStable = 0;
+  let lockedStable = 0;
+
+  for (const b of balances) {
+    const asset = String(b?.asset ?? "");
+    if (!STABLE_ASSETS.has(asset)) continue;
+
+    const free = toNum(b?.free);
+    const locked = toNum(b?.locked);
+
+    freeStable += free;
+    lockedStable += locked;
+    totalStable += free + locked;
+  }
 
   return {
-    tickSize: toNum(priceFilter?.tickSize || "0.01"),
-    stepSize: toNum(lotSize?.stepSize || "0.000001"),
-    minQty: toNum(lotSize?.minQty || "0"),
+    totalStable,
+    freeStable,
+    lockedStable,
   };
 }
 
-async function binanceOrderStatus(
-  apiKey: string,
-  apiSecret: string,
-  symbol: string,
-  orderId: string
-) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol,
-    orderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance order status error: ${r.status}`);
-  return json;
-}
-
-async function binanceCancelOrder(
-  apiKey: string,
-  apiSecret: string,
-  symbol: string,
-  orderId: string
-) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol,
-    orderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "DELETE",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance cancel order error: ${r.status}`);
-  return json;
-}
-
-async function placeBinanceLimitSell(params: {
-  apiKey: string;
-  apiSecret: string;
-  symbol: string;
-  quantity: string;
-  price: string;
-  newClientOrderId: string;
-}) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol: params.symbol,
-    side: "SELL",
-    type: "LIMIT",
-    timeInForce: "GTC",
-    quantity: params.quantity,
-    price: params.price,
-    newOrderRespType: "RESULT",
-    newClientOrderId: params.newClientOrderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, params.apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": params.apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance limit SELL error: ${r.status}`);
-  return json;
-}
-
-async function getPositionOrders(positionId: string) {
-  const rows = await prisma.$queryRaw<RawBotOrder[]>(Prisma.sql`
-    SELECT
+async function createCycle(userId: string, exchange: string) {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    INSERT INTO "EngineCycle" (
       "id",
       "userId",
-      "botPositionId",
       "exchange",
-      "symbol",
-      "kind",
-      "side",
       "status",
-      "price",
-      "qty",
-      "exchangeOrderId",
-      "clientOrderId",
-      "meta"
-    FROM "BotOrder"
-    WHERE "botPositionId" = ${positionId}
-    ORDER BY "createdAt" ASC
-  `);
-
-  return rows;
-}
-
-async function updateBotOrderStatus(orderId: string, status: string, meta?: AnyJson) {
-  const metaJson = meta == null ? null : JSON.stringify(meta);
-
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE "BotOrder"
-    SET
-      "status" = ${status},
-      "meta" = CASE
-        WHEN ${metaJson}::text IS NULL THEN "meta"
-        ELSE ${metaJson}::jsonb
-      END,
-      "updatedAt" = CURRENT_TIMESTAMP,
-      "filledAt" = CASE
-        WHEN ${status} = 'FILLED' THEN CURRENT_TIMESTAMP
-        ELSE "filledAt"
-      END
-    WHERE "id" = ${orderId}
-  `);
-}
-
-async function insertTpBotOrder(args: {
-  userId: string;
-  botPositionId: string;
-  symbol: string;
-  qty: string;
-  price: string;
-  exchangeOrderId: string;
-  clientOrderId: string;
-  rawOrder: AnyJson;
-}) {
-  const rawMeta = JSON.stringify({
-    level: "TP",
-    rawOrder: args.rawOrder,
-  });
-
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "BotOrder" (
-      "id",
-      "userId",
-      "botPositionId",
-      "exchange",
-      "symbol",
-      "kind",
-      "side",
-      "status",
-      "price",
-      "qty",
-      "exchangeOrderId",
-      "clientOrderId",
-      "meta",
-      "placedAt",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      gen_random_uuid()::text,
-      ${args.userId},
-      ${args.botPositionId},
-      'BINANCE'::"Exchange",
-      ${args.symbol},
-      'TP',
-      'SELL',
-      'NEW',
-      ${args.price}::decimal,
-      ${args.qty}::decimal,
-      ${args.exchangeOrderId},
-      ${args.clientOrderId},
-      ${rawMeta}::jsonb,
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP
-    )
-  `);
-}
-
-async function insertCooldown(userId: string, symbol: string) {
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "CooldownSymbol" (
-      "id",
-      "userId",
-      "exchange",
-      "symbol",
-      "reason",
-      "cooldownUntil",
+      "message",
+      "startedAt",
       "createdAt",
       "updatedAt"
     )
     VALUES (
       gen_random_uuid()::text,
       ${userId},
-      'BINANCE'::"Exchange",
-      ${symbol},
-      'TP_CLOSED',
-      CURRENT_TIMESTAMP + interval '12 hours',
+      ${exchange}::"Exchange",
+      'STARTED',
+      'Engine tick started',
+      CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP
     )
-    ON CONFLICT ("userId", "exchange", "symbol")
-    DO UPDATE SET
-      "reason" = 'TP_CLOSED',
-      "cooldownUntil" = CURRENT_TIMESTAMP + interval '12 hours',
+    RETURNING "id"
+  `);
+
+  return rows[0]?.id ?? null;
+}
+
+async function finishCycle(
+  cycleId: string,
+  status: "SUCCESS" | "SKIPPED" | "ERROR",
+  message: string,
+  meta?: AnyJson
+) {
+  const metaJson = meta == null ? null : JSON.stringify(meta);
+
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "EngineCycle"
+    SET
+      "status" = ${status},
+      "message" = ${message},
+      "meta" = ${metaJson}::jsonb,
+      "finishedAt" = CURRENT_TIMESTAMP,
       "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "id" = ${cycleId}
   `);
 }
 
-async function manageOnePosition(args: {
-  userId: string;
-  apiKey: string;
-  apiSecret: string;
-  position: {
-    id: string;
-    symbol: string;
-    avgPrice: any;
-    qty: any;
-    tpPrice: any;
-    addsCount: number;
-  };
-}) {
-  const symbol = args.position.symbol;
-  const filters = await getSymbolFilters(symbol);
-  const orders = await getPositionOrders(args.position.id);
+async function getLastEntryAt(userId: string) {
+  const rows = await prisma.$queryRaw<Array<{ createdAt: Date | string }>>(Prisma.sql`
+    SELECT "createdAt"
+    FROM "BotOrder"
+    WHERE "userId" = ${userId}
+      AND "kind" = 'ENTRY'
+      AND "status" IN ('NEW', 'PLACED', 'FILLED')
+    ORDER BY "createdAt" DESC
+    LIMIT 1
+  `);
 
-  const tpOrders = orders.filter(
-    (o) => o.kind === "TP" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
-  );
-  const gridOrders = orders.filter(
-    (o) => o.kind === "GRID" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
-  );
+  return rows[0]?.createdAt ? new Date(rows[0].createdAt) : null;
+}
 
-  const tpStatuses: AnyJson[] = [];
-  const gridStatuses: AnyJson[] = [];
+function minutesDiff(from: Date, to: Date) {
+  return Math.floor((to.getTime() - from.getTime()) / 1000 / 60);
+}
 
-  for (const tp of tpOrders) {
-    if (!tp.exchangeOrderId) continue;
+function pickCandidate(cmcCoins: CmcCoin[], tickers: BinanceTicker24h[]) {
+  const tickerMap = new Map<string, BinanceTicker24h>();
 
-    const live = await binanceOrderStatus(args.apiKey, args.apiSecret, symbol, tp.exchangeOrderId);
-    tpStatuses.push(live);
-
-    if (live?.status === "FILLED") {
-      await updateBotOrderStatus(tp.id, "FILLED", {
-        ...(tp.meta ?? {}),
-        live,
-      });
-
-      await prisma.botPosition.update({
-        where: { id: args.position.id },
-        data: {
-          status: "CLOSED",
-          closedAt: new Date(),
-        },
-      });
-
-      const canceledGrid: AnyJson[] = [];
-      for (const g of gridOrders) {
-        if (!g.exchangeOrderId) continue;
-
-        try {
-          const cancelRes = await binanceCancelOrder(
-            args.apiKey,
-            args.apiSecret,
-            symbol,
-            g.exchangeOrderId
-          );
-
-          await updateBotOrderStatus(g.id, "CANCELED", {
-            ...(g.meta ?? {}),
-            cancelRes,
-          });
-
-          canceledGrid.push({
-            id: g.id,
-            exchangeOrderId: g.exchangeOrderId,
-            status: "CANCELED",
-          });
-        } catch (e: any) {
-          canceledGrid.push({
-            id: g.id,
-            exchangeOrderId: g.exchangeOrderId,
-            status: "CANCEL_ERROR",
-            message: String(e?.message || e),
-          });
-        }
-      }
-
-      await insertCooldown(args.userId, symbol);
-
-      return {
-        positionId: args.position.id,
-        symbol,
-        action: "TP_FILLED_POSITION_CLOSED",
-        tpOrderId: tp.id,
-        canceledGrid,
-      };
-    }
-
-    if (live?.status && live.status !== tp.status) {
-      await updateBotOrderStatus(tp.id, String(live.status), {
-        ...(tp.meta ?? {}),
-        live,
-      });
-    }
+  for (const t of tickers) {
+    tickerMap.set(String(t.symbol), t);
   }
 
-  const newlyFilledGrids: Array<{
-    row: RawBotOrder;
-    live: AnyJson;
-    filledQty: number;
-    fillPrice: number;
-    quoteSpent: number;
+  const candidates: Array<{
+    symbol: string;
+    baseSymbol: string;
+    marketCap: number;
+    rank: number;
+    priceChangePercent: number;
+    cmcId: number;
+    name: string;
   }> = [];
 
-  for (const g of gridOrders) {
-    if (!g.exchangeOrderId) continue;
+  for (const coin of cmcCoins) {
+    const baseSymbol = String(coin.symbol || "").toUpperCase().trim();
+    if (!baseSymbol) continue;
+    if (STABLE_ASSETS.has(baseSymbol)) continue;
 
-    const live = await binanceOrderStatus(args.apiKey, args.apiSecret, symbol, g.exchangeOrderId);
-    gridStatuses.push(live);
+    const pair = `${baseSymbol}USDT`;
+    const ticker = tickerMap.get(pair);
+    if (!ticker) continue;
 
-    if (live?.status === "FILLED" && g.status !== "FILLED") {
-      const filledQty = toNum(live.executedQty || g.qty);
-      const fillPrice = toNum(live.price || g.price);
-      const quoteSpent = toNum(live.cummulativeQuoteQty) || filledQty * fillPrice;
+    const drop24h = toNum(ticker.priceChangePercent);
+    if (drop24h > -10) continue;
 
-      await updateBotOrderStatus(g.id, "FILLED", {
-        ...(g.meta ?? {}),
-        live,
-      });
+    const marketCap = toNum(coin.quote?.USD?.market_cap);
 
-      newlyFilledGrids.push({
-        row: g,
-        live,
-        filledQty,
-        fillPrice,
-        quoteSpent,
-      });
-      continue;
-    }
-
-    if (live?.status && live.status !== g.status) {
-      await updateBotOrderStatus(g.id, String(live.status), {
-        ...(g.meta ?? {}),
-        live,
-      });
-    }
+    candidates.push({
+      symbol: pair,
+      baseSymbol,
+      marketCap,
+      rank: toNum(coin.cmc_rank),
+      priceChangePercent: drop24h,
+      cmcId: toNum(coin.id),
+      name: String(coin.name || baseSymbol),
+    });
   }
 
-  if (!newlyFilledGrids.length) {
-    return {
-      positionId: args.position.id,
-      symbol,
-      action: "NO_CHANGES",
-      tpChecked: tpStatuses.length,
-      gridChecked: gridStatuses.length,
-    };
-  }
-
-  const oldQty = toNum(args.position.qty);
-  const oldAvgPrice = toNum(args.position.avgPrice);
-  const oldCost = oldQty * oldAvgPrice;
-
-  const addedQty = newlyFilledGrids.reduce((s, x) => s + x.filledQty, 0);
-  const addedCost = newlyFilledGrids.reduce((s, x) => s + x.quoteSpent, 0);
-
-  const newQty = oldQty + addedQty;
-  const newAvgPrice = (oldCost + addedCost) / newQty;
-  const newTpPriceNum = newAvgPrice * 1.05;
-
-  const canceledTp: AnyJson[] = [];
-
-  for (const tp of tpOrders) {
-    if (!tp.exchangeOrderId) continue;
-
-    try {
-      const cancelRes = await binanceCancelOrder(
-        args.apiKey,
-        args.apiSecret,
-        symbol,
-        tp.exchangeOrderId
-      );
-
-      await updateBotOrderStatus(tp.id, "CANCELED", {
-        ...(tp.meta ?? {}),
-        cancelRes,
-      });
-
-      canceledTp.push({
-        id: tp.id,
-        exchangeOrderId: tp.exchangeOrderId,
-        status: "CANCELED",
-      });
-    } catch (e: any) {
-      canceledTp.push({
-        id: tp.id,
-        exchangeOrderId: tp.exchangeOrderId,
-        status: "CANCEL_ERROR",
-        message: String(e?.message || e),
-      });
-    }
-  }
-
-  const finalQtyNum = floorToStep(newQty, filters.stepSize);
-  const finalTpPrice = formatByStep(newTpPriceNum, filters.tickSize);
-  const finalTpQty = formatByStep(finalQtyNum, filters.stepSize);
-
-  const updatedPosition = await prisma.botPosition.update({
-    where: { id: args.position.id },
-    data: {
-      avgPrice: new Prisma.Decimal(newAvgPrice.toFixed(18)),
-      qty: new Prisma.Decimal(finalQtyNum.toFixed(18)),
-      tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
-      addsCount: {
-        increment: newlyFilledGrids.length,
-      },
-    },
-    select: {
-      id: true,
-      symbol: true,
-      avgPrice: true,
-      qty: true,
-      tpPrice: true,
-      addsCount: true,
-      status: true,
-    },
-  });
-
-  const tpClientId = `tp_${Date.now()}_${symbol}`.slice(0, 36);
-  const newTpOrder = await placeBinanceLimitSell({
-    apiKey: args.apiKey,
-    apiSecret: args.apiSecret,
-    symbol,
-    quantity: finalTpQty,
-    price: finalTpPrice,
-    newClientOrderId: tpClientId,
-  });
-
-  await insertTpBotOrder({
-    userId: args.userId,
-    botPositionId: args.position.id,
-    symbol,
-    qty: finalTpQty,
-    price: finalTpPrice,
-    exchangeOrderId: String(newTpOrder?.orderId ?? ""),
-    clientOrderId: String(newTpOrder?.clientOrderId ?? tpClientId),
-    rawOrder: newTpOrder,
+  candidates.sort((a, b) => {
+    if (b.marketCap !== a.marketCap) return b.marketCap - a.marketCap;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.symbol.localeCompare(b.symbol);
   });
 
   return {
-    positionId: args.position.id,
-    symbol,
-    action: "GRID_FILLED_TP_MOVED",
-    newlyFilledGridCount: newlyFilledGrids.length,
-    newlyFilledGrids: newlyFilledGrids.map((x) => ({
-      orderId: x.row.id,
-      exchangeOrderId: x.row.exchangeOrderId,
-      filledQty: x.filledQty,
-      quoteSpent: x.quoteSpent,
-    })),
-    canceledTp,
-    newTpOrder: {
-      orderId: newTpOrder?.orderId ?? null,
-      clientOrderId: newTpOrder?.clientOrderId ?? tpClientId,
-      price: finalTpPrice,
-      qty: finalTpQty,
-      status: newTpOrder?.status ?? "NEW",
-    },
-    updatedPosition: {
-      ...updatedPosition,
-      avgPrice: updatedPosition.avgPrice.toString(),
-      qty: updatedPosition.qty.toString(),
-      tpPrice: updatedPosition.tpPrice.toString(),
-    },
+    candidate: candidates[0] ?? null,
+    candidatesCount: candidates.length,
+    top5: candidates.slice(0, 5),
   };
 }
 
-export async function runManage() {
+export async function runEngineTick() {
   const bots = await prisma.botConfig.findMany({
     where: {
       enabled: true,
-      exchange: "BINANCE",
     },
     select: {
       userId: true,
+      exchange: true,
       keyId: true,
+      maxActiveSymbols: true,
+      budgetPerSymbol: true,
+      maxTotalBudget: true,
+      syncIntervalMin: true,
     },
   });
 
@@ -639,97 +324,223 @@ export async function runManage() {
     return {
       ok: true,
       message: "no enabled bots",
-      managed: [],
+      cycles: [],
     };
   }
 
-  const managed: AnyJson[] = [];
+  const results: AnyJson[] = [];
 
   for (const bot of bots) {
-    if (!bot.keyId) {
-      managed.push({
-        userId: bot.userId,
-        status: "SKIPPED",
-        message: "API key not selected",
-      });
-      continue;
-    }
+    const cycleId = await createCycle(bot.userId, bot.exchange);
 
-    const key = await prisma.userKey.findFirst({
-      where: {
-        id: bot.keyId,
-        userId: bot.userId,
-      },
-      select: {
-        apiKey: true,
-        secretEnc: true,
-      },
-    });
-
-    if (!key) {
-      managed.push({
-        userId: bot.userId,
-        status: "SKIPPED",
-        message: "Selected key not found",
-      });
-      continue;
-    }
-
-    const apiSecret = decryptString(key.secretEnc);
-
-    const positions = await prisma.botPosition.findMany({
-      where: {
-        userId: bot.userId,
-        exchange: "BINANCE",
-        status: "OPEN",
-      },
-      select: {
-        id: true,
-        symbol: true,
-        avgPrice: true,
-        qty: true,
-        tpPrice: true,
-        addsCount: true,
-      },
-    });
-
-    if (!positions.length) {
-      managed.push({
-        userId: bot.userId,
-        status: "SKIPPED",
-        message: "No open positions",
-      });
-      continue;
-    }
-
-    for (const position of positions) {
-      try {
-        const result = await manageOnePosition({
+    try {
+      if (!cycleId) {
+        results.push({
           userId: bot.userId,
-          apiKey: key.apiKey,
-          apiSecret,
-          position,
-        });
-
-        managed.push({
-          userId: bot.userId,
-          status: "SUCCESS",
-          ...result,
-        });
-      } catch (e: any) {
-        managed.push({
-          userId: bot.userId,
-          positionId: position.id,
-          symbol: position.symbol,
+          exchange: bot.exchange,
+          cycleId: null,
           status: "ERROR",
-          message: String(e?.message || e),
+          message: "cycle not created",
         });
+        continue;
       }
+
+      if (bot.exchange !== "BINANCE") {
+        await finishCycle(cycleId, "SKIPPED", "exchange not supported yet", {
+          exchange: bot.exchange,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "exchange not supported yet",
+        });
+        continue;
+      }
+
+      if (!bot.keyId) {
+        await finishCycle(cycleId, "SKIPPED", "API key not selected", {});
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "API key not selected",
+        });
+        continue;
+      }
+
+      const key = await prisma.userKey.findFirst({
+        where: {
+          id: bot.keyId,
+          userId: bot.userId,
+        },
+        select: {
+          id: true,
+          apiKey: true,
+          secretEnc: true,
+        },
+      });
+
+      if (!key) {
+        await finishCycle(cycleId, "SKIPPED", "selected API key not found", {
+          keyId: bot.keyId,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "selected API key not found",
+        });
+        continue;
+      }
+
+      const activePositions = await prisma.botPosition.count({
+        where: {
+          userId: bot.userId,
+          status: "OPEN",
+        },
+      });
+
+      if (activePositions >= 10 || activePositions >= bot.maxActiveSymbols) {
+        await finishCycle(cycleId, "SKIPPED", "active positions limit reached", {
+          activePositions,
+          maxActiveSymbols: bot.maxActiveSymbols,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "active positions limit reached",
+        });
+        continue;
+      }
+
+      const lastEntryAt = await getLastEntryAt(bot.userId);
+      if (lastEntryAt) {
+        const mins = minutesDiff(lastEntryAt, new Date());
+
+        if (mins < 30) {
+          await finishCycle(cycleId, "SKIPPED", "global 30m entry cooldown active", {
+            lastEntryAt: lastEntryAt.toISOString(),
+            minutesSinceLastEntry: mins,
+          });
+
+          results.push({
+            userId: bot.userId,
+            exchange: bot.exchange,
+            cycleId,
+            status: "SKIPPED",
+            message: "global 30m entry cooldown active",
+          });
+          continue;
+        }
+      }
+
+      const apiSecret = decryptString(key.secretEnc);
+      const account = await binanceSpotTestnetAccount(key.apiKey, apiSecret);
+      const stable = calcStableBalances(account);
+
+      if (stable.totalStable <= 0) {
+        await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", stable);
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "no stablecoin capital found",
+        });
+        continue;
+      }
+
+      const minFreeRequired = stable.totalStable * 0.1;
+
+      if (stable.freeStable <= minFreeRequired) {
+        await finishCycle(cycleId, "SKIPPED", "free stable balance is at or below 10%", {
+          ...stable,
+          minFreeRequired,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "free stable balance is at or below 10%",
+        });
+        continue;
+      }
+
+      const cmcCoins = await cmcTop100();
+      const tickers = await binanceTicker24hAll();
+      const scan = pickCandidate(cmcCoins, tickers);
+
+      if (!scan.candidate) {
+        await finishCycle(cycleId, "SKIPPED", "no market candidate found", {
+          activePositions,
+          totalStable: stable.totalStable,
+          freeStable: stable.freeStable,
+          candidatesCount: scan.candidatesCount,
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "SKIPPED",
+          message: "no market candidate found",
+          candidatesCount: scan.candidatesCount,
+        });
+        continue;
+      }
+
+      await finishCycle(cycleId, "SUCCESS", "candidate found", {
+        activePositions,
+        totalStable: stable.totalStable,
+        freeStable: stable.freeStable,
+        lockedStable: stable.lockedStable,
+        budgetPerSymbol: bot.budgetPerSymbol.toString(),
+        maxTotalBudget: bot.maxTotalBudget?.toString() ?? null,
+        syncIntervalMin: bot.syncIntervalMin,
+        candidate: scan.candidate,
+        top5: scan.top5,
+      });
+
+      results.push({
+        userId: bot.userId,
+        exchange: bot.exchange,
+        cycleId,
+        status: "SUCCESS",
+        message: "candidate found",
+        balances: stable,
+        candidate: scan.candidate,
+        top5: scan.top5,
+      });
+    } catch (e: any) {
+      if (cycleId) {
+        await finishCycle(cycleId, "ERROR", String(e?.message || e), {});
+      }
+
+      results.push({
+        userId: bot.userId,
+        exchange: bot.exchange,
+        cycleId,
+        status: "ERROR",
+        message: String(e?.message || e),
+      });
     }
   }
 
   return {
     ok: true,
-    managed,
+    cycles: results,
   };
 }
