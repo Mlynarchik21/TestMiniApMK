@@ -809,7 +809,7 @@ export async function runManage() {
           userId: bot.userId,
           positionId: position.id,
           symbol: position.symbol,
-          status: "ERROR",
+
           message: String(e?.message || e),
         });
       }
