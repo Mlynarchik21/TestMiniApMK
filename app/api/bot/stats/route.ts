@@ -44,6 +44,7 @@ export async function GET(req: Request) {
       prisma.botPosition.findMany({
         where: {
           userId: user.id,
+          exchange: "BINANCE",
           status: "OPEN",
         },
         select: {
@@ -62,6 +63,7 @@ export async function GET(req: Request) {
       prisma.botTrade.findMany({
         where: {
           userId: user.id,
+          exchange: "BINANCE",
         },
         orderBy: { closedAt: "desc" },
         take: 20,
@@ -87,6 +89,7 @@ export async function GET(req: Request) {
       prisma.botTrade.findMany({
         where: {
           userId: user.id,
+          exchange: "BINANCE",
         },
         orderBy: { closedAt: "desc" },
         select: {
@@ -99,36 +102,38 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    const totalPnl = allTrades.reduce((s, t) => s + toNum(t.pnl), 0);
+    const totalPnl = allTrades.reduce((sum, trade) => sum + toNum(trade.pnl), 0);
 
-    const todayTrades = allTrades.filter((t) => new Date(t.closedAt) >= todayStart);
-    const pnlToday = todayTrades.reduce((s, t) => s + toNum(t.pnl), 0);
+    const todayTrades = allTrades.filter((trade) => trade.closedAt >= todayStart);
+    const pnlToday = todayTrades.reduce((sum, trade) => sum + toNum(trade.pnl), 0);
 
-    const trades7d = allTrades.filter((t) => new Date(t.closedAt) >= sevenDaysAgo);
-    const pnl7d = trades7d.reduce((s, t) => s + toNum(t.pnl), 0);
+    const trades7d = allTrades.filter((trade) => trade.closedAt >= sevenDaysAgo);
+    const pnl7d = trades7d.reduce((sum, trade) => sum + toNum(trade.pnl), 0);
 
-    const trades30d = allTrades.filter((t) => new Date(t.closedAt) >= thirtyDaysAgo);
-    const pnl30d = trades30d.reduce((s, t) => s + toNum(t.pnl), 0);
+    const trades30d = allTrades.filter((trade) => trade.closedAt >= thirtyDaysAgo);
+    const pnl30d = trades30d.reduce((sum, trade) => sum + toNum(trade.pnl), 0);
 
     const closedTrades = allTrades.length;
-    const profitableTrades = allTrades.filter((t) => toNum(t.pnl) > 0).length;
-    const losingTrades = allTrades.filter((t) => toNum(t.pnl) < 0).length;
+    const profitableTrades = allTrades.filter((trade) => toNum(trade.pnl) > 0).length;
+    const losingTrades = allTrades.filter((trade) => toNum(trade.pnl) < 0).length;
 
     const winRate = closedTrades > 0 ? (profitableTrades / closedTrades) * 100 : 0;
-
     const avgTradePnl = closedTrades > 0 ? totalPnl / closedTrades : 0;
 
-    const bestTrade = allTrades.reduce((best, t) => {
-      if (!best) return t;
-      return toNum(t.pnl) > toNum(best.pnl) ? t : best;
-    }, null as null | (typeof allTrades)[number]);
+    const bestTrade = allTrades.reduce<null | (typeof allTrades)[number]>((best, trade) => {
+      if (!best) return trade;
+      return toNum(trade.pnl) > toNum(best.pnl) ? trade : best;
+    }, null);
 
-    const worstTrade = allTrades.reduce((worst, t) => {
-      if (!worst) return t;
-      return toNum(t.pnl) < toNum(worst.pnl) ? t : worst;
-    }, null as null | (typeof allTrades)[number]);
+    const worstTrade = allTrades.reduce<null | (typeof allTrades)[number]>((worst, trade) => {
+      if (!worst) return trade;
+      return toNum(trade.pnl) < toNum(worst.pnl) ? trade : worst;
+    }, null);
 
-    const capitalInWork = openPositions.reduce((s, p) => s + toNum(p.investedQuote), 0);
+    const capitalInWork = openPositions.reduce(
+      (sum, position) => sum + toNum(position.investedQuote),
+      0
+    );
 
     return ok({
       stats: {
@@ -146,22 +151,22 @@ export async function GET(req: Request) {
         bestTradePnl: bestTrade ? toNum(bestTrade.pnl) : 0,
         worstTradePnl: worstTrade ? toNum(worstTrade.pnl) : 0,
       },
-      openPositions: openPositions.map((p) => ({
-        ...p,
-        avgPrice: p.avgPrice.toString(),
-        qty: p.qty.toString(),
-        tpPrice: p.tpPrice.toString(),
-        investedQuote: p.investedQuote.toString(),
+      openPositions: openPositions.map((position) => ({
+        ...position,
+        avgPrice: position.avgPrice.toString(),
+        qty: position.qty.toString(),
+        tpPrice: position.tpPrice.toString(),
+        investedQuote: position.investedQuote.toString(),
       })),
-      recentTrades: recentTrades.map((t) => ({
-        ...t,
-        entryValue: t.entryValue.toString(),
-        exitValue: t.exitValue.toString(),
-        qty: t.qty.toString(),
-        avgEntryPrice: t.avgEntryPrice.toString(),
-        exitPrice: t.exitPrice.toString(),
-        pnl: t.pnl.toString(),
-        pnlPercent: t.pnlPercent.toString(),
+      recentTrades: recentTrades.map((trade) => ({
+        ...trade,
+        entryValue: trade.entryValue.toString(),
+        exitValue: trade.exitValue.toString(),
+        qty: trade.qty.toString(),
+        avgEntryPrice: trade.avgEntryPrice.toString(),
+        exitPrice: trade.exitPrice.toString(),
+        pnl: trade.pnl.toString(),
+        pnlPercent: trade.pnlPercent.toString(),
       })),
     });
   } catch (e: AnyJson) {
