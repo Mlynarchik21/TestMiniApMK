@@ -1,60 +1,26 @@
 import { NextResponse } from "next/server";
+import { runEngineTick } from "@/app/api/engine/tick/route";
+import { runManage } from "@/app/api/engine/manage/route";
 
 export const runtime = "nodejs";
 
-async function callInternal(path: string, method: "GET" | "POST" = "GET") {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-
-  const normalizedBase =
-    baseUrl.startsWith("http://") || baseUrl.startsWith("https://")
-      ? baseUrl
-      : `https://${baseUrl}`;
-
-  const res = await fetch(`${normalizedBase}${path}`, {
-    method,
-    cache: "no-store",
-    headers: {
-      "content-type": "application/json",
-    },
-  });
-
-  const text = await res.text();
-
-  let json: any = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = {
-      ok: false,
-      error: "BAD_JSON",
-      raw: text,
-    };
-  }
+async function runEngine() {
+  const tick = await runEngineTick();
+  const manage = await runManage();
 
   return {
-    httpStatus: res.status,
-    ok: res.ok,
-    json,
+    ok: true,
+    engine: {
+      tick,
+      manage,
+    },
   };
 }
 
 export async function GET() {
   try {
-    const tick = await callInternal("/api/engine/tick", "GET");
-    const manage = await callInternal("/api/engine/manage", "GET");
-
-    return NextResponse.json({
-      ok: true,
-      engine: {
-        tick,
-        manage,
-      },
-    });
+    const data = await runEngine();
+    return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json(
       {
@@ -69,16 +35,8 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const tick = await callInternal("/api/engine/tick", "POST");
-    const manage = await callInternal("/api/engine/manage", "POST");
-
-    return NextResponse.json({
-      ok: true,
-      engine: {
-        tick,
-        manage,
-      },
-    });
+    const data = await runEngine();
+    return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json(
       {
