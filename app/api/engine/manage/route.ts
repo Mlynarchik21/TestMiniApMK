@@ -375,13 +375,16 @@ async function manageOnePosition(args: {
   const filters = await getSymbolFilters(symbol);
   const orders = await getPositionOrders(args.position.id);
 
-  const tpOrders = orders.filter((o) => o.kind === "TP" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status));
-  const gridOrders = orders.filter((o) => o.kind === "GRID" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status));
+  const tpOrders = orders.filter(
+    (o) => o.kind === "TP" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
+  );
+  const gridOrders = orders.filter(
+    (o) => o.kind === "GRID" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
+  );
 
   const tpStatuses: AnyJson[] = [];
   const gridStatuses: AnyJson[] = [];
 
-  // 1) Проверяем TP
   for (const tp of tpOrders) {
     if (!tp.exchangeOrderId) continue;
 
@@ -402,7 +405,6 @@ async function manageOnePosition(args: {
         },
       });
 
-      // отменяем оставшиеся GRID
       const canceledGrid: AnyJson[] = [];
       for (const g of gridOrders) {
         if (!g.exchangeOrderId) continue;
@@ -454,7 +456,6 @@ async function manageOnePosition(args: {
     }
   }
 
-  // 2) Проверяем GRID fills
   const newlyFilledGrids: Array<{
     row: RawBotOrder;
     live: AnyJson;
@@ -507,7 +508,6 @@ async function manageOnePosition(args: {
     };
   }
 
-  // 3) Пересчитываем позицию
   const oldQty = toNum(args.position.qty);
   const oldAvgPrice = toNum(args.position.avgPrice);
   const oldCost = oldQty * oldAvgPrice;
@@ -519,7 +519,6 @@ async function manageOnePosition(args: {
   const newAvgPrice = (oldCost + addedCost) / newQty;
   const newTpPriceNum = newAvgPrice * 1.05;
 
-  // 4) Отменяем старый TP
   const canceledTp: AnyJson[] = [];
 
   for (const tp of tpOrders) {
@@ -553,7 +552,6 @@ async function manageOnePosition(args: {
     }
   }
 
-  // 5) Обновляем позицию
   const finalQtyNum = floorToStep(newQty, filters.stepSize);
   const finalTpPrice = formatByStep(newTpPriceNum, filters.tickSize);
   const finalTpQty = formatByStep(finalQtyNum, filters.stepSize);
@@ -579,7 +577,6 @@ async function manageOnePosition(args: {
     },
   });
 
-  // 6) Ставим новый TP
   const tpClientId = `tp_${Date.now()}_${symbol}`.slice(0, 36);
   const newTpOrder = await placeBinanceLimitSell({
     apiKey: args.apiKey,
@@ -629,7 +626,7 @@ async function manageOnePosition(args: {
   };
 }
 
-async function runManage() {
+export async function runManage() {
   const bots = await prisma.botConfig.findMany({
     where: {
       enabled: true,
