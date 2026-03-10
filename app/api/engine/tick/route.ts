@@ -6,7 +6,8 @@ import { decryptString } from "@/lib/crypto/secretBox";
 
 export const runtime = "nodejs";
 
-const BINANCE_TESTNET_BASE = "https://testnet.binance.vision/api";
+// ✅ Важно: без /api в base
+const BINANCE_TESTNET_BASE = "https://testnet.binance.vision";
 
 const STABLE_ASSETS = new Set([
   "USDT",
@@ -40,7 +41,10 @@ async function binanceServerTime(): Promise<number> {
   }
 
   const t = Number(json?.serverTime);
-  if (!Number.isFinite(t)) throw new Error("Binance serverTime missing");
+  if (!Number.isFinite(t)) {
+    throw new Error("Binance serverTime missing");
+  }
+
   return t;
 }
 
@@ -217,12 +221,9 @@ async function runEngineTick() {
       }
 
       if (bot.exchange !== "BINANCE") {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "exchange not supported yet",
-          { exchange: bot.exchange }
-        );
+        await finishCycle(cycleId, "SKIPPED", "exchange not supported yet", {
+          exchange: bot.exchange,
+        });
 
         results.push({
           userId: bot.userId,
@@ -235,12 +236,7 @@ async function runEngineTick() {
       }
 
       if (!bot.keyId) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "API key not selected",
-          {}
-        );
+        await finishCycle(cycleId, "SKIPPED", "API key not selected", {});
 
         results.push({
           userId: bot.userId,
@@ -265,12 +261,9 @@ async function runEngineTick() {
       });
 
       if (!key) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "selected API key not found",
-          { keyId: bot.keyId }
-        );
+        await finishCycle(cycleId, "SKIPPED", "selected API key not found", {
+          keyId: bot.keyId,
+        });
 
         results.push({
           userId: bot.userId,
@@ -290,15 +283,10 @@ async function runEngineTick() {
       });
 
       if (activePositions >= 10 || activePositions >= bot.maxActiveSymbols) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "active positions limit reached",
-          {
-            activePositions,
-            maxActiveSymbols: bot.maxActiveSymbols,
-          }
-        );
+        await finishCycle(cycleId, "SKIPPED", "active positions limit reached", {
+          activePositions,
+          maxActiveSymbols: bot.maxActiveSymbols,
+        });
 
         results.push({
           userId: bot.userId,
@@ -315,15 +303,10 @@ async function runEngineTick() {
         const mins = minutesDiff(lastEntryAt, new Date());
 
         if (mins < 30) {
-          await finishCycle(
-            cycleId,
-            "SKIPPED",
-            "global 30m entry cooldown active",
-            {
-              lastEntryAt: lastEntryAt.toISOString(),
-              minutesSinceLastEntry: mins,
-            }
-          );
+          await finishCycle(cycleId, "SKIPPED", "global 30m entry cooldown active", {
+            lastEntryAt: lastEntryAt.toISOString(),
+            minutesSinceLastEntry: mins,
+          });
 
           results.push({
             userId: bot.userId,
@@ -341,12 +324,7 @@ async function runEngineTick() {
       const stable = calcStableBalances(account);
 
       if (stable.totalStable <= 0) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "no stablecoin capital found",
-          stable
-        );
+        await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", stable);
 
         results.push({
           userId: bot.userId,
@@ -361,15 +339,10 @@ async function runEngineTick() {
       const minFreeRequired = stable.totalStable * 0.1;
 
       if (stable.freeStable <= minFreeRequired) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "free stable balance is at or below 10%",
-          {
-            ...stable,
-            minFreeRequired,
-          }
-        );
+        await finishCycle(cycleId, "SKIPPED", "free stable balance is at or below 10%", {
+          ...stable,
+          minFreeRequired,
+        });
 
         results.push({
           userId: bot.userId,
@@ -381,22 +354,16 @@ async function runEngineTick() {
         continue;
       }
 
-      // Cooldown по конкретной монете будет применяться после выбора кандидата.
-      // На этом шаге мы только подтверждаем, что бот готов к market scan.
-      await finishCycle(
-        cycleId,
-        "SUCCESS",
-        "ready for market scan",
-        {
-          activePositions,
-          totalStable: stable.totalStable,
-          freeStable: stable.freeStable,
-          lockedStable: stable.lockedStable,
-          budgetPerSymbol: bot.budgetPerSymbol.toString(),
-          maxTotalBudget: bot.maxTotalBudget?.toString() ?? null,
-          syncIntervalMin: bot.syncIntervalMin,
-        }
-      );
+      // На этом шаге только подтверждаем готовность к market scan.
+      await finishCycle(cycleId, "SUCCESS", "ready for market scan", {
+        activePositions,
+        totalStable: stable.totalStable,
+        freeStable: stable.freeStable,
+        lockedStable: stable.lockedStable,
+        budgetPerSymbol: bot.budgetPerSymbol.toString(),
+        maxTotalBudget: bot.maxTotalBudget?.toString() ?? null,
+        syncIntervalMin: bot.syncIntervalMin,
+      });
 
       results.push({
         userId: bot.userId,
@@ -408,12 +375,7 @@ async function runEngineTick() {
       });
     } catch (e: any) {
       if (cycleId) {
-        await finishCycle(
-          cycleId,
-          "ERROR",
-          String(e?.message || e),
-          {}
-        );
+        await finishCycle(cycleId, "ERROR", String(e?.message || e), {});
       }
 
       results.push({
