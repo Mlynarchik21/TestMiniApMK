@@ -49,6 +49,41 @@ function humanizeError(r: AnyResp): string {
   return `${code}${msg}`;
 }
 
+function formatNum(v: unknown, digits = 2) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatUsd(v: unknown) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "$0";
+  return `$${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatPct(v: unknown) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "0%";
+  return `${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function pnlColor(v: unknown) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "#fff";
+  if (n > 0) return "#4ade80";
+  if (n < 0) return "#f87171";
+  return "#fff";
+}
+
 export default function BotPage() {
   const router = useRouter();
 
@@ -61,6 +96,9 @@ export default function BotPage() {
   const [config, setConfig] = useState<any>(null);
   const [state, setState] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [recentTrades, setRecentTrades] = useState<any[]>([]);
+  const [statsOpenPositions, setStatsOpenPositions] = useState<any[]>([]);
 
   const [exchange, setExchange] = useState("BINANCE");
   const [keyId, setKeyId] = useState("");
@@ -78,9 +116,7 @@ export default function BotPage() {
     const r = await api("/api/keys", { method: "GET" });
     setResp(r.json);
 
-    if (!r.json.ok) {
-      return;
-    }
+    if (!r.json.ok) return;
 
     const rows = ((r.json as any).keys ?? []) as KeyRow[];
     setKeys(rows);
@@ -120,6 +156,23 @@ export default function BotPage() {
     }
   }
 
+  async function loadStats() {
+    const r = await api("/api/bot/stats", { method: "GET" });
+    setResp(r.json);
+
+    if (!r.json.ok) {
+      return;
+    }
+
+    setStats((r.json as any).stats ?? null);
+    setRecentTrades(((r.json as any).recentTrades ?? []) as any[]);
+    setStatsOpenPositions(((r.json as any).openPositions ?? []) as any[]);
+  }
+
+  async function reloadAll() {
+    await Promise.all([loadKeys(), loadBot(), loadStats()]);
+  }
+
   async function saveConfig() {
     if (!keyId) {
       setErr("Сначала выбери API key");
@@ -156,7 +209,7 @@ export default function BotPage() {
         return;
       }
 
-      await loadBot();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
@@ -175,7 +228,7 @@ export default function BotPage() {
         return;
       }
 
-      await loadBot();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
@@ -194,25 +247,22 @@ export default function BotPage() {
         return;
       }
 
-      await loadBot();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadKeys();
-    loadBot();
+    reloadAll();
   }, []);
 
-  // Если ключи загрузились позже, а keyId пустой — выберем первый ключ текущей биржи
   useEffect(() => {
     if (!keyId && filteredKeys.length > 0) {
       setKeyId(filteredKeys[0].id);
     }
   }, [filteredKeys, keyId]);
 
-  // Если биржу сменили, а текущий keyId не подходит — выберем первый доступный
   useEffect(() => {
     if (!filteredKeys.length) {
       setKeyId("");
@@ -278,6 +328,30 @@ export default function BotPage() {
             <button disabled={loading} onClick={stopBot} style={btnDanger()}>
               Stop bot
             </button>
+          </div>
+        </div>
+
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Bot statistics</div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            }}
+          >
+            <StatCard title="Total PnL" value={formatUsd(stats?.totalPnl ?? 0)} color={pnlColor(stats?.totalPnl)} />
+            <StatCard title="PnL Today" value={formatUsd(stats?.pnlToday ?? 0)} color={pnlColor(stats?.pnlToday)} />
+            <StatCard title="PnL 7d" value={formatUsd(stats?.pnl7d ?? 0)} color={pnlColor(stats?.pnl7d)} />
+            <StatCard title="PnL 30d" value={formatUsd(stats?.pnl30d ?? 0)} color={pnlColor(stats?.pnl30d)} />
+            <StatCard title="Win rate" value={formatPct(stats?.winRate ?? 0)} />
+            <StatCard title="Closed trades" value={formatNum(stats?.closedTrades ?? 0, 0)} />
+            <StatCard title="Open positions" value={formatNum(stats?.openPositions ?? 0, 0)} />
+            <StatCard title="Capital in work" value={formatUsd(stats?.capitalInWork ?? 0)} />
+            <StatCard title="Avg trade PnL" value={formatUsd(stats?.avgTradePnl ?? 0)} color={pnlColor(stats?.avgTradePnl)} />
+            <StatCard title="Best trade" value={formatUsd(stats?.bestTradePnl ?? 0)} color={pnlColor(stats?.bestTradePnl)} />
+            <StatCard title="Worst trade" value={formatUsd(stats?.worstTradePnl ?? 0)} color={pnlColor(stats?.worstTradePnl)} />
           </div>
         </div>
 
@@ -362,8 +436,86 @@ export default function BotPage() {
                   <div style={{ fontSize: 13, opacity: 0.9 }}>
                     avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
                   </div>
+                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                    investedQuote: {p.investedQuote ?? "0"}
+                  </div>
                   <div style={{ fontSize: 12, opacity: 0.7 }}>
                     addsCount: {p.addsCount} · openedAt: {p.openedAt}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Open positions snapshot</div>
+
+          {!statsOpenPositions.length ? (
+            <div style={{ opacity: 0.7 }}>Нет открытых позиций.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {statsOpenPositions.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    padding: 10,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <div style={{ fontWeight: 800 }}>{p.symbol}</div>
+                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                    avgPrice: {p.avgPrice} · qty: {p.qty} · tpPrice: {p.tpPrice}
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                    investedQuote: {p.investedQuote}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    addsCount: {p.addsCount} · openedAt: {p.openedAt}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={card()}>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Recent closed trades</div>
+
+          {!recentTrades.length ? (
+            <div style={{ opacity: 0.7 }}>Закрытых сделок пока нет.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {recentTrades.map((t) => (
+                <div
+                  key={t.id}
+                  style={{
+                    padding: 10,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontWeight: 800 }}>
+                      {t.exchange} · {t.symbol}
+                    </div>
+                    <div style={{ fontWeight: 900, color: pnlColor(t.pnl) }}>
+                      {formatUsd(t.pnl)} · {formatPct(t.pnlPercent)}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
+                    entryValue: {t.entryValue} · exitValue: {t.exitValue}
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                    avgEntryPrice: {t.avgEntryPrice} · exitPrice: {t.exitPrice}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    qty: {t.qty} · addsCount: {t.addsCount} · closeReason: {t.closeReason}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    openedAt: {t.openedAt} · closedAt: {t.closedAt}
                   </div>
                 </div>
               ))}
@@ -386,6 +538,24 @@ export default function BotPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function StatCard(props: { title: string; value: string; color?: string }) {
+  return (
+    <div
+      style={{
+        background: "#000",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: 14,
+        padding: 12,
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>{props.title}</div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: props.color ?? "#fff" }}>
+        {props.value}
+      </div>
+    </div>
   );
 }
 
