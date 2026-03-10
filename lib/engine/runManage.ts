@@ -355,6 +355,43 @@ async function insertCooldown(userId: string, symbol: string) {
   `);
 }
 
+async function createBotTrade(args: {
+  userId: string;
+  botPositionId: string;
+  exchange: "BINANCE";
+  symbol: string;
+  entryValue: number;
+  exitValue: number;
+  qty: number;
+  avgEntryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  addsCount: number;
+  openedAt: Date;
+  closedAt: Date;
+}) {
+  await prisma.botTrade.create({
+    data: {
+      user: { connect: { id: args.userId } },
+      botPosition: { connect: { id: args.botPositionId } },
+      exchange: args.exchange,
+      symbol: args.symbol,
+      entryValue: new Prisma.Decimal(args.entryValue.toFixed(18)),
+      exitValue: new Prisma.Decimal(args.exitValue.toFixed(18)),
+      qty: new Prisma.Decimal(args.qty.toFixed(18)),
+      avgEntryPrice: new Prisma.Decimal(args.avgEntryPrice.toFixed(18)),
+      exitPrice: new Prisma.Decimal(args.exitPrice.toFixed(18)),
+      pnl: new Prisma.Decimal(args.pnl.toFixed(18)),
+      pnlPercent: new Prisma.Decimal(args.pnlPercent.toFixed(18)),
+      addsCount: args.addsCount,
+      closeReason: "TP",
+      openedAt: args.openedAt,
+      closedAt: args.closedAt,
+    },
+  });
+}
+
 async function manageOnePosition(args: {
   userId: string;
   apiKey: string;
@@ -366,6 +403,8 @@ async function manageOnePosition(args: {
     qty: any;
     tpPrice: any;
     addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
   };
 }) {
   const symbol = args.position.symbol;
@@ -394,11 +433,44 @@ async function manageOnePosition(args: {
         live,
       });
 
+      const closeTime = new Date();
+
+      const finalQty = toNum(live.executedQty || args.position.qty);
+      const finalExitValue =
+        toNum(live.cummulativeQuoteQty) ||
+        finalQty * toNum(live.price || args.position.tpPrice);
+      const exitPrice =
+        finalQty > 0
+          ? finalExitValue / finalQty
+          : toNum(live.price || args.position.tpPrice);
+
+      const entryValue = toNum(args.position.investedQuote);
+      const avgEntryPrice = toNum(args.position.avgPrice);
+      const pnl = finalExitValue - entryValue;
+      const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+      await createBotTrade({
+        userId: args.userId,
+        botPositionId: args.position.id,
+        exchange: "BINANCE",
+        symbol,
+        entryValue,
+        exitValue: finalExitValue,
+        qty: finalQty,
+        avgEntryPrice,
+        exitPrice,
+        pnl,
+        pnlPercent,
+        addsCount: args.position.addsCount,
+        openedAt: args.position.openedAt,
+        closedAt: closeTime,
+      });
+
       await prisma.botPosition.update({
         where: { id: args.position.id },
         data: {
           status: "CLOSED",
-          closedAt: new Date(),
+          closedAt: closeTime,
         },
       });
 
@@ -441,6 +513,15 @@ async function manageOnePosition(args: {
         symbol,
         action: "TP_FILLED_POSITION_CLOSED",
         tpOrderId: tp.id,
+        trade: {
+          entryValue,
+          exitValue: finalExitValue,
+          qty: finalQty,
+          avgEntryPrice,
+          exitPrice,
+          pnl,
+          pnlPercent,
+        },
         canceledGrid,
       };
     }
@@ -508,6 +589,7 @@ async function manageOnePosition(args: {
   const oldQty = toNum(args.position.qty);
   const oldAvgPrice = toNum(args.position.avgPrice);
   const oldCost = oldQty * oldAvgPrice;
+  const oldInvestedQuote = toNum(args.position.investedQuote);
 
   const addedQty = newlyFilledGrids.reduce((s, x) => s + x.filledQty, 0);
   const addedCost = newlyFilledGrids.reduce((s, x) => s + x.quoteSpent, 0);
@@ -515,6 +597,7 @@ async function manageOnePosition(args: {
   const newQty = oldQty + addedQty;
   const newAvgPrice = (oldCost + addedCost) / newQty;
   const newTpPriceNum = newAvgPrice * 1.05;
+  const newInvestedQuote = oldInvestedQuote + addedCost;
 
   const canceledTp: AnyJson[] = [];
 
@@ -559,6 +642,7 @@ async function manageOnePosition(args: {
       avgPrice: new Prisma.Decimal(newAvgPrice.toFixed(18)),
       qty: new Prisma.Decimal(finalQtyNum.toFixed(18)),
       tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
+      investedQuote: new Prisma.Decimal(newInvestedQuote.toFixed(18)),
       addsCount: {
         increment: newlyFilledGrids.length,
       },
@@ -569,6 +653,7 @@ async function manageOnePosition(args: {
       avgPrice: true,
       qty: true,
       tpPrice: true,
+      investedQuote: true,
       addsCount: true,
       status: true,
     },
@@ -619,6 +704,7 @@ async function manageOnePosition(args: {
       avgPrice: updatedPosition.avgPrice.toString(),
       qty: updatedPosition.qty.toString(),
       tpPrice: updatedPosition.tpPrice.toString(),
+      investedQuote: updatedPosition.investedQuote.toString(),
     },
   };
 }
@@ -690,6 +776,8 @@ export async function runManage() {
         qty: true,
         tpPrice: true,
         addsCount: true,
+        investedQuote: true,
+        openedAt: true,
       },
     });
 
