@@ -4,6 +4,18 @@ import { runManage } from "@/lib/engine/runManage";
 
 export const runtime = "nodejs";
 
+function isAuthorized(req: Request) {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) return true;
+
+  const authHeader = req.headers.get("authorization") || "";
+  const bearer = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length).trim()
+    : "";
+
+  return bearer === cronSecret;
+}
+
 async function runEngine() {
   const tick = await runEngineTick();
   const manage = await runManage();
@@ -17,8 +29,18 @@ async function runEngine() {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UNAUTHORIZED",
+        },
+        { status: 401 }
+      );
+    }
+
     const data = await runEngine();
     return NextResponse.json(data);
   } catch (e: any) {
@@ -33,8 +55,18 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UNAUTHORIZED",
+        },
+        { status: 401 }
+      );
+    }
+
     const data = await runEngine();
     return NextResponse.json(data);
   } catch (e: any) {
