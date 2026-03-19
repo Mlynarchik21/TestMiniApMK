@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -21,7 +20,6 @@ model User {
   trades      Trade[]
   tradeEvents TradeEvent[]
 
-  // ✅ Bot
   botConfig    BotConfig?
   botState     BotState?
   botPositions BotPosition[]
@@ -152,10 +150,6 @@ model TradeEvent {
   @@index([tradeId])
 }
 
-//
-// ✅ Bot control layer
-//
-
 enum BotRunStatus {
   IDLE
   RUNNING
@@ -231,7 +225,6 @@ model BotPosition {
   tpPrice       Decimal           @db.Decimal(38, 18)
   addsCount     Int               @default(0)
 
-  // ✅ сколько всего USDT реально вложено в позицию
   investedQuote Decimal           @default(0) @db.Decimal(38, 18)
 
   openedAt      DateTime          @default(now())
