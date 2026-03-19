@@ -805,6 +805,16 @@ async function openPositionForSymbol(args: {
     });
   }
 
+  await notifyTradeOpened({
+    userId: args.userId,
+    symbol: args.symbol,
+    positionId: position.id,
+    avgPrice,
+    qty: executedQty,
+    usdtAmount: quoteSpent,
+    tpPrice: Number(tpPrice),
+  });
+
   return {
     ok: true,
     symbol: args.symbol,
