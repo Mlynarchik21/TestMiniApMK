@@ -456,13 +456,22 @@ async function runTestOpen(req: Request) {
   );
 
   const executedQty = toNum(marketOrder?.executedQty);
-  const quoteSpent = toNum(marketOrder?.cummulativeQuoteQty);
+
+  let quoteSpent = toNum(marketOrder?.cummulativeQuoteQty);
+
+  if (quoteSpent <= 0) {
+    const fills = Array.isArray(marketOrder?.fills) ? marketOrder.fills : [];
+
+    quoteSpent = fills.reduce((sum: number, fill: any) => {
+      return sum + toNum(fill?.price) * toNum(fill?.qty);
+    }, 0);
+  }
 
   if (executedQty <= 0 || quoteSpent <= 0) {
     return {
       ok: false,
       error: "ORDER_NOT_FILLED",
-      message: "Market order did not return executed quantity",
+      message: "Market order did not return executed quantity or quote spent",
       rawOrder: marketOrder,
     };
   }
@@ -711,4 +720,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+} ready
