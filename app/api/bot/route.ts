@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
 
-    const [config, state, positions] = await Promise.all([
+    const [config, state, activePositionsCount, positions] = await Promise.all([
       prisma.botConfig.findUnique({
         where: { userId: user.id },
         select: {
@@ -73,8 +73,17 @@ export async function GET(req: Request) {
           updatedAt: true,
         },
       }),
+      prisma.botPosition.count({
+        where: {
+          userId: user.id,
+          status: "OPEN",
+        },
+      }),
       prisma.botPosition.findMany({
-        where: { userId: user.id },
+        where: {
+          userId: user.id,
+          status: "OPEN",
+        },
         orderBy: { updatedAt: "desc" },
         select: {
           id: true,
@@ -103,6 +112,7 @@ export async function GET(req: Request) {
           }
         : null,
       state,
+      activePositions: activePositionsCount,
       positions: positions.map((p) => ({
         ...p,
         avgPrice: p.avgPrice.toString(),
