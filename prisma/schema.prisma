@@ -1,3 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tgId      BigInt   @unique
+  username  String?
+  firstName String?
+  lastName  String?
+
+  sessions  Session[]
+  settings  UserSettings?
+  keys      UserKey[]
+
+  trades       Trade[]
+  tradeEvents  TradeEvent[]
+
+  botConfig    BotConfig?
+  botState     BotState?
+  botPositions BotPosition[]
+  botTrades    BotTrade[]
+  botOrders    BotOrder[]
+  cooldowns    CooldownSymbol[]
+  engineCycles EngineCycle[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model UserSettings {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timezone String @default("UTC")
+  currency String @default("USD")
+  riskMode String @default("normal")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Exchange {
+  BINANCE
+  BYBIT
+  OKX
+}
+
+model UserKey {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange      Exchange
+  label         String?
+
+  apiKey        String
+  secretEnc     String
+  passphraseEnc String?
+
+  botConfigs    BotConfig[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@unique([userId, exchange, label])
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+  CANCELED
+}
+
+enum TradeEventType {
+  MANUAL_CREATE
+  MANUAL_UPDATE
+  MANUAL_DELETE
+  SYNC_IMPORT
+  ORDER_PLACED
+  ORDER_FILLED
+  ORDER_CANCELED
+}
+
+model Trade {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange    Exchange
+  symbol      String      @db.VarChar(32)
+  side        TradeSide
+  status      TradeStatus @default(OPEN)
+
+  qty         Decimal     @db.Decimal(38, 18)
+  entryPrice  Decimal?    @db.Decimal(38, 18)
+  exitPrice   Decimal?    @db.Decimal(38, 18)
+  realizedPnl Decimal?    @db.Decimal(38, 18)
+
+  openedAt    DateTime    @default(now())
+  closedAt    DateTime?
+
+  events      TradeEvent[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([userId, exchange])
+  @@index([userId, openedAt])
+  @@index([userId, status])
+}
+
+model TradeEvent {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange  Exchange
+  type      TradeEventType
+
+  tradeId   String?
+  trade     Trade?         @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  payload   Json
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+  @@index([userId, exchange, createdAt])
+  @@index([tradeId])
+}
+
 enum BotRunStatus {
   IDLE
   RUNNING
