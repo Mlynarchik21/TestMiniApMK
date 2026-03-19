@@ -512,6 +512,18 @@ async function manageOnePosition(args: {
 
       await insertCooldown(args.userId, symbol);
 
+      await notifyTradeClosed({
+        userId: args.userId,
+        symbol,
+        positionId: args.position.id,
+        avgEntryPrice,
+        exitPrice,
+        qty: finalQty,
+        entryValue,
+        exitValue: finalExitValue,
+        pnl,
+      });
+
       return {
         positionId: args.position.id,
         symbol,
@@ -682,6 +694,20 @@ async function manageOnePosition(args: {
     exchangeOrderId: String(newTpOrder?.orderId ?? ""),
     clientOrderId: String(newTpOrder?.clientOrderId ?? tpClientId),
     rawOrder: newTpOrder,
+  });
+
+  const lastFilledGrid = newlyFilledGrids[newlyFilledGrids.length - 1];
+
+  await notifyTradeAveraged({
+    userId: args.userId,
+    symbol,
+    positionId: args.position.id,
+    orderId: lastFilledGrid?.row?.id ?? args.position.id,
+    fillPrice: lastFilledGrid?.fillPrice ?? newAvgPrice,
+    newAvgPrice,
+    newTpPrice: Number(finalTpPrice),
+    totalQty: finalQtyNum,
+    totalUsdtAmount: newInvestedQuote,
   });
 
   return {
