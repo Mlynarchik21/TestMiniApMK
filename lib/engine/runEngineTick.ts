@@ -1,3 +1,4 @@
+import { notifyTradeOpened } from "@/lib/notifications/telegram";
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
