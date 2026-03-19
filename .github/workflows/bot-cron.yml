@@ -8,17 +8,19 @@ on:
 
 jobs:
   manage:
-    if: github.event.schedule == '*/1 * * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/1 * * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Call manage
         run: |
-          curl -X POST https://test-mini-ap-mk.vercel.app/api/engine/manage
+          curl -X POST --fail --silent --show-error \
+            https://test-mini-ap-mk.vercel.app/api/engine/manage
 
   tick:
-    if: github.event.schedule == '*/5 * * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Call tick
         run: |
-          curl -X POST https://test-mini-ap-mk.vercel.app/api/engine/tick
+          curl -X POST --fail --silent --show-error \
+            https://test-mini-ap-mk.vercel.app/api/engine/tick
