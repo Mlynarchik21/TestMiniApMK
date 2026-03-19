@@ -17,13 +17,16 @@ model User {
   settings  UserSettings?
   keys      UserKey[]
 
-  trades      Trade[]
-  tradeEvents TradeEvent[]
+  trades       Trade[]
+  tradeEvents  TradeEvent[]
 
-  botConfig    BotConfig?
-  botState     BotState?
-  botPositions BotPosition[]
-  botTrades    BotTrade[]
+  botConfig     BotConfig?
+  botState      BotState?
+  botPositions  BotPosition[]
+  botTrades     BotTrade[]
+  botOrders     BotOrder[]
+  cooldowns     CooldownSymbol[]
+  engineCycles  EngineCycle[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,6 +174,34 @@ enum BotCloseReason {
   OTHER
 }
 
+enum BotOrderKind {
+  ENTRY
+  GRID
+  TP
+}
+
+enum BotOrderStatus {
+  NEW
+  PLACED
+  PARTIALLY_FILLED
+  FILLED
+  CANCELED
+  ERROR
+}
+
+enum CooldownReason {
+  TP_CLOSED
+  MANUAL
+  OTHER
+}
+
+enum EngineCycleStatus {
+  STARTED
+  SUCCESS
+  SKIPPED
+  ERROR
+}
+
 model BotConfig {
   id               String    @id @default(cuid())
   userId           String    @unique
@@ -234,6 +265,7 @@ model BotPosition {
   updatedAt     DateTime          @updatedAt
 
   trades        BotTrade[]
+  orders        BotOrder[]
 
   @@index([userId])
   @@index([userId, status])
@@ -276,4 +308,81 @@ model BotTrade {
   @@index([userId, closedAt])
   @@index([userId, symbol, closedAt])
   @@index([userId, exchange, closedAt])
+}
+
+model BotOrder {
+  id              String         @id @default(cuid())
+
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  botPositionId   String?
+  botPosition     BotPosition?   @relation(fields: [botPositionId], references: [id], onDelete: SetNull)
+
+  exchange        Exchange
+  symbol          String         @db.VarChar(32)
+
+  kind            BotOrderKind
+  side            TradeSide
+  status          BotOrderStatus
+
+  price           Decimal?       @db.Decimal(38, 18)
+  qty             Decimal        @db.Decimal(38, 18)
+
+  exchangeOrderId String?
+  clientOrderId   String?
+
+  meta            Json?
+  placedAt        DateTime?
+  filledAt        DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([userId, exchange, createdAt])
+  @@index([botPositionId])
+  @@index([symbol])
+  @@index([status])
+}
+
+model CooldownSymbol {
+  id            String         @id @default(cuid())
+
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange      Exchange
+  symbol        String         @db.VarChar(32)
+  reason        CooldownReason
+  cooldownUntil DateTime
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([userId, exchange, symbol])
+  @@index([userId])
+  @@index([cooldownUntil])
+}
+
+model EngineCycle {
+  id         String            @id @default(cuid())
+
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exchange   Exchange
+  status     EngineCycleStatus @default(STARTED)
+  message    String?
+  meta       Json?
+
+  startedAt  DateTime          @default(now())
+  finishedAt DateTime?
+
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([userId, exchange, createdAt])
+  @@index([status])
 }
