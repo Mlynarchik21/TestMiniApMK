@@ -47,6 +47,14 @@ function formatByStep(value: number, step: number) {
   return floorToStep(value, step).toFixed(d);
 }
 
+function isActiveBotOrderStatus(status: string) {
+  return ["NEW", "PLACED", "PARTIALLY_FILLED"].includes(String(status || "").toUpperCase());
+}
+
+function isFilledStatus(status: string) {
+  return String(status || "").toUpperCase() === "FILLED";
+}
+
 async function getPositionOrders(positionId: string) {
   const rows = await prisma.$queryRaw<RawBotOrder[]>(Prisma.sql`
     SELECT
@@ -214,6 +222,55 @@ async function createBotTrade(args: {
   });
 }
 
+async function cancelBotOrders(args: {
+  exchange: ReturnType<typeof getExchangeAdapter>;
+  apiKey: string;
+  apiSecret: string;
+  symbol: string;
+  orders: RawBotOrder[];
+}) {
+  const canceled: AnyJson[] = [];
+
+  for (const ord of args.orders) {
+    if (!isActiveBotOrderStatus(ord.status)) continue;
+    if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
+
+    try {
+      const cancelRes = await args.exchange.cancelOrder({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol: args.symbol,
+        exchangeOrderId: ord.exchangeOrderId ?? undefined,
+        clientOrderId: ord.clientOrderId ?? undefined,
+      });
+
+      await updateBotOrderStatus(ord.id, "CANCELED", {
+        ...(ord.meta ?? {}),
+        cancelRes,
+      });
+
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        exchangeOrderId: ord.exchangeOrderId,
+        clientOrderId: ord.clientOrderId,
+        status: "CANCELED",
+      });
+    } catch (e: any) {
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        exchangeOrderId: ord.exchangeOrderId,
+        clientOrderId: ord.clientOrderId,
+        status: "CANCEL_ERROR",
+        message: String(e?.message || e),
+      });
+    }
+  }
+
+  return canceled;
+}
+
 async function manageOnePosition(args: {
   userId: string;
   exchange: ExchangeName;
@@ -236,10 +293,10 @@ async function manageOnePosition(args: {
   const orders = await getPositionOrders(args.position.id);
 
   const tpOrders = orders.filter(
-    (o) => o.kind === "TP" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
+    (o) => o.kind === "TP" && isActiveBotOrderStatus(o.status)
   );
   const gridOrders = orders.filter(
-    (o) => o.kind === "GRID" && ["NEW", "PARTIALLY_FILLED", "PLACED"].includes(o.status)
+    (o) => o.kind === "GRID" && isActiveBotOrderStatus(o.status)
   );
 
   const tpStatuses: AnyJson[] = [];
@@ -258,7 +315,7 @@ async function manageOnePosition(args: {
 
     tpStatuses.push(live.raw);
 
-    if (live.status === "FILLED") {
+    if (isFilledStatus(live.status)) {
       await updateBotOrderStatus(tp.id, "FILLED", {
         ...(tp.meta ?? {}),
         live: live.raw,
@@ -267,13 +324,27 @@ async function manageOnePosition(args: {
       const closeTime = new Date();
 
       const finalQty = toNum(live.executedQty || args.position.qty);
-      const finalExitValue = toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
-      const exitPrice = finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
+      const finalExitValue =
+        toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
+      const exitPrice =
+        finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
 
       const entryValue = toNum(args.position.investedQuote);
       const avgEntryPrice = toNum(args.position.avgPrice);
       const pnl = finalExitValue - entryValue;
       const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+      const ordersToCancel = orders.filter(
+        (o) => o.id !== tp.id && isActiveBotOrderStatus(o.status)
+      );
+
+      const canceledOrders = await cancelBotOrders({
+        exchange,
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol,
+        orders: ordersToCancel,
+      });
 
       await createBotTrade({
         userId: args.userId,
@@ -299,39 +370,6 @@ async function manageOnePosition(args: {
           closedAt: closeTime,
         },
       });
-
-      const canceledGrid: AnyJson[] = [];
-      for (const g of gridOrders) {
-        if (!g.exchangeOrderId && !g.clientOrderId) continue;
-
-        try {
-          const cancelRes = await exchange.cancelOrder({
-            apiKey: args.apiKey,
-            apiSecret: args.apiSecret,
-            symbol,
-            exchangeOrderId: g.exchangeOrderId ?? undefined,
-            clientOrderId: g.clientOrderId ?? undefined,
-          });
-
-          await updateBotOrderStatus(g.id, "CANCELED", {
-            ...(g.meta ?? {}),
-            cancelRes,
-          });
-
-          canceledGrid.push({
-            id: g.id,
-            exchangeOrderId: g.exchangeOrderId,
-            status: "CANCELED",
-          });
-        } catch (e: any) {
-          canceledGrid.push({
-            id: g.id,
-            exchangeOrderId: g.exchangeOrderId,
-            status: "CANCEL_ERROR",
-            message: String(e?.message || e),
-          });
-        }
-      }
 
       await insertCooldown(args.userId, args.exchange, symbol);
 
@@ -361,7 +399,7 @@ async function manageOnePosition(args: {
           pnl,
           pnlPercent,
         },
-        canceledGrid,
+        canceledOrders,
       };
     }
 
@@ -394,7 +432,7 @@ async function manageOnePosition(args: {
 
     gridStatuses.push(live.raw);
 
-    if (live.status === "FILLED" && g.status !== "FILLED") {
+    if (isFilledStatus(live.status) && !isFilledStatus(g.status)) {
       const filledQty = toNum(live.executedQty || g.qty);
       const quoteSpent = toNum(live.cumQuote);
       const fillPrice = filledQty > 0 ? quoteSpent / filledQty : toNum(g.price);
@@ -445,39 +483,13 @@ async function manageOnePosition(args: {
   const newTpPriceNum = newAvgPrice * 1.05;
   const newInvestedQuote = oldInvestedQuote + addedCost;
 
-  const canceledTp: AnyJson[] = [];
-
-  for (const tp of tpOrders) {
-    if (!tp.exchangeOrderId && !tp.clientOrderId) continue;
-
-    try {
-      const cancelRes = await exchange.cancelOrder({
-        apiKey: args.apiKey,
-        apiSecret: args.apiSecret,
-        symbol,
-        exchangeOrderId: tp.exchangeOrderId ?? undefined,
-        clientOrderId: tp.clientOrderId ?? undefined,
-      });
-
-      await updateBotOrderStatus(tp.id, "CANCELED", {
-        ...(tp.meta ?? {}),
-        cancelRes,
-      });
-
-      canceledTp.push({
-        id: tp.id,
-        exchangeOrderId: tp.exchangeOrderId,
-        status: "CANCELED",
-      });
-    } catch (e: any) {
-      canceledTp.push({
-        id: tp.id,
-        exchangeOrderId: tp.exchangeOrderId,
-        status: "CANCEL_ERROR",
-        message: String(e?.message || e),
-      });
-    }
-  }
+  const canceledTp = await cancelBotOrders({
+    exchange,
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    symbol,
+    orders: tpOrders,
+  });
 
   const finalQtyNum = floorToStep(newQty, filters.stepSize);
   const finalTpPrice = formatByStep(newTpPriceNum, filters.tickSize);
@@ -598,6 +610,7 @@ export async function runManage() {
     if (!bot.keyId) {
       managed.push({
         userId: bot.userId,
+        exchange: bot.exchange,
         status: "SKIPPED",
         message: "API key not selected",
       });
@@ -618,6 +631,7 @@ export async function runManage() {
     if (!key) {
       managed.push({
         userId: bot.userId,
+        exchange: bot.exchange,
         status: "SKIPPED",
         message: "Selected key not found",
       });
@@ -647,6 +661,7 @@ export async function runManage() {
     if (!positions.length) {
       managed.push({
         userId: bot.userId,
+        exchange: bot.exchange,
         status: "SKIPPED",
         message: "No open positions",
       });
@@ -665,12 +680,14 @@ export async function runManage() {
 
         managed.push({
           userId: bot.userId,
+          exchange: bot.exchange,
           status: "SUCCESS",
           ...result,
         });
       } catch (e: any) {
         managed.push({
           userId: bot.userId,
+          exchange: bot.exchange,
           positionId: position.id,
           symbol: position.symbol,
           status: "ERROR",
