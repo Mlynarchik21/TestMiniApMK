@@ -108,6 +108,7 @@ export default function BotPage() {
   const [budgetPerSymbol, setBudgetPerSymbol] = useState("50");
   const [maxTotalBudget, setMaxTotalBudget] = useState("");
   const [syncIntervalMin, setSyncIntervalMin] = useState("5");
+  const [testSymbol, setTestSymbol] = useState("BTCUSDT");
 
   const filteredKeys = useMemo(
     () => keys.filter((k) => k.exchange === exchange),
@@ -262,6 +263,84 @@ export default function BotPage() {
     }
   }
 
+  async function openTestTrade() {
+    const symbol = testSymbol.trim().toUpperCase();
+
+    if (!symbol || !symbol.endsWith("USDT")) {
+      setErr("Укажи символ в формате BTCUSDT");
+      return;
+    }
+
+    setLoading(true);
+    setErr("");
+
+    try {
+      const r = await api(`/api/engine/test-open?symbol=${encodeURIComponent(symbol)}`, {
+        method: "POST",
+      });
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function closeAllDeals() {
+    setLoading(true);
+    setErr("");
+
+    try {
+      const r = await api("/api/engine/test-close-all", {
+        method: "POST",
+      });
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function purgeHistory() {
+    setLoading(true);
+    setErr("");
+
+    try {
+      const r = await api("/api/engine/test-close-all?purge=1", {
+        method: "POST",
+      });
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      const purgeOk = (r.json as any)?.purge?.ok;
+      if (purgeOk === false) {
+        setErr(humanizeError((r.json as any).purge));
+      }
+
+      await reloadAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     reloadAll(true);
   }, []);
@@ -387,10 +466,7 @@ export default function BotPage() {
                 <StatCard title="Win rate" value={formatPct(stats?.winRate ?? 0)} />
                 <StatCard title="Closed trades" value={formatNum(stats?.closedTrades ?? 0, 0)} />
                 <StatCard title="Open positions" value={formatNum(stats?.openPositions ?? 0, 0)} />
-                <StatCard
-                  title="Capital in work"
-                  value={formatUsd(stats?.capitalInWork ?? 0)}
-                />
+                <StatCard title="Capital in work" value={formatUsd(stats?.capitalInWork ?? 0)} />
                 <StatCard
                   title="Avg trade PnL"
                   value={formatUsd(stats?.avgTradePnl ?? 0)}
@@ -465,6 +541,33 @@ export default function BotPage() {
                 <button disabled={!canSave} onClick={saveConfig} style={btnPrimary(!canSave)}>
                   {loading ? "..." : "Save config"}
                 </button>
+              </div>
+            </div>
+
+            <div style={card()}>
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>Test actions</div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <input
+                  value={testSymbol}
+                  onChange={(e) => setTestSymbol(e.target.value.toUpperCase())}
+                  placeholder="BTCUSDT"
+                  style={input()}
+                />
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <button disabled={loading} onClick={openTestTrade} style={btnPrimary(loading)}>
+                    {loading ? "..." : "Open test trade"}
+                  </button>
+
+                  <button disabled={loading} onClick={closeAllDeals} style={btnGhostWide()}>
+                    Close all deals
+                  </button>
+
+                  <button disabled={loading} onClick={purgeHistory} style={btnDangerWide()}>
+                    Close all + clear history
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -671,9 +774,35 @@ function btnGhost(): React.CSSProperties {
   };
 }
 
+function btnGhostWide(): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.25)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+}
+
 function btnDanger(): React.CSSProperties {
   return {
     flex: 1,
+    padding: "12px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,0,0,0.35)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+}
+
+function btnDangerWide(): React.CSSProperties {
+  return {
+    width: "100%",
     padding: "12px 14px",
     borderRadius: 999,
     border: "1px solid rgba(255,0,0,0.35)",
