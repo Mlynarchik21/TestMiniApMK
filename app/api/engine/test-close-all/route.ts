@@ -50,16 +50,16 @@ async function binanceServerTime(): Promise<number> {
   });
 
   const text = await r.text();
-  let json: AnyJson = null;
+  let data: AnyJson = null;
   try {
-    json = JSON.parse(text);
+    data = JSON.parse(text);
   } catch {}
 
   if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance time error: ${r.status}`);
+    throw new Error(data?.msg || text || `Binance time error: ${r.status}`);
   }
 
-  const t = Number(json?.serverTime);
+  const t = Number(data?.serverTime);
   if (!Number.isFinite(t)) {
     throw new Error("Binance serverTime missing");
   }
@@ -240,6 +240,36 @@ async function bybitPost(params: {
   }
 
   return data;
+}
+
+async function bybitGetOrderRealtime(params: {
+  apiKey: string;
+  apiSecret: string;
+  isDemo: boolean;
+  symbol: string;
+  orderId?: string | null;
+  clientOrderId?: string | null;
+}) {
+  const base = params.isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const query = new URLSearchParams({
+    category: "spot",
+    symbol: params.symbol,
+  });
+
+  if (params.orderId) query.set("orderId", params.orderId);
+  if (params.clientOrderId) query.set("orderLinkId", params.clientOrderId);
+
+  const live = await bybitGet({
+    base,
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/realtime",
+    query: query.toString(),
+  });
+
+  const list = Array.isArray(live?.result?.list) ? live.result.list : [];
+  return list[0] ?? null;
 }
 
 function bybitBaseFromLabel(label: string | null | undefined) {
@@ -427,7 +457,9 @@ export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
     const url = new URL(req.url);
-    const purge = ["1", "true", "yes"].includes((url.searchParams.get("purge") || "").toLowerCase());
+    const purge = ["1", "true", "yes"].includes(
+      (url.searchParams.get("purge") || "").toLowerCase()
+    );
 
     const positions = await prisma.botPosition.findMany({
       where: {
@@ -584,7 +616,6 @@ export async function POST(req: Request) {
           closeClientOrderId = clientOrderId;
 
           const live = await bybitGetOrderRealtime({
-            base: undefined as never,
             apiKey: key.apiKey,
             apiSecret,
             isDemo: /demo/i.test(key.label || ""),
