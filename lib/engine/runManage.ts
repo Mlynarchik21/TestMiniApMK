@@ -2,20 +2,13 @@ import {
   notifyTradeAveraged,
   notifyTradeClosed,
 } from "@/lib/notifications/telegram";
-import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
-
-const BINANCE_TESTNET_BASE = "https://testnet.binance.vision";
+import { getExchangeAdapter } from "@/lib/exchanges";
+import type { ExchangeName } from "@/lib/exchanges/types";
 
 type AnyJson = any;
-
-type SymbolFilters = {
-  tickSize: number;
-  stepSize: number;
-  minQty: number;
-};
 
 type RawBotOrder = {
   id: string;
@@ -32,10 +25,6 @@ type RawBotOrder = {
   clientOrderId: string | null;
   meta: AnyJson;
 };
-
-function sign(query: string, secret: string) {
-  return crypto.createHmac("sha256", secret).update(query).digest("hex");
-}
 
 function toNum(v: unknown) {
   const n = Number(v);
@@ -56,178 +45,6 @@ function decimalsFromStep(step: number) {
 function formatByStep(value: number, step: number) {
   const d = decimalsFromStep(step);
   return floorToStep(value, step).toFixed(d);
-}
-
-async function binanceServerTime(): Promise<number> {
-  const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/time`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance time error: ${r.status}`);
-
-  const t = Number(json?.serverTime);
-  if (!Number.isFinite(t)) throw new Error("Binance serverTime missing");
-  return t;
-}
-
-async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`,
-    {
-      method: "GET",
-      cache: "no-store",
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `exchangeInfo error: ${r.status}`);
-
-  const sym = Array.isArray(json?.symbols) ? json.symbols[0] : null;
-  if (!sym) throw new Error(`symbol ${symbol} not found in exchangeInfo`);
-
-  const filters = Array.isArray(sym?.filters) ? sym.filters : [];
-  const priceFilter = filters.find((f: AnyJson) => f?.filterType === "PRICE_FILTER");
-  const lotSize = filters.find((f: AnyJson) => f?.filterType === "LOT_SIZE");
-
-  return {
-    tickSize: toNum(priceFilter?.tickSize || "0.01"),
-    stepSize: toNum(lotSize?.stepSize || "0.000001"),
-    minQty: toNum(lotSize?.minQty || "0"),
-  };
-}
-
-async function binanceOrderStatus(
-  apiKey: string,
-  apiSecret: string,
-  symbol: string,
-  orderId: string
-) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol,
-    orderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance order status error: ${r.status}`);
-  return json;
-}
-
-async function binanceCancelOrder(
-  apiKey: string,
-  apiSecret: string,
-  symbol: string,
-  orderId: string
-) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol,
-    orderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "DELETE",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance cancel order error: ${r.status}`);
-  return json;
-}
-
-async function placeBinanceLimitSell(params: {
-  apiKey: string;
-  apiSecret: string;
-  symbol: string;
-  quantity: string;
-  price: string;
-  newClientOrderId: string;
-}) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol: params.symbol,
-    side: "SELL",
-    type: "LIMIT",
-    timeInForce: "GTC",
-    quantity: params.quantity,
-    price: params.price,
-    newOrderRespType: "RESULT",
-    newClientOrderId: params.newClientOrderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, params.apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": params.apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) throw new Error(json?.msg || text || `Binance limit SELL error: ${r.status}`);
-  return json;
 }
 
 async function getPositionOrders(positionId: string) {
@@ -277,6 +94,7 @@ async function updateBotOrderStatus(orderId: string, status: string, meta?: AnyJ
 async function insertTpBotOrder(args: {
   userId: string;
   botPositionId: string;
+  exchange: ExchangeName;
   symbol: string;
   qty: string;
   price: string;
@@ -312,7 +130,7 @@ async function insertTpBotOrder(args: {
       gen_random_uuid()::text,
       ${args.userId},
       ${args.botPositionId},
-      'BINANCE'::"Exchange",
+      ${args.exchange}::"Exchange",
       ${args.symbol},
       'TP',
       'SELL',
@@ -329,7 +147,7 @@ async function insertTpBotOrder(args: {
   `);
 }
 
-async function insertCooldown(userId: string, symbol: string) {
+async function insertCooldown(userId: string, exchange: ExchangeName, symbol: string) {
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO "CooldownSymbol" (
       "id",
@@ -344,7 +162,7 @@ async function insertCooldown(userId: string, symbol: string) {
     VALUES (
       gen_random_uuid()::text,
       ${userId},
-      'BINANCE'::"Exchange",
+      ${exchange}::"Exchange",
       ${symbol},
       'TP_CLOSED',
       CURRENT_TIMESTAMP + interval '12 hours',
@@ -362,7 +180,7 @@ async function insertCooldown(userId: string, symbol: string) {
 async function createBotTrade(args: {
   userId: string;
   botPositionId: string;
-  exchange: "BINANCE";
+  exchange: ExchangeName;
   symbol: string;
   entryValue: number;
   exitValue: number;
@@ -398,6 +216,7 @@ async function createBotTrade(args: {
 
 async function manageOnePosition(args: {
   userId: string;
+  exchange: ExchangeName;
   apiKey: string;
   apiSecret: string;
   position: {
@@ -411,8 +230,9 @@ async function manageOnePosition(args: {
     openedAt: Date;
   };
 }) {
+  const exchange = getExchangeAdapter(args.exchange);
   const symbol = args.position.symbol;
-  const filters = await getSymbolFilters(symbol);
+  const filters = await exchange.getSymbolFilters(symbol);
   const orders = await getPositionOrders(args.position.id);
 
   const tpOrders = orders.filter(
@@ -426,27 +246,29 @@ async function manageOnePosition(args: {
   const gridStatuses: AnyJson[] = [];
 
   for (const tp of tpOrders) {
-    if (!tp.exchangeOrderId) continue;
+    if (!tp.exchangeOrderId && !tp.clientOrderId) continue;
 
-    const live = await binanceOrderStatus(args.apiKey, args.apiSecret, symbol, tp.exchangeOrderId);
-    tpStatuses.push(live);
+    const live = await exchange.getOrderStatus({
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      symbol,
+      exchangeOrderId: tp.exchangeOrderId ?? undefined,
+      clientOrderId: tp.clientOrderId ?? undefined,
+    });
 
-    if (live?.status === "FILLED") {
+    tpStatuses.push(live.raw);
+
+    if (live.status === "FILLED") {
       await updateBotOrderStatus(tp.id, "FILLED", {
         ...(tp.meta ?? {}),
-        live,
+        live: live.raw,
       });
 
       const closeTime = new Date();
 
       const finalQty = toNum(live.executedQty || args.position.qty);
-      const finalExitValue =
-        toNum(live.cummulativeQuoteQty) ||
-        finalQty * toNum(live.price || args.position.tpPrice);
-      const exitPrice =
-        finalQty > 0
-          ? finalExitValue / finalQty
-          : toNum(live.price || args.position.tpPrice);
+      const finalExitValue = toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
+      const exitPrice = finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
 
       const entryValue = toNum(args.position.investedQuote);
       const avgEntryPrice = toNum(args.position.avgPrice);
@@ -456,7 +278,7 @@ async function manageOnePosition(args: {
       await createBotTrade({
         userId: args.userId,
         botPositionId: args.position.id,
-        exchange: "BINANCE",
+        exchange: args.exchange,
         symbol,
         entryValue,
         exitValue: finalExitValue,
@@ -480,15 +302,16 @@ async function manageOnePosition(args: {
 
       const canceledGrid: AnyJson[] = [];
       for (const g of gridOrders) {
-        if (!g.exchangeOrderId) continue;
+        if (!g.exchangeOrderId && !g.clientOrderId) continue;
 
         try {
-          const cancelRes = await binanceCancelOrder(
-            args.apiKey,
-            args.apiSecret,
+          const cancelRes = await exchange.cancelOrder({
+            apiKey: args.apiKey,
+            apiSecret: args.apiSecret,
             symbol,
-            g.exchangeOrderId
-          );
+            exchangeOrderId: g.exchangeOrderId ?? undefined,
+            clientOrderId: g.clientOrderId ?? undefined,
+          });
 
           await updateBotOrderStatus(g.id, "CANCELED", {
             ...(g.meta ?? {}),
@@ -510,7 +333,7 @@ async function manageOnePosition(args: {
         }
       }
 
-      await insertCooldown(args.userId, symbol);
+      await insertCooldown(args.userId, args.exchange, symbol);
 
       await notifyTradeClosed({
         userId: args.userId,
@@ -542,10 +365,10 @@ async function manageOnePosition(args: {
       };
     }
 
-    if (live?.status && live.status !== tp.status) {
+    if (live.status && live.status !== tp.status) {
       await updateBotOrderStatus(tp.id, String(live.status), {
         ...(tp.meta ?? {}),
-        live,
+        live: live.raw,
       });
     }
   }
@@ -559,24 +382,31 @@ async function manageOnePosition(args: {
   }> = [];
 
   for (const g of gridOrders) {
-    if (!g.exchangeOrderId) continue;
+    if (!g.exchangeOrderId && !g.clientOrderId) continue;
 
-    const live = await binanceOrderStatus(args.apiKey, args.apiSecret, symbol, g.exchangeOrderId);
-    gridStatuses.push(live);
+    const live = await exchange.getOrderStatus({
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      symbol,
+      exchangeOrderId: g.exchangeOrderId ?? undefined,
+      clientOrderId: g.clientOrderId ?? undefined,
+    });
 
-    if (live?.status === "FILLED" && g.status !== "FILLED") {
+    gridStatuses.push(live.raw);
+
+    if (live.status === "FILLED" && g.status !== "FILLED") {
       const filledQty = toNum(live.executedQty || g.qty);
-      const fillPrice = toNum(live.price || g.price);
-      const quoteSpent = toNum(live.cummulativeQuoteQty) || filledQty * fillPrice;
+      const quoteSpent = toNum(live.cumQuote);
+      const fillPrice = filledQty > 0 ? quoteSpent / filledQty : toNum(g.price);
 
       await updateBotOrderStatus(g.id, "FILLED", {
         ...(g.meta ?? {}),
-        live,
+        live: live.raw,
       });
 
       newlyFilledGrids.push({
         row: g,
-        live,
+        live: live.raw,
         filledQty,
         fillPrice,
         quoteSpent,
@@ -584,10 +414,10 @@ async function manageOnePosition(args: {
       continue;
     }
 
-    if (live?.status && live.status !== g.status) {
+    if (live.status && live.status !== g.status) {
       await updateBotOrderStatus(g.id, String(live.status), {
         ...(g.meta ?? {}),
-        live,
+        live: live.raw,
       });
     }
   }
@@ -618,15 +448,16 @@ async function manageOnePosition(args: {
   const canceledTp: AnyJson[] = [];
 
   for (const tp of tpOrders) {
-    if (!tp.exchangeOrderId) continue;
+    if (!tp.exchangeOrderId && !tp.clientOrderId) continue;
 
     try {
-      const cancelRes = await binanceCancelOrder(
-        args.apiKey,
-        args.apiSecret,
+      const cancelRes = await exchange.cancelOrder({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
         symbol,
-        tp.exchangeOrderId
-      );
+        exchangeOrderId: tp.exchangeOrderId ?? undefined,
+        clientOrderId: tp.clientOrderId ?? undefined,
+      });
 
       await updateBotOrderStatus(tp.id, "CANCELED", {
         ...(tp.meta ?? {}),
@@ -676,24 +507,26 @@ async function manageOnePosition(args: {
   });
 
   const tpClientId = `tp_${Date.now()}_${symbol}`.slice(0, 36);
-  const newTpOrder = await placeBinanceLimitSell({
+  const newTpOrder = await exchange.placeLimitOrder({
     apiKey: args.apiKey,
     apiSecret: args.apiSecret,
     symbol,
-    quantity: finalTpQty,
-    price: finalTpPrice,
-    newClientOrderId: tpClientId,
+    side: "SELL",
+    qty: Number(finalTpQty),
+    price: Number(finalTpPrice),
+    clientOrderId: tpClientId,
   });
 
   await insertTpBotOrder({
     userId: args.userId,
     botPositionId: args.position.id,
+    exchange: args.exchange,
     symbol,
     qty: finalTpQty,
     price: finalTpPrice,
-    exchangeOrderId: String(newTpOrder?.orderId ?? ""),
-    clientOrderId: String(newTpOrder?.clientOrderId ?? tpClientId),
-    rawOrder: newTpOrder,
+    exchangeOrderId: String(newTpOrder.exchangeOrderId ?? ""),
+    clientOrderId: String(newTpOrder.clientOrderId ?? tpClientId),
+    rawOrder: newTpOrder.raw,
   });
 
   const lastFilledGrid = newlyFilledGrids[newlyFilledGrids.length - 1];
@@ -723,11 +556,11 @@ async function manageOnePosition(args: {
     })),
     canceledTp,
     newTpOrder: {
-      orderId: newTpOrder?.orderId ?? null,
-      clientOrderId: newTpOrder?.clientOrderId ?? tpClientId,
+      orderId: newTpOrder.exchangeOrderId ?? null,
+      clientOrderId: newTpOrder.clientOrderId ?? tpClientId,
       price: finalTpPrice,
       qty: finalTpQty,
-      status: newTpOrder?.status ?? "NEW",
+      status: newTpOrder.status ?? "NEW",
     },
     updatedPosition: {
       ...updatedPosition,
@@ -743,10 +576,10 @@ export async function runManage() {
   const bots = await prisma.botConfig.findMany({
     where: {
       enabled: true,
-      exchange: "BINANCE",
     },
     select: {
       userId: true,
+      exchange: true,
       keyId: true,
     },
   });
@@ -796,7 +629,7 @@ export async function runManage() {
     const positions = await prisma.botPosition.findMany({
       where: {
         userId: bot.userId,
-        exchange: "BINANCE",
+        exchange: bot.exchange,
         status: "OPEN",
       },
       select: {
@@ -824,6 +657,7 @@ export async function runManage() {
       try {
         const result = await manageOnePosition({
           userId: bot.userId,
+          exchange: bot.exchange as ExchangeName,
           apiKey: key.apiKey,
           apiSecret,
           position,
