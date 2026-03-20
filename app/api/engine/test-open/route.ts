@@ -4,6 +4,7 @@ import { Prisma, type Exchange } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
 import { notifyTradeOpened } from "@/lib/notifications/telegram";
+import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
@@ -711,6 +712,8 @@ async function insertBotOrderRow(args: {
 }
 
 async function runTestOpen(req: Request) {
+  const currentUser = await requireUser(req);
+
   const url = new URL(req.url);
   const symbol = String(url.searchParams.get("symbol") || "BTCUSDT")
     .trim()
@@ -726,9 +729,11 @@ async function runTestOpen(req: Request) {
 
   const bot = await prisma.botConfig.findFirst({
     where: {
+      userId: currentUser.id,
       enabled: true,
       keyId: { not: null },
     },
+    orderBy: { updatedAt: "desc" },
     select: {
       userId: true,
       exchange: true,
@@ -740,7 +745,7 @@ async function runTestOpen(req: Request) {
     return {
       ok: false,
       error: "BOT_NOT_RUNNING",
-      message: "No enabled bot found",
+      message: "No enabled bot found for current user",
     };
   }
 
@@ -773,6 +778,7 @@ async function runTestOpen(req: Request) {
     where: {
       id: bot.keyId,
       userId: bot.userId,
+      exchange: bot.exchange,
     },
     select: {
       id: true,
@@ -1211,13 +1217,14 @@ export async function GET(req: Request) {
     const status = data.ok ? 200 : 400;
     return NextResponse.json(data, { status });
   } catch (e: any) {
+    const status = typeof e?.status === "number" ? e.status : 500;
     return NextResponse.json(
       {
         ok: false,
-        error: "TEST_OPEN_ERROR",
+        error: status === 401 ? "UNAUTHORIZED" : "TEST_OPEN_ERROR",
         message: String(e?.message || e),
       },
-      { status: 500 }
+      { status }
     );
   }
 }
@@ -1228,13 +1235,14 @@ export async function POST(req: Request) {
     const status = data.ok ? 200 : 400;
     return NextResponse.json(data, { status });
   } catch (e: any) {
+    const status = typeof e?.status === "number" ? e.status : 500;
     return NextResponse.json(
       {
         ok: false,
-        error: "TEST_OPEN_ERROR",
+        error: status === 401 ? "UNAUTHORIZED" : "TEST_OPEN_ERROR",
         message: String(e?.message || e),
       },
-      { status: 500 }
+      { status }
     );
   }
 }
