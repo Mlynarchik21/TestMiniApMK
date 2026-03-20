@@ -47,12 +47,20 @@ function formatByStep(value: number, step: number) {
   return floorToStep(value, step).toFixed(d);
 }
 
+function upper(s: unknown) {
+  return String(s || "").toUpperCase();
+}
+
 function isActiveBotOrderStatus(status: string) {
-  return ["NEW", "PLACED", "PARTIALLY_FILLED"].includes(String(status || "").toUpperCase());
+  return ["NEW", "PLACED", "PARTIALLY_FILLED"].includes(upper(status));
 }
 
 function isFilledStatus(status: string) {
-  return String(status || "").toUpperCase() === "FILLED";
+  return upper(status) === "FILLED";
+}
+
+function isTerminalBotOrderStatus(status: string) {
+  return ["FILLED", "CANCELED", "REJECTED", "EXPIRED"].includes(upper(status));
 }
 
 async function getPositionOrders(positionId: string) {
@@ -232,7 +240,7 @@ async function cancelBotOrders(args: {
   const canceled: AnyJson[] = [];
 
   for (const ord of args.orders) {
-    if (!isActiveBotOrderStatus(ord.status)) continue;
+    if (isTerminalBotOrderStatus(ord.status)) continue;
     if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
 
     try {
@@ -269,6 +277,32 @@ async function cancelBotOrders(args: {
   }
 
   return canceled;
+}
+
+async function cancelAllRemainingOrdersForPosition(args: {
+  exchange: ReturnType<typeof getExchangeAdapter>;
+  apiKey: string;
+  apiSecret: string;
+  positionId: string;
+  symbol: string;
+  excludeOrderId?: string;
+}) {
+  const freshOrders = await getPositionOrders(args.positionId);
+
+  const ordersToCancel = freshOrders.filter((o) => {
+    if (args.excludeOrderId && o.id === args.excludeOrderId) return false;
+    if (upper(o.symbol) !== upper(args.symbol)) return false;
+    if (!o.exchangeOrderId && !o.clientOrderId) return false;
+    return !isTerminalBotOrderStatus(o.status);
+  });
+
+  return cancelBotOrders({
+    exchange: args.exchange,
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    symbol: args.symbol,
+    orders: ordersToCancel,
+  });
 }
 
 async function manageOnePosition(args: {
@@ -334,16 +368,13 @@ async function manageOnePosition(args: {
       const pnl = finalExitValue - entryValue;
       const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
 
-      const ordersToCancel = orders.filter(
-        (o) => o.id !== tp.id && isActiveBotOrderStatus(o.status)
-      );
-
-      const canceledOrders = await cancelBotOrders({
+      const canceledOrders = await cancelAllRemainingOrdersForPosition({
         exchange,
         apiKey: args.apiKey,
         apiSecret: args.apiSecret,
+        positionId: args.position.id,
         symbol,
-        orders: ordersToCancel,
+        excludeOrderId: tp.id,
       });
 
       await createBotTrade({
@@ -483,12 +514,12 @@ async function manageOnePosition(args: {
   const newTpPriceNum = newAvgPrice * 1.05;
   const newInvestedQuote = oldInvestedQuote + addedCost;
 
-  const canceledTp = await cancelBotOrders({
+  const canceledTp = await cancelAllRemainingOrdersForPosition({
     exchange,
     apiKey: args.apiKey,
     apiSecret: args.apiSecret,
+    positionId: args.position.id,
     symbol,
-    orders: tpOrders,
   });
 
   const finalQtyNum = floorToStep(newQty, filters.stepSize);
