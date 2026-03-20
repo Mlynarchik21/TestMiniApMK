@@ -1,10 +1,10 @@
 import { notifyTradeOpened } from "@/lib/notifications/telegram";
-import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
+import { getExchangeAdapter } from "@/lib/exchanges";
+import type { ExchangeName } from "@/lib/exchanges/types";
 
-const BINANCE_TESTNET_BASE = "https://testnet.binance.vision";
 const CMC_LISTINGS_URL =
   "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
 
@@ -31,129 +31,25 @@ type CmcCoin = {
   };
 };
 
-type BinanceTicker24h = {
+type PublicTicker = {
   symbol: string;
-  priceChangePercent: string;
+  lastPrice?: string;
+  price24hPcnt?: string;
+  priceChangePercent?: string;
 };
-
-type SymbolFilters = {
-  tickSize: number;
-  stepSize: number;
-  minQty: number;
-  minNotional: number;
-};
-
-function sign(query: string, secret: string) {
-  return crypto.createHmac("sha256", secret).update(query).digest("hex");
-}
 
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-function floorToStep(value: number, step: number) {
-  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
-  return Math.floor(value / step) * step;
-}
-
-function decimalsFromStep(step: number) {
-  const s = String(step);
-  if (!s.includes(".")) return 0;
-  return s.split(".")[1].replace(/0+$/, "").length;
-}
-
-function formatByStep(value: number, step: number) {
-  const d = decimalsFromStep(step);
-  return floorToStep(value, step).toFixed(d);
-}
-
 function roundQuoteQty(n: number) {
   return Math.floor(n * 100) / 100;
 }
 
-async function binanceServerTime(): Promise<number> {
-  const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/time`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance time error: ${r.status}`);
-  }
-
-  const t = Number(json?.serverTime);
-  if (!Number.isFinite(t)) {
-    throw new Error("Binance serverTime missing");
-  }
-
-  return t;
-}
-
-async function binanceSpotTestnetAccount(apiKey: string, apiSecret: string) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/account?${qs}&signature=${signature}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance account error: ${r.status}`);
-  }
-
-  return json;
-}
-
-async function binanceTicker24hAll(): Promise<BinanceTicker24h[]> {
-  const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/ticker/24hr`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance ticker error: ${r.status}`);
-  }
-
-  return Array.isArray(json) ? (json as BinanceTicker24h[]) : [];
-}
-
 async function cmcTop100(): Promise<CmcCoin[]> {
   const apiKey = process.env.CMC_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("CMC_API_KEY missing");
-  }
+  if (!apiKey) throw new Error("CMC_API_KEY missing");
 
   const url = new URL(CMC_LISTINGS_URL);
   url.searchParams.set("start", "1");
@@ -181,18 +77,14 @@ async function cmcTop100(): Promise<CmcCoin[]> {
     throw new Error(json?.status?.error_message || text || `CMC error: ${r.status}`);
   }
 
-  const rows = Array.isArray(json?.data) ? json.data : [];
-  return rows as CmcCoin[];
+  return Array.isArray(json?.data) ? json.data : [];
 }
 
-async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`,
-    {
-      method: "GET",
-      cache: "no-store",
-    }
-  );
+async function bybitTickersSpot(): Promise<PublicTicker[]> {
+  const r = await fetch("https://api-demo.bybit.com/v5/market/tickers?category=spot", {
+    method: "GET",
+    cache: "no-store",
+  });
 
   const text = await r.text();
   let json: AnyJson = null;
@@ -200,207 +92,11 @@ async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
     json = JSON.parse(text);
   } catch {}
 
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `exchangeInfo error: ${r.status}`);
+  if (!r.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || text || `Bybit ticker error: ${r.status}`);
   }
 
-  const sym = Array.isArray(json?.symbols) ? json.symbols[0] : null;
-  if (!sym) throw new Error(`symbol ${symbol} not found in exchangeInfo`);
-
-  const filters = Array.isArray(sym?.filters) ? sym.filters : [];
-
-  const priceFilter = filters.find((f: AnyJson) => f?.filterType === "PRICE_FILTER");
-  const lotSize = filters.find((f: AnyJson) => f?.filterType === "LOT_SIZE");
-  const minNotional =
-    filters.find((f: AnyJson) => f?.filterType === "NOTIONAL") ||
-    filters.find((f: AnyJson) => f?.filterType === "MIN_NOTIONAL");
-
-  return {
-    tickSize: toNum(priceFilter?.tickSize || "0.01"),
-    stepSize: toNum(lotSize?.stepSize || "0.000001"),
-    minQty: toNum(lotSize?.minQty || "0"),
-    minNotional: toNum(minNotional?.minNotional || "0"),
-  };
-}
-
-function calcStableBalances(account: AnyJson) {
-  const balances = Array.isArray(account?.balances) ? account.balances : [];
-
-  let totalStable = 0;
-  let freeStable = 0;
-  let lockedStable = 0;
-
-  for (const b of balances) {
-    const asset = String(b?.asset ?? "");
-    if (!STABLE_ASSETS.has(asset)) continue;
-
-    const free = toNum(b?.free);
-    const locked = toNum(b?.locked);
-
-    freeStable += free;
-    lockedStable += locked;
-    totalStable += free + locked;
-  }
-
-  return {
-    totalStable,
-    freeStable,
-    lockedStable,
-  };
-}
-
-async function placeBinanceMarketBuy(
-  apiKey: string,
-  apiSecret: string,
-  symbol: string,
-  quoteOrderQty: number
-) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol,
-    side: "BUY",
-    type: "MARKET",
-    quoteOrderQty: String(quoteOrderQty),
-    newOrderRespType: "FULL",
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance market buy error: ${r.status}`);
-  }
-
-  return json;
-}
-
-async function placeBinanceLimitOrder(params: {
-  apiKey: string;
-  apiSecret: string;
-  symbol: string;
-  side: "BUY" | "SELL";
-  quantity: string;
-  price: string;
-  newClientOrderId: string;
-}) {
-  const serverTime = await binanceServerTime();
-
-  const qs = new URLSearchParams({
-    symbol: params.symbol,
-    side: params.side,
-    type: "LIMIT",
-    timeInForce: "GTC",
-    quantity: params.quantity,
-    price: params.price,
-    newOrderRespType: "RESULT",
-    newClientOrderId: params.newClientOrderId,
-    timestamp: String(serverTime),
-    recvWindow: "10000",
-  }).toString();
-
-  const signature = sign(qs, params.apiSecret);
-
-  const r = await fetch(
-    `${BINANCE_TESTNET_BASE}/api/v3/order?${qs}&signature=${signature}`,
-    {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "X-MBX-APIKEY": params.apiKey,
-      },
-    }
-  );
-
-  const text = await r.text();
-  let json: AnyJson = null;
-  try {
-    json = JSON.parse(text);
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(json?.msg || text || `Binance limit ${params.side} error: ${r.status}`);
-  }
-
-  return json;
-}
-
-async function insertBotOrderRow(args: {
-  userId: string;
-  botPositionId: string;
-  exchange: "BINANCE";
-  symbol: string;
-  kind: "ENTRY" | "GRID" | "TP";
-  side: "BUY" | "SELL";
-  status: string;
-  price?: string | null;
-  qty: string;
-  exchangeOrderId?: string | null;
-  clientOrderId?: string | null;
-  meta?: AnyJson;
-  placedAt?: boolean;
-  filledAt?: boolean;
-}) {
-  const rawMeta = JSON.stringify(args.meta ?? {});
-
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "BotOrder" (
-      "id",
-      "userId",
-      "botPositionId",
-      "exchange",
-      "symbol",
-      "kind",
-      "side",
-      "status",
-      "price",
-      "qty",
-      "exchangeOrderId",
-      "clientOrderId",
-      "meta",
-      "placedAt",
-      "filledAt",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      gen_random_uuid()::text,
-      ${args.userId},
-      ${args.botPositionId},
-      ${args.exchange}::"Exchange",
-      ${args.symbol},
-      ${args.kind},
-      ${args.side},
-      ${args.status},
-      ${args.price ? Prisma.sql`${args.price}::decimal` : Prisma.sql`NULL`},
-      ${args.qty}::decimal,
-      ${args.exchangeOrderId ?? ""},
-      ${args.clientOrderId ?? ""},
-      ${rawMeta}::jsonb,
-      ${args.placedAt ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
-      ${args.filledAt ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP
-    )
-  `);
+  return Array.isArray(json?.result?.list) ? json.result.list : [];
 }
 
 async function createCycle(userId: string, exchange: string) {
@@ -469,12 +165,9 @@ function minutesDiff(from: Date, to: Date) {
   return Math.floor((to.getTime() - from.getTime()) / 1000 / 60);
 }
 
-function pickCandidate(cmcCoins: CmcCoin[], tickers: BinanceTicker24h[]) {
-  const tickerMap = new Map<string, BinanceTicker24h>();
-
-  for (const t of tickers) {
-    tickerMap.set(String(t.symbol), t);
-  }
+function pickCandidate(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
+  const tickerMap = new Map<string, PublicTicker>();
+  for (const t of tickers) tickerMap.set(String(t.symbol), t);
 
   const candidates: Array<{
     symbol: string;
@@ -495,7 +188,7 @@ function pickCandidate(cmcCoins: CmcCoin[], tickers: BinanceTicker24h[]) {
     const ticker = tickerMap.get(pair);
     if (!ticker) continue;
 
-    const drop24h = toNum(ticker.priceChangePercent);
+    const drop24h = toNum(ticker.price24hPcnt) * 100 || toNum(ticker.priceChangePercent);
     if (drop24h > -10) continue;
 
     const marketCap = toNum(coin.quote?.USD?.market_cap);
@@ -524,12 +217,12 @@ function pickCandidate(cmcCoins: CmcCoin[], tickers: BinanceTicker24h[]) {
   };
 }
 
-async function isCooldownActive(userId: string, symbol: string) {
+async function isCooldownActive(userId: string, exchange: ExchangeName, symbol: string) {
   const row = await prisma.cooldownSymbol.findUnique({
     where: {
       userId_exchange_symbol: {
         userId,
-        exchange: "BINANCE",
+        exchange,
         symbol,
       },
     },
@@ -542,8 +235,69 @@ async function isCooldownActive(userId: string, symbol: string) {
   return row.cooldownUntil.getTime() > Date.now();
 }
 
+async function insertBotOrderRow(args: {
+  userId: string;
+  botPositionId: string;
+  exchange: ExchangeName;
+  symbol: string;
+  kind: "ENTRY" | "GRID" | "TP";
+  side: "BUY" | "SELL";
+  status: string;
+  price?: string | null;
+  qty: string;
+  exchangeOrderId?: string | null;
+  clientOrderId?: string | null;
+  meta?: AnyJson;
+  placedAt?: boolean;
+  filledAt?: boolean;
+}) {
+  const rawMeta = JSON.stringify(args.meta ?? {});
+
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "BotOrder" (
+      "id",
+      "userId",
+      "botPositionId",
+      "exchange",
+      "symbol",
+      "kind",
+      "side",
+      "status",
+      "price",
+      "qty",
+      "exchangeOrderId",
+      "clientOrderId",
+      "meta",
+      "placedAt",
+      "filledAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      gen_random_uuid()::text,
+      ${args.userId},
+      ${args.botPositionId},
+      ${args.exchange}::"Exchange",
+      ${args.symbol},
+      ${args.kind},
+      ${args.side},
+      ${args.status},
+      ${args.price ? Prisma.sql`${args.price}::decimal` : Prisma.sql`NULL`},
+      ${args.qty}::decimal,
+      ${args.exchangeOrderId ?? ""},
+      ${args.clientOrderId ?? ""},
+      ${rawMeta}::jsonb,
+      ${args.placedAt ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
+      ${args.filledAt ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+  `);
+}
+
 async function openPositionForSymbol(args: {
   userId: string;
+  exchange: ExchangeName;
   apiKey: string;
   apiSecret: string;
   symbol: string;
@@ -551,10 +305,12 @@ async function openPositionForSymbol(args: {
   totalStable: number;
   freeStable: number;
 }) {
+  const exchange = getExchangeAdapter(args.exchange);
+
   const alreadyOpen = await prisma.botPosition.count({
     where: {
       userId: args.userId,
-      exchange: "BINANCE",
+      exchange: args.exchange,
       symbol: args.symbol,
       status: "OPEN",
     },
@@ -568,7 +324,7 @@ async function openPositionForSymbol(args: {
     };
   }
 
-  const cooldown = await isCooldownActive(args.userId, args.symbol);
+  const cooldown = await isCooldownActive(args.userId, args.exchange, args.symbol);
   if (cooldown) {
     return {
       ok: false,
@@ -577,7 +333,7 @@ async function openPositionForSymbol(args: {
     };
   }
 
-  const symbolFilters = await getSymbolFilters(args.symbol);
+  const filters = await exchange.getSymbolFilters(args.symbol);
 
   let firstOrderUsdt = toNum(args.budgetPerSymbol);
   if (firstOrderUsdt <= 0) {
@@ -605,53 +361,48 @@ async function openPositionForSymbol(args: {
     };
   }
 
-  const marketOrder = await placeBinanceMarketBuy(
-    args.apiKey,
-    args.apiSecret,
-    args.symbol,
-    firstOrderUsdt
-  );
+  const entryClientId = `entry_${Date.now()}_${args.symbol}`.slice(0, 36);
+  const marketOrder = await exchange.placeMarketBuy({
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    symbol: args.symbol,
+    quoteAmount: firstOrderUsdt,
+    clientOrderId: entryClientId,
+  });
 
-  const executedQty = toNum(marketOrder?.executedQty);
-
-  let quoteSpent = toNum(marketOrder?.cummulativeQuoteQty);
-  if (quoteSpent <= 0) {
-    const fills = Array.isArray(marketOrder?.fills) ? marketOrder.fills : [];
-    quoteSpent = fills.reduce((sum: number, fill: any) => {
-      return sum + toNum(fill?.price) * toNum(fill?.qty);
-    }, 0);
-  }
+  const executedQty = marketOrder.executedQty;
+  const quoteSpent = marketOrder.quoteSpent;
 
   if (executedQty <= 0 || quoteSpent <= 0) {
     return {
       ok: false,
       error: "ORDER_NOT_FILLED",
       message: "Market order did not return executed quantity or quote spent",
-      rawOrder: marketOrder,
+      rawOrder: marketOrder.raw,
     };
   }
 
-  const avgPrice = quoteSpent / executedQty;
+  const avgPrice = marketOrder.avgPrice;
   const tpPriceNum = avgPrice * 1.05;
+  const tpQtyNum = floorToStep(executedQty, filters.stepSize);
 
-  const tpQtyNum = floorToStep(executedQty, symbolFilters.stepSize);
-  if (tpQtyNum < symbolFilters.minQty) {
+  if (tpQtyNum < filters.minQty) {
     return {
       ok: false,
       error: "TP_QTY_TOO_SMALL",
       message: "TP quantity is below symbol minQty",
       tpQtyNum,
-      minQty: symbolFilters.minQty,
+      minQty: filters.minQty,
     };
   }
 
-  const tpPrice = formatByStep(tpPriceNum, symbolFilters.tickSize);
-  const tpQty = formatByStep(tpQtyNum, symbolFilters.stepSize);
+  const tpPrice = formatByStep(tpPriceNum, filters.tickSize);
+  const tpQty = formatByStep(tpQtyNum, filters.stepSize);
 
   const position = await prisma.botPosition.create({
     data: {
       user: { connect: { id: args.userId } },
-      exchange: "BINANCE",
+      exchange: args.exchange,
       symbol: args.symbol,
       status: "OPEN",
       avgPrice: new Prisma.Decimal(avgPrice.toFixed(18)),
@@ -675,53 +426,53 @@ async function openPositionForSymbol(args: {
   await insertBotOrderRow({
     userId: args.userId,
     botPositionId: position.id,
-    exchange: "BINANCE",
+    exchange: args.exchange,
     symbol: args.symbol,
     kind: "ENTRY",
     side: "BUY",
     status: "FILLED",
     price: avgPrice.toFixed(18),
     qty: executedQty.toFixed(18),
-    exchangeOrderId: String(marketOrder?.orderId ?? ""),
-    clientOrderId: String(marketOrder?.clientOrderId ?? ""),
+    exchangeOrderId: marketOrder.exchangeOrderId,
+    clientOrderId: marketOrder.clientOrderId ?? entryClientId,
     meta: {
       symbol: args.symbol,
       firstOrderUsdt,
       quoteSpent,
-      rawOrder: marketOrder,
+      rawOrder: marketOrder.raw,
     },
     placedAt: true,
     filledAt: true,
   });
 
   const tpClientId = `tp_${Date.now()}_${args.symbol}`.slice(0, 36);
-  const tpOrder = await placeBinanceLimitOrder({
+  const tpOrder = await exchange.placeLimitOrder({
     apiKey: args.apiKey,
     apiSecret: args.apiSecret,
     symbol: args.symbol,
     side: "SELL",
-    quantity: tpQty,
-    price: tpPrice,
-    newClientOrderId: tpClientId,
+    qty: Number(tpQty),
+    price: Number(tpPrice),
+    clientOrderId: tpClientId,
   });
 
   await insertBotOrderRow({
     userId: args.userId,
     botPositionId: position.id,
-    exchange: "BINANCE",
+    exchange: args.exchange,
     symbol: args.symbol,
     kind: "TP",
     side: "SELL",
-    status: String(tpOrder?.status ?? "PLACED"),
+    status: String(tpOrder.status ?? "PLACED"),
     price: tpPrice,
     qty: tpQty,
-    exchangeOrderId: String(tpOrder?.orderId ?? ""),
-    clientOrderId: String(tpOrder?.clientOrderId ?? tpClientId),
+    exchangeOrderId: tpOrder.exchangeOrderId,
+    clientOrderId: tpOrder.clientOrderId ?? tpClientId,
     meta: {
       level: "TP",
       sourceAvgPrice: avgPrice,
       tpPercent: 5,
-      rawOrder: tpOrder,
+      rawOrder: tpOrder.raw,
     },
     placedAt: true,
     filledAt: false,
@@ -731,10 +482,10 @@ async function openPositionForSymbol(args: {
 
   for (let i = 1; i <= 5; i++) {
     const levelPriceNum = avgPrice * (1 - 0.05 * i);
-    const levelPriceRounded = floorToStep(levelPriceNum, symbolFilters.tickSize);
-    const levelQtyNum = floorToStep(firstOrderUsdt / levelPriceRounded, symbolFilters.stepSize);
+    const levelPriceRounded = floorToStep(levelPriceNum, filters.tickSize);
+    const levelQtyNum = floorToStep(firstOrderUsdt / levelPriceRounded, filters.stepSize);
 
-    if (levelQtyNum < symbolFilters.minQty) {
+    if (levelQtyNum < filters.minQty) {
       gridOrders.push({
         level: i,
         skipped: true,
@@ -746,7 +497,7 @@ async function openPositionForSymbol(args: {
     }
 
     const notional = levelPriceRounded * levelQtyNum;
-    if (symbolFilters.minNotional > 0 && notional < symbolFilters.minNotional) {
+    if (filters.minNotional > 0 && notional < filters.minNotional) {
       gridOrders.push({
         level: i,
         skipped: true,
@@ -758,37 +509,37 @@ async function openPositionForSymbol(args: {
       continue;
     }
 
-    const levelPrice = formatByStep(levelPriceRounded, symbolFilters.tickSize);
-    const levelQty = formatByStep(levelQtyNum, symbolFilters.stepSize);
+    const levelPrice = formatByStep(levelPriceRounded, filters.tickSize);
+    const levelQty = formatByStep(levelQtyNum, filters.stepSize);
     const gridClientId = `grid_${i}_${Date.now()}_${args.symbol}`.slice(0, 36);
 
-    const gridOrder = await placeBinanceLimitOrder({
+    const gridOrder = await exchange.placeLimitOrder({
       apiKey: args.apiKey,
       apiSecret: args.apiSecret,
       symbol: args.symbol,
       side: "BUY",
-      quantity: levelQty,
-      price: levelPrice,
-      newClientOrderId: gridClientId,
+      qty: Number(levelQty),
+      price: Number(levelPrice),
+      clientOrderId: gridClientId,
     });
 
     await insertBotOrderRow({
       userId: args.userId,
       botPositionId: position.id,
-      exchange: "BINANCE",
+      exchange: args.exchange,
       symbol: args.symbol,
       kind: "GRID",
       side: "BUY",
-      status: String(gridOrder?.status ?? "PLACED"),
+      status: String(gridOrder.status ?? "PLACED"),
       price: levelPrice,
       qty: levelQty,
-      exchangeOrderId: String(gridOrder?.orderId ?? ""),
-      clientOrderId: String(gridOrder?.clientOrderId ?? gridClientId),
+      exchangeOrderId: gridOrder.exchangeOrderId,
+      clientOrderId: gridOrder.clientOrderId ?? gridClientId,
       meta: {
         level: i,
         dropPercentFromFirstEntry: i * 5,
         quoteBudget: firstOrderUsdt,
-        rawOrder: gridOrder,
+        rawOrder: gridOrder.raw,
       },
       placedAt: true,
       filledAt: false,
@@ -799,9 +550,9 @@ async function openPositionForSymbol(args: {
       price: levelPrice,
       qty: levelQty,
       notional: Number(levelPrice) * Number(levelQty),
-      orderId: gridOrder?.orderId ?? null,
-      clientOrderId: gridOrder?.clientOrderId ?? gridClientId,
-      status: gridOrder?.status ?? "PLACED",
+      orderId: gridOrder.exchangeOrderId,
+      clientOrderId: gridOrder.clientOrderId ?? gridClientId,
+      status: gridOrder.status ?? "PLACED",
     });
   }
 
@@ -820,17 +571,17 @@ async function openPositionForSymbol(args: {
     symbol: args.symbol,
     firstOrderUsdt,
     entryOrder: {
-      orderId: marketOrder?.orderId ?? null,
-      clientOrderId: marketOrder?.clientOrderId ?? null,
-      status: marketOrder?.status ?? null,
+      orderId: marketOrder.exchangeOrderId,
+      clientOrderId: marketOrder.clientOrderId ?? entryClientId,
+      status: marketOrder.status,
       executedQty,
       quoteSpent,
       avgPrice,
     },
     tpOrder: {
-      orderId: tpOrder?.orderId ?? null,
-      clientOrderId: tpOrder?.clientOrderId ?? tpClientId,
-      status: tpOrder?.status ?? null,
+      orderId: tpOrder.exchangeOrderId,
+      clientOrderId: tpOrder.clientOrderId ?? tpClientId,
+      status: tpOrder.status,
       price: tpPrice,
       qty: tpQty,
     },
@@ -852,7 +603,6 @@ export async function runEngineTick() {
   const bots = await prisma.botConfig.findMany({
     where: {
       enabled: true,
-      exchange: "BINANCE",
     },
     select: {
       userId: true,
@@ -892,9 +642,7 @@ export async function runEngineTick() {
 
       const state = await prisma.botState.findUnique({
         where: { userId: bot.userId },
-        select: {
-          status: true,
-        },
+        select: { status: true },
       });
 
       if (!state || state.status !== "RUNNING") {
@@ -914,7 +662,6 @@ export async function runEngineTick() {
 
       if (!bot.keyId) {
         await finishCycle(cycleId, "SKIPPED", "API key not selected", {});
-
         results.push({
           userId: bot.userId,
           exchange: bot.exchange,
@@ -951,10 +698,11 @@ export async function runEngineTick() {
         continue;
       }
 
+      const exchange = getExchangeAdapter(bot.exchange as ExchangeName);
       const activePositions = await prisma.botPosition.count({
         where: {
           userId: bot.userId,
-          exchange: "BINANCE",
+          exchange: bot.exchange,
           status: "OPEN",
         },
       });
@@ -978,7 +726,6 @@ export async function runEngineTick() {
       const lastEntryAt = await getLastEntryAt(bot.userId);
       if (lastEntryAt) {
         const mins = minutesDiff(lastEntryAt, new Date());
-
         if (mins < 30) {
           await finishCycle(cycleId, "SKIPPED", "global 30m entry cooldown active", {
             lastEntryAt: lastEntryAt.toISOString(),
@@ -997,12 +744,10 @@ export async function runEngineTick() {
       }
 
       const apiSecret = decryptString(key.secretEnc);
-      const account = await binanceSpotTestnetAccount(key.apiKey, apiSecret);
-      const stable = calcStableBalances(account);
+      const stable = await exchange.getBalance(key.apiKey, apiSecret);
 
       if (stable.totalStable <= 0) {
         await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", stable);
-
         results.push({
           userId: bot.userId,
           exchange: bot.exchange,
@@ -1031,7 +776,7 @@ export async function runEngineTick() {
       }
 
       const cmcCoins = await cmcTop100();
-      const tickers = await binanceTicker24hAll();
+      const tickers = await bybitTickersSpot();
       const scan = pickCandidate(cmcCoins, tickers);
 
       if (!scan.candidate) {
@@ -1055,6 +800,7 @@ export async function runEngineTick() {
 
       const opened = await openPositionForSymbol({
         userId: bot.userId,
+        exchange: bot.exchange as ExchangeName,
         apiKey: key.apiKey,
         apiSecret,
         symbol: scan.candidate.symbol,
@@ -1090,9 +836,7 @@ export async function runEngineTick() {
       }
 
       await prisma.botState.updateMany({
-        where: {
-          userId: bot.userId,
-        },
+        where: { userId: bot.userId },
         data: {
           lastSyncAt: new Date(),
           lastError: null,
@@ -1125,9 +869,7 @@ export async function runEngineTick() {
       });
     } catch (e: any) {
       await prisma.botState.updateMany({
-        where: {
-          userId: bot.userId,
-        },
+        where: { userId: bot.userId },
         data: {
           lastError: String(e?.message || e),
         },
