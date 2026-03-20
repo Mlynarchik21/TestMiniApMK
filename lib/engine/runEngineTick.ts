@@ -43,6 +43,22 @@ function toNum(v: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function floorToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
+  return Math.floor(value / step) * step;
+}
+
+function decimalsFromStep(step: number) {
+  const s = String(step);
+  if (!s.includes(".")) return 0;
+  return s.split(".")[1].replace(/0+$/, "").length;
+}
+
+function formatByStep(value: number, step: number) {
+  const d = decimalsFromStep(step);
+  return floorToStep(value, step).toFixed(d);
+}
+
 function roundQuoteQty(n: number) {
   return Math.floor(n * 100) / 100;
 }
