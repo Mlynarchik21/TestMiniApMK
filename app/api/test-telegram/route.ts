@@ -4,12 +4,15 @@ import { prisma } from "@/lib/db";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = "cmm94hwra0001o4jlmbosv8ag";
   const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, tgId: true, username: true },
+  const user = await prisma.user.findFirst({
+    where: { username: "KMlynarchik" },
+    select: {
+      id: true,
+      tgId: true,
+      username: true,
+    },
   });
 
   if (!botToken) {
