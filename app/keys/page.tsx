@@ -72,17 +72,41 @@ function formatTime(ts: number | null): string {
   }
 }
 
-function isBinanceTestnetKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
-  return key.exchange === ("BINANCE" as Exchange) && /testnet/i.test(key.label || "");
+function hasWord(label: string | null | undefined, word: string) {
+  return new RegExp(word, "i").test(label || "");
 }
 
-function buildStoredLabel(rawLabel: string, exchange: Exchange, isTestnet: boolean): string | null {
+function isBinanceTestnetKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
+  return key.exchange === ("BINANCE" as Exchange) && hasWord(key.label, "testnet");
+}
+
+function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
+  return key.exchange === ("BYBIT" as Exchange) && hasWord(key.label, "demo");
+}
+
+function getNetworkName(key: Pick<KeyRow, "exchange" | "label">): "TESTNET" | "DEMO" | "MAINNET" {
+  if (isBinanceTestnetKey(key)) return "TESTNET";
+  if (isBybitDemoKey(key)) return "DEMO";
+  return "MAINNET";
+}
+
+function buildStoredLabel(
+  rawLabel: string,
+  exchange: Exchange,
+  opts: { isTestnet: boolean; isDemo: boolean }
+): string | null {
   const clean = rawLabel.trim();
 
-  if (exchange === ("BINANCE" as Exchange) && isTestnet) {
+  if (exchange === ("BINANCE" as Exchange) && opts.isTestnet) {
     if (!clean) return "[TESTNET]";
     if (/testnet/i.test(clean)) return clean;
     return `[TESTNET] ${clean}`;
+  }
+
+  if (exchange === ("BYBIT" as Exchange) && opts.isDemo) {
+    if (!clean) return "[DEMO]";
+    if (/demo/i.test(clean)) return clean;
+    return `[DEMO] ${clean}`;
   }
 
   return clean || null;
@@ -106,6 +130,7 @@ export default function KeysPage() {
   const [apiSecret, setApiSecret] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [isTestnet, setIsTestnet] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
 
   const [tokenState, setTokenState] = useState<string>("");
 
@@ -118,6 +143,9 @@ export default function KeysPage() {
   useEffect(() => {
     if (exchange !== ("BINANCE" as Exchange)) {
       setIsTestnet(false);
+    }
+    if (exchange !== ("BYBIT" as Exchange)) {
+      setIsDemo(false);
     }
   }, [exchange]);
 
@@ -140,7 +168,7 @@ export default function KeysPage() {
   async function addKey() {
     setLoading(true);
     try {
-      const storedLabel = buildStoredLabel(label, exchange, isTestnet);
+      const storedLabel = buildStoredLabel(label, exchange, { isTestnet, isDemo });
 
       const r = await api("/api/keys", {
         method: "POST",
@@ -161,6 +189,7 @@ export default function KeysPage() {
         setApiSecret("");
         setPassphrase("");
         setIsTestnet(false);
+        setIsDemo(false);
         await reload();
       }
     } finally {
@@ -174,21 +203,23 @@ export default function KeysPage() {
       const r = await api(`/api/keys/${id}`, { method: "DELETE" });
       setResp(r.json);
 
-      setBalancesByKey((m) => {
-        const copy = { ...m };
-        delete copy[id];
-        return copy;
-      });
-      setBalanceErrorByKey((m) => {
-        const copy = { ...m };
-        delete copy[id];
-        return copy;
-      });
-      setBalanceUpdatedAtByKey((m) => {
-        const copy = { ...m };
-        delete copy[id];
-        return copy;
-      });
+      if (r.json.ok) {
+        setBalancesByKey((m) => {
+          const copy = { ...m };
+          delete copy[id];
+          return copy;
+        });
+        setBalanceErrorByKey((m) => {
+          const copy = { ...m };
+          delete copy[id];
+          return copy;
+        });
+        setBalanceUpdatedAtByKey((m) => {
+          const copy = { ...m };
+          delete copy[id];
+          return copy;
+        });
+      }
 
       await reload();
     } finally {
@@ -196,7 +227,10 @@ export default function KeysPage() {
     }
   }
 
-  async function refreshBalance(keyId: string, testnet: boolean) {
+  async function refreshBalance(key: KeyRow) {
+    const keyId = key.id;
+    const testnet = isBinanceTestnetKey(key);
+
     setBalanceErrorByKey((m) => ({ ...m, [keyId]: "" }));
     setBalanceLoading((m) => ({ ...m, [keyId]: true }));
 
@@ -220,11 +254,9 @@ export default function KeysPage() {
     }
   }
 
-  async function refreshAllBinance() {
-    const binanceKeys = keys.filter((k) => k.exchange === ("BINANCE" as Exchange));
-    for (const k of binanceKeys) {
-      const testnet = isBinanceTestnetKey(k);
-      await refreshBalance(k.id, testnet);
+  async function refreshAll() {
+    for (const k of keys) {
+      await refreshBalance(k);
     }
   }
 
@@ -252,12 +284,12 @@ export default function KeysPage() {
               Обновить список
             </button>
             <button
-              disabled={loading || keys.every((k) => k.exchange !== ("BINANCE" as Exchange))}
-              onClick={refreshAllBinance}
+              disabled={loading || keys.length === 0}
+              onClick={refreshAll}
               style={btnGhost()}
-              title="Обновляет баланс для всех BINANCE ключей, включая TESTNET"
+              title="Обновляет баланс для всех ключей"
             >
-              Обновить баланс (BINANCE)
+              Обновить баланс
             </button>
             <button onClick={() => router.replace("/home")} style={btnGhost()}>
               Home
@@ -291,6 +323,17 @@ export default function KeysPage() {
                   onChange={(e) => setIsTestnet(e.target.checked)}
                 />
                 <span>Это Binance Testnet ключ</span>
+              </label>
+            ) : null}
+
+            {exchange === ("BYBIT" as Exchange) ? (
+              <label style={checkboxWrap()}>
+                <input
+                  type="checkbox"
+                  checked={isDemo}
+                  onChange={(e) => setIsDemo(e.target.checked)}
+                />
+                <span>Это Bybit Demo ключ</span>
               </label>
             ) : null}
 
@@ -344,7 +387,7 @@ export default function KeysPage() {
               const bl = !!balanceLoading[k.id];
               const err = (balanceErrorByKey[k.id] || "").trim();
               const updatedAt = balanceUpdatedAtByKey[k.id] ?? null;
-              const isTestnetKey = isBinanceTestnetKey(k);
+              const network = getNetworkName(k);
 
               return (
                 <div
@@ -364,9 +407,7 @@ export default function KeysPage() {
                         {k.label ? ` · ${k.label}` : ""}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                        <span style={networkBadge(isTestnetKey)}>
-                          {isTestnetKey ? "TESTNET" : "MAINNET"}
-                        </span>
+                        <span style={networkBadge(network)}>{network}</span>
                       </div>
                       <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>{k.id}</div>
                       <div style={{ opacity: 0.65, fontSize: 12 }}>
@@ -376,16 +417,10 @@ export default function KeysPage() {
 
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                       <button
-                        disabled={loading || bl || k.exchange !== ("BINANCE" as Exchange)}
-                        onClick={() => refreshBalance(k.id, isTestnetKey)}
+                        disabled={loading || bl}
+                        onClick={() => refreshBalance(k)}
                         style={btnGhost()}
-                        title={
-                          k.exchange !== ("BINANCE" as Exchange)
-                            ? "Пока поддерживается баланс только для BINANCE"
-                            : isTestnetKey
-                              ? "Запросить баланс Binance TESTNET"
-                              : "Запросить баланс Binance MAINNET"
-                        }
+                        title="Запросить баланс по ключу"
                       >
                         {bl ? "..." : "Обновить баланс"}
                       </button>
@@ -397,9 +432,7 @@ export default function KeysPage() {
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 800 }}>
-                        Баланс (Spot) {isTestnetKey ? "· TESTNET" : "· MAINNET"}
-                      </div>
+                      <div style={{ fontWeight: 800 }}>Баланс (Spot) · {network}</div>
                       {!!b.length && (
                         <div style={{ opacity: 0.7, fontSize: 12 }}>Монет: {b.length}</div>
                       )}
@@ -503,14 +536,19 @@ function checkboxWrap(): React.CSSProperties {
   };
 }
 
-function networkBadge(testnet: boolean): React.CSSProperties {
+function networkBadge(network: "TESTNET" | "DEMO" | "MAINNET"): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
     padding: "4px 8px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.16)",
-    background: testnet ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
+    background:
+      network === "TESTNET"
+        ? "rgba(255,255,255,0.10)"
+        : network === "DEMO"
+          ? "rgba(0,153,255,0.14)"
+          : "rgba(255,255,255,0.04)",
     fontSize: 11,
     fontWeight: 900,
     letterSpacing: 0.3,
