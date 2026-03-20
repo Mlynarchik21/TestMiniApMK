@@ -68,103 +68,96 @@ export default function HomePage() {
   return (
     <main style={page()}>
       <div style={container()}>
-        {/* TOP HERO */}
-        <section style={topHero()}>
-          <div style={topHeroGrid()}>
-            <div style={{ minWidth: 0 }}>
-              <div style={eyebrow()}>Рын. капитализация</div>
+        {/* HERO */}
+        <section style={heroSection()}>
+          <div style={heroTopRow()}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={heroLabel()}>Рын. капитализация</div>
 
-              <div style={heroValueRow()}>
-                <span style={heroValue()}>2.48</span>
-                <span style={heroValueSuffix()}>T USDT</span>
+              <div style={heroMainValue()}>
+                <span>2.48</span>
+                <span style={heroMainSuffix()}>T USDT</span>
               </div>
 
-              <div style={heroDeltaWrap()}>
-                <div style={{ color: "rgba(255,255,255,0.88)" }}>Изменение за день</div>
-                <div style={{ color: "#ff6b6b", fontWeight: 900, marginTop: 2 }}>-0.76%</div>
+              <div style={heroDayLine()}>
+                <span style={{ color: "rgba(255,255,255,0.82)" }}>Изменение за день </span>
+                <span style={{ color: "#ff6b6b", fontWeight: 800 }}>-0.76%</span>
               </div>
 
-              <div style={{ marginTop: 18 }}>
-                <div style={fearRow()}>
-                  <span style={{ color: "#FFD600" }}>Жадность и страх</span>
-                  <span style={{ color: "rgba(255,255,255,0.75)" }}>11%</span>
-                </div>
+              <div style={fearInlineRow()}>
+                <span style={{ color: "#FFD54A" }}>Жадность и страх</span>
+                <span style={{ color: "rgba(255,255,255,0.72)" }}>11%</span>
+              </div>
 
-                <div style={fearBar()}>
-                  <div style={fearBarFill(11)} />
-                </div>
+              <div style={fearTrack()}>
+                <div style={fearFill(11)} />
               </div>
             </div>
 
-            <div style={topActions()}>
+            <div style={heroIcons()}>
               <button type="button" style={iconBtn()} onClick={() => router.replace("/ai")}>
                 ✦
               </button>
-
               <button type="button" style={iconBtn()} onClick={() => router.replace("/history")}>
                 🔔
               </button>
-
               <button type="button" style={iconBtn()} onClick={() => router.replace("/settings")}>
                 ☾
               </button>
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-            <button
-              type="button"
-              onClick={() => router.replace("/profile")}
-              style={profileBtn()}
-            >
-              Мой профиль
+          <div style={heroActions()}>
+            <button type="button" style={actionBtnBlue()} onClick={() => router.replace("/profile")}>
+              Профиль
+            </button>
+            <button type="button" style={actionBtnGhost()} onClick={() => router.replace("/ai")}>
+              AI
+            </button>
+            <button type="button" style={actionBtnGhost()} onClick={() => router.replace("/bot")}>
+              Bot
             </button>
           </div>
         </section>
 
         {/* FEAR & GREED */}
-        <section
-          style={cardLarge()}
-          onClick={() => router.replace("/ai")}
-          role="button"
-          tabIndex={0}
-        >
-          <div style={sectionLabel()}>FEAR & GREED INDEX</div>
+        <section style={card()}>
+          <div style={cardLabel()}>FEAR & GREED INDEX</div>
 
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
-            <div style={gaugeWrap()}>
-              <div style={gaugeArcRed()} />
-              <div style={gaugeArcYellow()} />
-              <div style={gaugeArcGreen()} />
-              <div style={gaugeNeedle(23)} />
-              <div style={gaugeCenter()}>
-                <div style={gaugeValue()}>23</div>
-                <div style={gaugeText()}>Extreme Fear</div>
-              </div>
-              <div style={gaugeMin()}>0</div>
-              <div style={gaugeMax()}>100</div>
+          <div style={{ marginTop: 16 }}>
+            <div style={bigMetricValue("#ff6b6b")}>23</div>
+            <div style={bigMetricSub("#ff8787")}>Extreme Fear</div>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <div style={simpleMeter()}>
+              <div style={simpleMeterFill(23, "#ff6b6b")} />
+            </div>
+            <div style={meterMeta()}>
+              <span>0</span>
+              <span>100</span>
             </div>
           </div>
         </section>
 
-        {/* BTC DOMINANCE */}
-        <section style={cardMedium()} onClick={() => router.replace("/history")} role="button">
-          <div style={sectionLabel()}>BTC DOMINANCE</div>
+        {/* BTC DOM */}
+        <section style={card()}>
+          <div style={cardLabel()}>BTC DOMINANCE</div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14 }}>
-            <div style={dominanceRingWrap()}>
-              <div style={dominanceRing()} />
-              <div style={dominanceRingValue()}>56.5%</div>
+          <div style={inlineMetricRow()}>
+            <div style={ringWrap()}>
+              <div style={ring(56.5, "#f5a33a")} />
+              <div style={ringText()}>56.5%</div>
             </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={miniChart()}>
+            <div style={{ flex: 1 }}>
+              <div style={barsWrap()}>
                 {Array.from({ length: 24 }).map((_, i) => (
                   <div
                     key={i}
                     style={{
-                      ...miniChartBar(),
-                      height: `${28 + ((i * 17) % 36)}px`,
+                      ...bar(),
+                      height: `${28 + ((i * 13) % 34)}px`,
                     }}
                   />
                 ))}
@@ -174,98 +167,95 @@ export default function HomePage() {
         </section>
 
         {/* LONG SHORT */}
-        <section style={cardMedium()} onClick={() => router.replace("/history")} role="button">
-          <div style={sectionLabel()}>BTC LONG / SHORT RATIO</div>
+        <section style={card()}>
+          <div style={cardLabel()}>BTC LONG / SHORT RATIO</div>
 
-          <div style={ratioBar()}>
-            <div style={ratioLong()} />
-            <div style={ratioShort()} />
+          <div style={splitBar()}>
+            <div style={splitBarLong()} />
+            <div style={splitBarShort()} />
           </div>
 
-          <div style={ratioMeta()}>
-            <span style={{ color: "#69db7c", fontWeight: 800 }}>61.4% Longs</span>
-            <span style={{ color: "#ff8787", fontWeight: 800 }}>38.6% Shorts</span>
+          <div style={splitMeta()}>
+            <span style={{ color: "#69db7c" }}>61.4% Longs</span>
+            <span style={{ color: "#ff7b7b" }}>38.6% Shorts</span>
           </div>
         </section>
 
-        {/* SMALL METRICS */}
-        <div style={grid2()}>
-          <section style={cardSmall()} onClick={() => router.replace("/history")} role="button">
-            <div style={sectionLabel()}>TOTAL OI</div>
-            <div style={smallMetric()}>$25.58B</div>
+        {/* SMALL CARDS */}
+        <div style={twoCol()}>
+          <section style={cardSmall()}>
+            <div style={cardLabel()}>TOTAL OI</div>
+            <div style={smallValue()}>$25.58B</div>
           </section>
 
-          <section style={cardSmall()} onClick={() => router.replace("/history")} role="button">
-            <div style={sectionLabel()}>COINBASE</div>
-            <div style={{ ...smallMetric(), color: "#ff6b6b" }}>#359</div>
+          <section style={cardSmall()}>
+            <div style={cardLabel()}>COINBASE</div>
+            <div style={{ ...smallValue(), color: "#ff6b6b" }}>#359</div>
           </section>
         </div>
 
-        {/* AI BLOCK */}
-        <section style={cardAccent()} onClick={() => router.replace("/ai")} role="button">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={sectionTitle()}>AI Insight</div>
-              <div style={sectionSub()}>
-                Рынок в фазе страха. Возможна локальная аккумуляция. Повышенный риск по слабым
-                альткоинам сохраняется.
+        {/* AI */}
+        <section style={card()}>
+          <div style={topLineBetween()}>
+            <div>
+              <div style={cardTitle()}>AI Insight</div>
+              <div style={cardText()}>
+                Рынок в фазе страха. Возможна локальная аккумуляция. Риск по слабым альтам
+                остаётся повышенным.
               </div>
             </div>
 
-            <div style={aiBadge()}>AI</div>
+            <div style={badge()}>AI</div>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <button type="button" style={btnBlueFull()} onClick={() => router.replace("/ai")}>
+          <div style={{ marginTop: 14 }}>
+            <button type="button" style={wideGhostButton()} onClick={() => router.replace("/ai")}>
               Открыть AI
             </button>
           </div>
         </section>
 
         {/* BOT SNAPSHOT */}
-        <section style={cardMedium()} onClick={() => router.replace("/bot")} role="button">
-          <div style={sectionTitle()}>Снимок бота</div>
+        <section style={card()}>
+          <div style={cardTitle()}>Снимок бота</div>
 
           <div style={statsGrid()}>
-            <div style={statBox()}>
+            <div style={statItem()}>
               <div style={statLabel()}>Статус</div>
               <div style={statValue()}>Активен</div>
             </div>
-
-            <div style={statBox()}>
+            <div style={statItem()}>
               <div style={statLabel()}>Позиции</div>
               <div style={statValue()}>3</div>
             </div>
-
-            <div style={statBox()}>
+            <div style={statItem()}>
               <div style={statLabel()}>PnL сегодня</div>
               <div style={{ ...statValue(), color: "#69db7c" }}>+12.3</div>
             </div>
-
-            <div style={statBox()}>
+            <div style={statItem()}>
               <div style={statLabel()}>В работе</div>
               <div style={statValue()}>45 USDT</div>
             </div>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <button type="button" style={btnGhostFull()} onClick={() => router.replace("/bot")}>
+          <div style={{ marginTop: 14 }}>
+            <button type="button" style={wideGhostButton()} onClick={() => router.replace("/bot")}>
               Открыть бот
             </button>
           </div>
         </section>
 
         {/* QUICK ACCESS */}
-        <div style={sectionHeader()}>Быстрый доступ</div>
+        <div style={sectionHeader()}>Переходы</div>
 
         <div style={quickGrid()}>
           <QuickCard title="Bot" subtitle="Сделки и контроль" onClick={() => router.replace("/bot")} />
+          <QuickCard title="Keys" subtitle="API и биржи" onClick={() => router.replace("/keys")} />
           <QuickCard
             title="History"
             subtitle="История сделок"
             onClick={() => router.replace("/history")}
           />
-          <QuickCard title="Keys" subtitle="API и биржи" onClick={() => router.replace("/keys")} />
           <QuickCard
             title="Profile"
             subtitle="Статус и услуги"
@@ -276,7 +266,7 @@ export default function HomePage() {
         {/* DEBUG */}
         <div style={sectionHeader()}>Технический статус</div>
 
-        <section style={cardMedium()}>
+        <section style={card()}>
           <div style={{ display: "grid", gap: 8, fontSize: 13, marginBottom: 12 }}>
             <div>
               <b>sessionToken:</b> {tokenPreview}
@@ -287,7 +277,7 @@ export default function HomePage() {
           </div>
 
           <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-            <button onClick={checkMe} disabled={loading} style={btnPrimary(loading)}>
+            <button onClick={checkMe} disabled={loading} style={primaryBtn(loading)}>
               {loading ? "..." : "Проверить /api/me"}
             </button>
           </div>
@@ -304,8 +294,10 @@ export default function HomePage() {
 function QuickCard(props: { title: string; subtitle: string; onClick: () => void }) {
   return (
     <button type="button" onClick={props.onClick} style={quickCard()}>
-      <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>{props.title}</div>
-      <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>{props.subtitle}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 6 }}>{props.title}</div>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+        {props.subtitle}
+      </div>
     </button>
   );
 }
@@ -327,103 +319,95 @@ function container(): React.CSSProperties {
     width: "100%",
     maxWidth: 520,
     margin: "0 auto",
-    padding: "0 14px",
+    padding: "0 16px",
   };
 }
 
-function topHero(): React.CSSProperties {
+function heroSection(): React.CSSProperties {
   return {
-    padding: "2px 2px 6px",
-    marginBottom: 14,
+    marginBottom: 18,
   };
 }
 
-function topHeroGrid(): React.CSSProperties {
+function heroTopRow(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "1fr 64px",
-    gap: 12,
+    gridTemplateColumns: "1fr 56px",
+    gap: 14,
     alignItems: "start",
   };
 }
 
-function eyebrow(): React.CSSProperties {
+function heroLabel(): React.CSSProperties {
   return {
-    fontSize: 16,
-    lineHeight: 1.2,
-    color: "rgba(255,255,255,0.86)",
+    fontSize: 17,
+    color: "rgba(255,255,255,0.78)",
     marginBottom: 8,
   };
 }
 
-function heroValueRow(): React.CSSProperties {
+function heroMainValue(): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "baseline",
     gap: 4,
     flexWrap: "wrap",
-  };
-}
-
-function heroValue(): React.CSSProperties {
-  return {
-    fontSize: 56,
-    lineHeight: 0.92,
+    fontSize: 58,
     fontWeight: 900,
     letterSpacing: "-0.05em",
+    lineHeight: 0.95,
   };
 }
 
-function heroValueSuffix(): React.CSSProperties {
+function heroMainSuffix(): React.CSSProperties {
   return {
     fontSize: 28,
-    lineHeight: 1,
     fontWeight: 800,
-    opacity: 0.95,
+    letterSpacing: "-0.02em",
   };
 }
 
-function heroDeltaWrap(): React.CSSProperties {
+function heroDayLine(): React.CSSProperties {
   return {
     marginTop: 18,
-    fontSize: 28,
-    lineHeight: 1.08,
-    fontWeight: 900,
+    fontSize: 24,
+    lineHeight: 1.1,
+    fontWeight: 800,
   };
 }
 
-function fearRow(): React.CSSProperties {
+function fearInlineRow(): React.CSSProperties {
   return {
+    marginTop: 18,
+    marginBottom: 8,
     display: "flex",
     justifyContent: "space-between",
-    gap: 10,
     alignItems: "center",
     fontSize: 16,
-    marginBottom: 8,
   };
 }
 
-function fearBar(): React.CSSProperties {
+function fearTrack(): React.CSSProperties {
   return {
     width: "100%",
     height: 14,
     borderRadius: 999,
     background:
-      "linear-gradient(90deg, rgba(255,77,79,0.35) 0%, rgba(255,214,0,0.22) 45%, rgba(0,200,83,0.22) 100%)",
+      "linear-gradient(90deg, rgba(255,77,79,0.35) 0%, rgba(255,214,0,0.24) 45%, rgba(0,200,83,0.22) 100%)",
     overflow: "hidden",
   };
 }
 
-function fearBarFill(percent: number): React.CSSProperties {
+function fearFill(percent: number): React.CSSProperties {
   return {
-    width: `${Math.max(0, Math.min(100, percent))}%`,
+    width: `${percent}%`,
     height: "100%",
     borderRadius: 999,
-    background: "#ff7a7a",
+    background: "#ff7b7b",
   };
 }
 
-function topActions(): React.CSSProperties {
+function heroIcons(): React.CSSProperties {
   return {
     display: "flex",
     flexDirection: "column",
@@ -437,240 +421,156 @@ function iconBtn(): React.CSSProperties {
     width: 56,
     height: 56,
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.14)",
+    border: "1px solid rgba(255,255,255,0.12)",
     background: "#050505",
     color: "#fff",
-    fontSize: 24,
+    fontSize: 22,
     cursor: "pointer",
   };
 }
 
-function profileBtn(): React.CSSProperties {
+function heroActions(): React.CSSProperties {
   return {
-    padding: "16px 24px",
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    marginTop: 16,
+  };
+}
+
+function actionBtnBlue(): React.CSSProperties {
+  return {
+    padding: "14px 22px",
     borderRadius: 999,
     border: "none",
     background: "#3b82f6",
     color: "#fff",
-    fontWeight: 900,
+    fontWeight: 800,
     fontSize: 16,
     cursor: "pointer",
   };
 }
 
-function cardBase(): React.CSSProperties {
+function actionBtnGhost(): React.CSSProperties {
   return {
-    background: "#0b1020",
-    border: "1px solid rgba(111,132,255,0.12)",
+    padding: "14px 20px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "#0a0a0a",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 15,
+    cursor: "pointer",
+  };
+}
+
+function card(): React.CSSProperties {
+  return {
+    background: "#050505",
+    border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 24,
-    padding: 16,
+    padding: 18,
     marginBottom: 14,
-  };
-}
-
-function cardLarge(): React.CSSProperties {
-  return {
-    ...cardBase(),
-    cursor: "pointer",
-  };
-}
-
-function cardMedium(): React.CSSProperties {
-  return {
-    ...cardBase(),
-    cursor: "pointer",
   };
 }
 
 function cardSmall(): React.CSSProperties {
   return {
-    ...cardBase(),
-    minHeight: 132,
-    cursor: "pointer",
+    background: "#050505",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 24,
+    padding: 18,
+    minHeight: 128,
   };
 }
 
-function cardAccent(): React.CSSProperties {
+function cardLabel(): React.CSSProperties {
   return {
-    ...cardBase(),
-    background: "#101833",
-    border: "1px solid rgba(59,130,246,0.16)",
-    cursor: "pointer",
-  };
-}
-
-function sectionLabel(): React.CSSProperties {
-  return {
-    fontSize: 13,
-    letterSpacing: "0.14em",
-    color: "rgba(255,255,255,0.4)",
+    fontSize: 14,
+    letterSpacing: "0.16em",
+    color: "rgba(255,255,255,0.36)",
     fontWeight: 800,
   };
 }
 
-function sectionTitle(): React.CSSProperties {
+function bigMetricValue(color?: string): React.CSSProperties {
   return {
-    fontSize: 22,
-    fontWeight: 900,
-    marginBottom: 6,
-  };
-}
-
-function sectionSub(): React.CSSProperties {
-  return {
-    fontSize: 13,
-    lineHeight: 1.45,
-    color: "rgba(255,255,255,0.74)",
-  };
-}
-
-function gaugeWrap(): React.CSSProperties {
-  return {
-    width: "100%",
-    maxWidth: 360,
-    position: "relative",
-    height: 210,
-  };
-}
-
-function gaugeArcCommon(): React.CSSProperties {
-  return {
-    position: "absolute",
-    top: 16,
-    width: 118,
-    height: 118,
-    borderTopLeftRadius: 118,
-    borderTopRightRadius: 118,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottom: "none",
-    borderLeftWidth: 14,
-    borderTopWidth: 14,
-    borderRightWidth: 14,
-    borderStyle: "solid",
-  };
-}
-
-function gaugeArcRed(): React.CSSProperties {
-  return {
-    ...gaugeArcCommon(),
-    left: 24,
-    borderColor: "#ff6b6b",
-    borderRightColor: "transparent",
-    borderBottomColor: "transparent",
-  };
-}
-
-function gaugeArcYellow(): React.CSSProperties {
-  return {
-    ...gaugeArcCommon(),
-    left: "50%",
-    transform: "translateX(-50%)",
-    borderColor: "rgba(255,214,0,0.36)",
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: "transparent",
-  };
-}
-
-function gaugeArcGreen(): React.CSSProperties {
-  return {
-    ...gaugeArcCommon(),
-    right: 24,
-    borderColor: "rgba(0,200,83,0.28)",
-    borderLeftColor: "transparent",
-    borderBottomColor: "transparent",
-  };
-}
-
-function gaugeNeedle(percent: number): React.CSSProperties {
-  const deg = -90 + (180 * percent) / 100;
-  return {
-    position: "absolute",
-    left: "50%",
-    top: 132,
-    width: 92,
-    height: 4,
-    background: "#ff6b6b",
-    transformOrigin: "0% 50%",
-    transform: `translateX(0) rotate(${deg}deg)`,
-    borderRadius: 999,
-  };
-}
-
-function gaugeCenter(): React.CSSProperties {
-  return {
-    position: "absolute",
-    left: "50%",
-    top: 92,
-    transform: "translateX(-50%)",
-    textAlign: "center",
-    width: "100%",
-  };
-}
-
-function gaugeValue(): React.CSSProperties {
-  return {
-    fontSize: 64,
+    fontSize: 72,
     lineHeight: 1,
     fontWeight: 900,
-    color: "#ff6b6b",
+    color: color || "#fff",
   };
 }
 
-function gaugeText(): React.CSSProperties {
+function bigMetricSub(color?: string): React.CSSProperties {
   return {
-    marginTop: 8,
-    fontSize: 18,
-    color: "#ff8787",
-    fontWeight: 800,
+    marginTop: 6,
+    fontSize: 20,
+    fontWeight: 700,
+    color: color || "rgba(255,255,255,0.72)",
   };
 }
 
-function gaugeMin(): React.CSSProperties {
+function simpleMeter(): React.CSSProperties {
   return {
-    position: "absolute",
-    left: 18,
-    bottom: 4,
-    color: "rgba(255,255,255,0.35)",
-    fontSize: 14,
+    width: "100%",
+    height: 12,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
   };
 }
 
-function gaugeMax(): React.CSSProperties {
+function simpleMeterFill(percent: number, color: string): React.CSSProperties {
   return {
-    position: "absolute",
-    right: 18,
-    bottom: 4,
-    color: "rgba(255,255,255,0.35)",
-    fontSize: 14,
+    width: `${percent}%`,
+    height: "100%",
+    borderRadius: 999,
+    background: color,
   };
 }
 
-function dominanceRingWrap(): React.CSSProperties {
+function meterMeta(): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: 6,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.38)",
+  };
+}
+
+function inlineMetricRow(): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    marginTop: 16,
+  };
+}
+
+function ringWrap(): React.CSSProperties {
   return {
     width: 96,
     height: 96,
-    borderRadius: 999,
     position: "relative",
     flexShrink: 0,
   };
 }
 
-function dominanceRing(): React.CSSProperties {
+function ring(percent: number, color: string): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
-    background:
-      "conic-gradient(#f5a33a 0 56.5%, rgba(255,255,255,0.08) 56.5% 100%)",
-    WebkitMask:
-      "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.08) ${percent}% 100%)`,
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   };
 }
 
-function dominanceRingValue(): React.CSSProperties {
+function ringText(): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
@@ -682,61 +582,61 @@ function dominanceRingValue(): React.CSSProperties {
   };
 }
 
-function miniChart(): React.CSSProperties {
+function barsWrap(): React.CSSProperties {
   return {
-    height: 82,
+    height: 84,
     display: "flex",
     alignItems: "flex-end",
-    gap: 4,
+    gap: 5,
   };
 }
 
-function miniChartBar(): React.CSSProperties {
+function bar(): React.CSSProperties {
   return {
     flex: 1,
-    borderRadius: 999,
-    background: "rgba(245,163,58,0.92)",
     minWidth: 5,
+    borderRadius: 999,
+    background: "#f5a33a",
   };
 }
 
-function ratioBar(): React.CSSProperties {
+function splitBar(): React.CSSProperties {
   return {
-    marginTop: 16,
     width: "100%",
-    height: 20,
+    height: 22,
     borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     display: "flex",
-    background: "rgba(255,255,255,0.06)",
+    marginTop: 16,
   };
 }
 
-function ratioLong(): React.CSSProperties {
+function splitBarLong(): React.CSSProperties {
   return {
     width: "61.4%",
     background: "#69db7c",
   };
 }
 
-function ratioShort(): React.CSSProperties {
+function splitBarShort(): React.CSSProperties {
   return {
     width: "38.6%",
     background: "#ff6b6b",
   };
 }
 
-function ratioMeta(): React.CSSProperties {
+function splitMeta(): React.CSSProperties {
   return {
     display: "flex",
     justifyContent: "space-between",
-    gap: 10,
-    marginTop: 12,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 17,
+    fontWeight: 700,
   };
 }
 
-function grid2(): React.CSSProperties {
+function twoCol(): React.CSSProperties {
   return {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -745,7 +645,7 @@ function grid2(): React.CSSProperties {
   };
 }
 
-function smallMetric(): React.CSSProperties {
+function smallValue(): React.CSSProperties {
   return {
     marginTop: 22,
     fontSize: 34,
@@ -754,45 +654,55 @@ function smallMetric(): React.CSSProperties {
   };
 }
 
-function aiBadge(): React.CSSProperties {
+function topLineBetween(): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 14,
+  };
+}
+
+function cardTitle(): React.CSSProperties {
+  return {
+    fontSize: 24,
+    fontWeight: 900,
+    marginBottom: 6,
+  };
+}
+
+function cardText(): React.CSSProperties {
+  return {
+    fontSize: 14,
+    lineHeight: 1.5,
+    color: "rgba(255,255,255,0.7)",
+  };
+}
+
+function badge(): React.CSSProperties {
   return {
     minWidth: 46,
     height: 46,
     borderRadius: 14,
-    background: "rgba(59,130,246,0.12)",
-    color: "#8ab4ff",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    color: "#fff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: 900,
-    fontSize: 16,
-    border: "1px solid rgba(59,130,246,0.2)",
   };
 }
 
-function btnBlueFull(): React.CSSProperties {
+function wideGhostButton(): React.CSSProperties {
   return {
     width: "100%",
     padding: "14px 16px",
-    borderRadius: 16,
-    border: "none",
-    background: "#3b82f6",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "#0a0a0a",
     color: "#fff",
-    fontWeight: 900,
-    fontSize: 15,
-    cursor: "pointer",
-  };
-}
-
-function btnGhostFull(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "14px 16px",
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.03)",
-    color: "#fff",
-    fontWeight: 900,
+    fontWeight: 800,
     fontSize: 15,
     cursor: "pointer",
   };
@@ -807,36 +717,36 @@ function statsGrid(): React.CSSProperties {
   };
 }
 
-function statBox(): React.CSSProperties {
+function statItem(): React.CSSProperties {
   return {
-    background: "rgba(255,255,255,0.03)",
+    background: "#0a0a0a",
     border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
   };
 }
 
 function statLabel(): React.CSSProperties {
   return {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.55)",
-    marginBottom: 6,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.46)",
+    marginBottom: 7,
   };
 }
 
 function statValue(): React.CSSProperties {
   return {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 900,
   };
 }
 
 function sectionHeader(): React.CSSProperties {
   return {
-    fontSize: 14,
-    fontWeight: 800,
-    color: "rgba(255,255,255,0.72)",
     margin: "2px 2px 10px",
+    fontSize: 14,
+    fontWeight: 700,
+    color: "rgba(255,255,255,0.6)",
   };
 }
 
@@ -852,23 +762,23 @@ function quickGrid(): React.CSSProperties {
 function quickCard(): React.CSSProperties {
   return {
     textAlign: "left",
-    background: "#0b0f1b",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: 20,
+    background: "#050505",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 22,
     padding: 16,
     color: "#fff",
+    minHeight: 102,
     cursor: "pointer",
-    minHeight: 104,
   };
 }
 
 function debugBox(): React.CSSProperties {
   return {
     whiteSpace: "pre-wrap",
-    background: "#050505",
-    padding: 12,
-    borderRadius: 14,
+    background: "#0a0a0a",
     border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 16,
+    padding: 12,
     minHeight: 120,
     fontSize: 12,
     lineHeight: 1.45,
@@ -876,15 +786,16 @@ function debugBox(): React.CSSProperties {
   };
 }
 
-function btnPrimary(disabled: boolean): React.CSSProperties {
+function primaryBtn(disabled: boolean): React.CSSProperties {
   return {
     width: "100%",
     padding: "14px 16px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.18)",
+    border: "1px solid rgba(255,255,255,0.14)",
     background: "#fff",
     color: "#000",
     fontWeight: 900,
+    fontSize: 15,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.85 : 1,
   };
