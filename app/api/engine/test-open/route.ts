@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Exchange } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
+import { notifyTradeOpened } from "@/lib/notifications/telegram";
 
 export const runtime = "nodejs";
 
@@ -53,6 +54,111 @@ function formatByStep(value: number, step: number) {
 
 function roundQuoteQty(n: number) {
   return Math.floor(n * 100) / 100;
+}
+
+function isBybitDemoLabel(label: string | null | undefined) {
+  return /demo/i.test(label || "");
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function bybitSign(params: {
+  timestamp: string;
+  apiKey: string;
+  recvWindow: string;
+  payload: string;
+  secret: string;
+}) {
+  const preSign = `${params.timestamp}${params.apiKey}${params.recvWindow}${params.payload}`;
+  return crypto.createHmac("sha256", params.secret).update(preSign).digest("hex");
+}
+
+async function bybitGet(params: {
+  base: string;
+  apiKey: string;
+  apiSecret: string;
+  path: string;
+  query: string;
+}) {
+  const timestamp = String(Date.now());
+  const recvWindow = "10000";
+  const signature = bybitSign({
+    timestamp,
+    apiKey: params.apiKey,
+    recvWindow,
+    payload: params.query,
+    secret: params.apiSecret,
+  });
+
+  const r = await fetch(`${params.base}${params.path}?${params.query}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "X-BAPI-API-KEY": params.apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN": signature,
+    },
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || text || `Bybit GET error: ${r.status}`);
+  }
+
+  return json;
+}
+
+async function bybitPost(params: {
+  base: string;
+  apiKey: string;
+  apiSecret: string;
+  path: string;
+  body: AnyJson;
+}) {
+  const timestamp = String(Date.now());
+  const recvWindow = "10000";
+  const bodyText = JSON.stringify(params.body);
+
+  const signature = bybitSign({
+    timestamp,
+    apiKey: params.apiKey,
+    recvWindow,
+    payload: bodyText,
+    secret: params.apiSecret,
+  });
+
+  const r = await fetch(`${params.base}${params.path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-BAPI-API-KEY": params.apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN": signature,
+    },
+    body: bodyText,
+  });
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || text || `Bybit POST error: ${r.status}`);
+  }
+
+  return json;
 }
 
 async function binanceServerTime(): Promise<number> {
@@ -113,7 +219,7 @@ async function binanceSpotTestnetAccount(apiKey: string, apiSecret: string) {
   return json;
 }
 
-async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
+async function getBinanceSymbolFilters(symbol: string): Promise<SymbolFilters> {
   const r = await fetch(
     `${BINANCE_TESTNET_BASE}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`,
     {
@@ -151,6 +257,41 @@ async function getSymbolFilters(symbol: string): Promise<SymbolFilters> {
   };
 }
 
+async function getBybitSymbolFilters(symbol: string, isDemo: boolean): Promise<SymbolFilters> {
+  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const r = await fetch(
+    `${base}/v5/market/instruments-info?category=spot&symbol=${encodeURIComponent(symbol)}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  const text = await r.text();
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || text || `Bybit instruments error: ${r.status}`);
+  }
+
+  const sym = Array.isArray(json?.result?.list) ? json.result.list[0] : null;
+  if (!sym) throw new Error(`symbol ${symbol} not found in Bybit instruments`);
+
+  const priceFilter = sym?.priceFilter ?? {};
+  const lotSizeFilter = sym?.lotSizeFilter ?? {};
+
+  return {
+    tickSize: toNum(priceFilter?.tickSize || "0.01"),
+    stepSize: toNum(lotSizeFilter?.basePrecision || lotSizeFilter?.qtyStep || "0.000001"),
+    minQty: toNum(lotSizeFilter?.minOrderQty || "0"),
+    minNotional: toNum(lotSizeFilter?.minOrderAmt || "0"),
+  };
+}
+
 function calcStableBalances(account: AnyJson) {
   const balances = Array.isArray(account?.balances) ? account.balances : [];
 
@@ -168,6 +309,45 @@ function calcStableBalances(account: AnyJson) {
     freeStable += free;
     lockedStable += locked;
     totalStable += free + locked;
+  }
+
+  return {
+    totalStable,
+    freeStable,
+    lockedStable,
+  };
+}
+
+async function getBybitStableBalances(apiKey: string, apiSecret: string, isDemo: boolean) {
+  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const wallet = await bybitGet({
+    base,
+    apiKey,
+    apiSecret,
+    path: "/v5/account/wallet-balance",
+    query: "accountType=UNIFIED",
+  });
+
+  const accounts = Array.isArray(wallet?.result?.list) ? wallet.result.list : [];
+  const firstAccount = accounts[0] ?? null;
+  const coins = Array.isArray(firstAccount?.coin) ? firstAccount.coin : [];
+
+  let totalStable = 0;
+  let freeStable = 0;
+  let lockedStable = 0;
+
+  for (const c of coins) {
+    const asset = String(c?.coin ?? "");
+    if (!STABLE_ASSETS.has(asset)) continue;
+
+    const walletBalance = toNum(c?.walletBalance);
+    const locked = toNum(c?.locked);
+    const free = Math.max(walletBalance - locked, 0);
+
+    totalStable += walletBalance;
+    freeStable += free;
+    lockedStable += locked;
   }
 
   return {
@@ -271,10 +451,114 @@ async function placeBinanceLimitOrder(params: {
   return json;
 }
 
+async function placeBybitMarketBuy(params: {
+  apiKey: string;
+  apiSecret: string;
+  symbol: string;
+  quoteOrderQty: number;
+  newClientOrderId: string;
+  isDemo: boolean;
+}) {
+  const base = params.isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const created = await bybitPost({
+    base,
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/create",
+    body: {
+      category: "spot",
+      symbol: params.symbol,
+      side: "Buy",
+      orderType: "Market",
+      qty: String(params.quoteOrderQty),
+      marketUnit: "quoteCoin",
+      orderLinkId: params.newClientOrderId,
+    },
+  });
+
+  const orderId = String(created?.result?.orderId || "");
+  if (!orderId) {
+    throw new Error("Bybit market order created without orderId");
+  }
+
+  for (let i = 0; i < 8; i++) {
+    await sleep(700);
+
+    const live = await bybitGet({
+      base,
+      apiKey: params.apiKey,
+      apiSecret: params.apiSecret,
+      path: "/v5/order/realtime",
+      query: `category=spot&symbol=${encodeURIComponent(params.symbol)}&orderId=${encodeURIComponent(orderId)}`,
+    });
+
+    const row = Array.isArray(live?.result?.list) ? live.result.list[0] : null;
+    if (!row) continue;
+
+    const status = String(row?.orderStatus || "");
+    const executedQty = toNum(row?.cumExecQty);
+    const quoteSpent = toNum(row?.cumExecValue);
+    const avgPrice =
+      toNum(row?.avgPrice) || (executedQty > 0 && quoteSpent > 0 ? quoteSpent / executedQty : 0);
+
+    if (status === "Filled" && executedQty > 0 && quoteSpent > 0) {
+      return {
+        orderId,
+        clientOrderId: String(row?.orderLinkId || params.newClientOrderId),
+        status,
+        executedQty,
+        quoteSpent,
+        avgPrice,
+        rawOrder: row,
+      };
+    }
+  }
+
+  throw new Error("Bybit market order was not filled in time");
+}
+
+async function placeBybitLimitOrder(params: {
+  apiKey: string;
+  apiSecret: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  quantity: string;
+  price: string;
+  newClientOrderId: string;
+  isDemo: boolean;
+}) {
+  const base = params.isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const created = await bybitPost({
+    base,
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/create",
+    body: {
+      category: "spot",
+      symbol: params.symbol,
+      side: params.side === "BUY" ? "Buy" : "Sell",
+      orderType: "Limit",
+      qty: params.quantity,
+      price: params.price,
+      timeInForce: "GTC",
+      orderLinkId: params.newClientOrderId,
+    },
+  });
+
+  return {
+    orderId: String(created?.result?.orderId || ""),
+    clientOrderId: params.newClientOrderId,
+    status: "NEW",
+    rawOrder: created,
+  };
+}
+
 async function insertBotOrderRow(args: {
   userId: string;
   botPositionId: string;
-  exchange: "BINANCE";
+  exchange: Exchange;
   symbol: string;
   kind: "ENTRY" | "GRID" | "TP";
   side: "BUY" | "SELL";
@@ -348,7 +632,6 @@ async function runTestOpen(req: Request) {
   const bot = await prisma.botConfig.findFirst({
     where: {
       enabled: true,
-      exchange: "BINANCE",
     },
     select: {
       userId: true,
@@ -361,7 +644,7 @@ async function runTestOpen(req: Request) {
     return {
       ok: false,
       error: "BOT_NOT_RUNNING",
-      message: "No enabled BINANCE bot found",
+      message: "No enabled bot found",
     };
   }
 
@@ -376,7 +659,7 @@ async function runTestOpen(req: Request) {
   const alreadyOpen = await prisma.botPosition.count({
     where: {
       userId: bot.userId,
-      exchange: "BINANCE",
+      exchange: bot.exchange,
       symbol,
       status: "OPEN",
     },
@@ -397,6 +680,7 @@ async function runTestOpen(req: Request) {
     },
     select: {
       id: true,
+      label: true,
       apiKey: true,
       secretEnc: true,
     },
@@ -411,8 +695,25 @@ async function runTestOpen(req: Request) {
   }
 
   const apiSecret = decryptString(key.secretEnc);
-  const account = await binanceSpotTestnetAccount(key.apiKey, apiSecret);
-  const stable = calcStableBalances(account);
+  const isBybitDemo = bot.exchange === "BYBIT" && isBybitDemoLabel(key.label);
+
+  let stable: { totalStable: number; freeStable: number; lockedStable: number };
+  let symbolFilters: SymbolFilters;
+
+  if (bot.exchange === "BINANCE") {
+    const account = await binanceSpotTestnetAccount(key.apiKey, apiSecret);
+    stable = calcStableBalances(account);
+    symbolFilters = await getBinanceSymbolFilters(symbol);
+  } else if (bot.exchange === "BYBIT") {
+    stable = await getBybitStableBalances(key.apiKey, apiSecret, isBybitDemo);
+    symbolFilters = await getBybitSymbolFilters(symbol, isBybitDemo);
+  } else {
+    return {
+      ok: false,
+      error: "UNSUPPORTED_EXCHANGE",
+      message: `Exchange ${bot.exchange} is not supported in test-open`,
+    };
+  }
 
   if (stable.totalStable <= 0) {
     return {
@@ -446,25 +747,55 @@ async function runTestOpen(req: Request) {
     };
   }
 
-  const symbolFilters = await getSymbolFilters(symbol);
+  let executedQty = 0;
+  let quoteSpent = 0;
+  let avgPrice = 0;
+  let entryExchangeOrderId: string | null = null;
+  let entryClientOrderId: string | null = null;
+  let entryStatus: string | null = null;
+  let entryRawOrder: AnyJson = null;
 
-  const marketOrder = await placeBinanceMarketBuy(
-    key.apiKey,
-    apiSecret,
-    symbol,
-    firstOrderUsdt
-  );
+  if (bot.exchange === "BINANCE") {
+    const marketOrder = await placeBinanceMarketBuy(
+      key.apiKey,
+      apiSecret,
+      symbol,
+      firstOrderUsdt
+    );
 
-  const executedQty = toNum(marketOrder?.executedQty);
+    executedQty = toNum(marketOrder?.executedQty);
+    quoteSpent = toNum(marketOrder?.cummulativeQuoteQty);
 
-  let quoteSpent = toNum(marketOrder?.cummulativeQuoteQty);
+    if (quoteSpent <= 0) {
+      const fills = Array.isArray(marketOrder?.fills) ? marketOrder.fills : [];
+      quoteSpent = fills.reduce((sum: number, fill: any) => {
+        return sum + toNum(fill?.price) * toNum(fill?.qty);
+      }, 0);
+    }
 
-  if (quoteSpent <= 0) {
-    const fills = Array.isArray(marketOrder?.fills) ? marketOrder.fills : [];
+    entryExchangeOrderId = String(marketOrder?.orderId ?? "");
+    entryClientOrderId = String(marketOrder?.clientOrderId ?? "");
+    entryStatus = String(marketOrder?.status ?? "");
+    entryRawOrder = marketOrder;
+  } else {
+    const entryClientId = `entry_${Date.now()}_${symbol}`.slice(0, 36);
 
-    quoteSpent = fills.reduce((sum: number, fill: any) => {
-      return sum + toNum(fill?.price) * toNum(fill?.qty);
-    }, 0);
+    const marketOrder = await placeBybitMarketBuy({
+      apiKey: key.apiKey,
+      apiSecret,
+      symbol,
+      quoteOrderQty: firstOrderUsdt,
+      newClientOrderId: entryClientId,
+      isDemo: isBybitDemo,
+    });
+
+    executedQty = marketOrder.executedQty;
+    quoteSpent = marketOrder.quoteSpent;
+    avgPrice = marketOrder.avgPrice;
+    entryExchangeOrderId = marketOrder.orderId;
+    entryClientOrderId = marketOrder.clientOrderId;
+    entryStatus = marketOrder.status;
+    entryRawOrder = marketOrder.rawOrder;
   }
 
   if (executedQty <= 0 || quoteSpent <= 0) {
@@ -472,11 +803,14 @@ async function runTestOpen(req: Request) {
       ok: false,
       error: "ORDER_NOT_FILLED",
       message: "Market order did not return executed quantity or quote spent",
-      rawOrder: marketOrder,
+      rawOrder: entryRawOrder,
     };
   }
 
-  const avgPrice = quoteSpent / executedQty;
+  if (avgPrice <= 0) {
+    avgPrice = quoteSpent / executedQty;
+  }
+
   const tpPriceNum = avgPrice * 1.05;
 
   const tpQtyNum = floorToStep(executedQty, symbolFilters.stepSize);
@@ -496,7 +830,7 @@ async function runTestOpen(req: Request) {
   const position = await prisma.botPosition.create({
     data: {
       user: { connect: { id: bot.userId } },
-      exchange: "BINANCE",
+      exchange: bot.exchange,
       symbol,
       status: "OPEN",
       avgPrice: new Prisma.Decimal(avgPrice.toFixed(18)),
@@ -525,53 +859,82 @@ async function runTestOpen(req: Request) {
   await insertBotOrderRow({
     userId: bot.userId,
     botPositionId: position.id,
-    exchange: "BINANCE",
+    exchange: bot.exchange,
     symbol,
     kind: "ENTRY",
     side: "BUY",
     status: "FILLED",
     price: avgPrice.toFixed(18),
     qty: executedQty.toFixed(18),
-    exchangeOrderId: String(marketOrder?.orderId ?? ""),
-    clientOrderId: String(marketOrder?.clientOrderId ?? ""),
+    exchangeOrderId: entryExchangeOrderId,
+    clientOrderId: entryClientOrderId,
     meta: {
       symbol,
       firstOrderUsdt,
       quoteSpent,
-      rawOrder: marketOrder,
+      rawOrder: entryRawOrder,
     },
     placedAt: true,
     filledAt: true,
   });
 
+  let tpExchangeOrderId: string | null = null;
+  let tpClientOrderId: string | null = null;
+  let tpStatus: string | null = null;
+  let tpRawOrder: AnyJson = null;
+
   const tpClientId = `tp_${Date.now()}_${symbol}`.slice(0, 36);
-  const tpOrder = await placeBinanceLimitOrder({
-    apiKey: key.apiKey,
-    apiSecret,
-    symbol,
-    side: "SELL",
-    quantity: tpQty,
-    price: tpPrice,
-    newClientOrderId: tpClientId,
-  });
+
+  if (bot.exchange === "BINANCE") {
+    const tpOrder = await placeBinanceLimitOrder({
+      apiKey: key.apiKey,
+      apiSecret,
+      symbol,
+      side: "SELL",
+      quantity: tpQty,
+      price: tpPrice,
+      newClientOrderId: tpClientId,
+    });
+
+    tpExchangeOrderId = String(tpOrder?.orderId ?? "");
+    tpClientOrderId = String(tpOrder?.clientOrderId ?? tpClientId);
+    tpStatus = String(tpOrder?.status ?? "PLACED");
+    tpRawOrder = tpOrder;
+  } else {
+    const tpOrder = await placeBybitLimitOrder({
+      apiKey: key.apiKey,
+      apiSecret,
+      symbol,
+      side: "SELL",
+      quantity: tpQty,
+      price: tpPrice,
+      newClientOrderId: tpClientId,
+      isDemo: isBybitDemo,
+    });
+
+    tpExchangeOrderId = tpOrder.orderId;
+    tpClientOrderId = tpOrder.clientOrderId;
+    tpStatus = tpOrder.status;
+    tpRawOrder = tpOrder.rawOrder;
+  }
 
   await insertBotOrderRow({
     userId: bot.userId,
     botPositionId: position.id,
-    exchange: "BINANCE",
+    exchange: bot.exchange,
     symbol,
     kind: "TP",
     side: "SELL",
-    status: String(tpOrder?.status ?? "PLACED"),
+    status: String(tpStatus ?? "PLACED"),
     price: tpPrice,
     qty: tpQty,
-    exchangeOrderId: String(tpOrder?.orderId ?? ""),
-    clientOrderId: String(tpOrder?.clientOrderId ?? tpClientId),
+    exchangeOrderId: tpExchangeOrderId,
+    clientOrderId: tpClientOrderId,
     meta: {
       level: "TP",
       sourceAvgPrice: avgPrice,
       tpPercent: 5,
-      rawOrder: tpOrder,
+      rawOrder: tpRawOrder,
     },
     placedAt: true,
     filledAt: false,
@@ -612,33 +975,61 @@ async function runTestOpen(req: Request) {
     const levelQty = formatByStep(levelQtyNum, symbolFilters.stepSize);
     const gridClientId = `grid_${i}_${Date.now()}_${symbol}`.slice(0, 36);
 
-    const gridOrder = await placeBinanceLimitOrder({
-      apiKey: key.apiKey,
-      apiSecret,
-      symbol,
-      side: "BUY",
-      quantity: levelQty,
-      price: levelPrice,
-      newClientOrderId: gridClientId,
-    });
+    let gridExchangeOrderId: string | null = null;
+    let gridClientOrderId: string | null = null;
+    let gridStatus: string | null = null;
+    let gridRawOrder: AnyJson = null;
+
+    if (bot.exchange === "BINANCE") {
+      const gridOrder = await placeBinanceLimitOrder({
+        apiKey: key.apiKey,
+        apiSecret,
+        symbol,
+        side: "BUY",
+        quantity: levelQty,
+        price: levelPrice,
+        newClientOrderId: gridClientId,
+      });
+
+      gridExchangeOrderId = String(gridOrder?.orderId ?? "");
+      gridClientOrderId = String(gridOrder?.clientOrderId ?? gridClientId);
+      gridStatus = String(gridOrder?.status ?? "PLACED");
+      gridRawOrder = gridOrder;
+    } else {
+      const gridOrder = await placeBybitLimitOrder({
+        apiKey: key.apiKey,
+        apiSecret,
+        symbol,
+        side: "BUY",
+        quantity: levelQty,
+        price: levelPrice,
+        newClientOrderId: gridClientId,
+        isDemo: isBybitDemo,
+      });
+
+      gridExchangeOrderId = gridOrder.orderId;
+      gridClientOrderId = gridOrder.clientOrderId;
+      gridStatus = gridOrder.status;
+      gridRawOrder = gridOrder.rawOrder;
+    }
 
     await insertBotOrderRow({
       userId: bot.userId,
       botPositionId: position.id,
-      exchange: "BINANCE",
+      exchange: bot.exchange,
       symbol,
       kind: "GRID",
       side: "BUY",
-      status: String(gridOrder?.status ?? "PLACED"),
+      status: String(gridStatus ?? "PLACED"),
       price: levelPrice,
       qty: levelQty,
-      exchangeOrderId: String(gridOrder?.orderId ?? ""),
-      clientOrderId: String(gridOrder?.clientOrderId ?? gridClientId),
+      exchangeOrderId: gridExchangeOrderId,
+      clientOrderId: gridClientOrderId,
       meta: {
         level: i,
         dropPercentFromFirstEntry: i * 5,
         quoteBudget: firstOrderUsdt,
-        rawOrder: gridOrder,
+        rawOrder: gridRawOrder,
       },
       placedAt: true,
       filledAt: false,
@@ -649,15 +1040,32 @@ async function runTestOpen(req: Request) {
       price: levelPrice,
       qty: levelQty,
       notional: Number(levelPrice) * Number(levelQty),
-      orderId: gridOrder?.orderId ?? null,
-      clientOrderId: gridOrder?.clientOrderId ?? gridClientId,
-      status: gridOrder?.status ?? "PLACED",
+      orderId: gridExchangeOrderId,
+      clientOrderId: gridClientOrderId,
+      status: gridStatus ?? "PLACED",
     });
   }
+
+  await notifyTradeOpened({
+    userId: bot.userId,
+    symbol,
+    positionId: position.id,
+    avgPrice,
+    qty: executedQty,
+    usdtAmount: quoteSpent,
+    tpPrice: Number(tpPrice),
+  });
 
   return {
     ok: true,
     message: "test market buy + tp + grid created",
+    exchange: bot.exchange,
+    network:
+      bot.exchange === "BINANCE"
+        ? "TESTNET"
+        : isBybitDemo
+          ? "DEMO"
+          : "MAINNET",
     balances: stable,
     firstOrderUsdt,
     position: {
@@ -668,10 +1076,10 @@ async function runTestOpen(req: Request) {
       investedQuote: position.investedQuote.toString(),
     },
     entryOrder: {
-      symbol: marketOrder?.symbol ?? symbol,
-      orderId: marketOrder?.orderId ?? null,
-      clientOrderId: marketOrder?.clientOrderId ?? null,
-      status: marketOrder?.status ?? null,
+      symbol,
+      orderId: entryExchangeOrderId,
+      clientOrderId: entryClientOrderId,
+      status: entryStatus,
       executedQty,
       quoteSpent,
       avgPrice,
@@ -680,9 +1088,9 @@ async function runTestOpen(req: Request) {
       symbol,
       price: tpPrice,
       qty: tpQty,
-      orderId: tpOrder?.orderId ?? null,
-      clientOrderId: tpOrder?.clientOrderId ?? tpClientId,
-      status: tpOrder?.status ?? null,
+      orderId: tpExchangeOrderId,
+      clientOrderId: tpClientOrderId,
+      status: tpStatus,
     },
     gridOrders,
   };
@@ -720,4 +1128,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-} 
+}
