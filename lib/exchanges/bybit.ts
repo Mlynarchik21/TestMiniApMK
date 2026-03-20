@@ -8,7 +8,8 @@ import type {
   OrderStatusResult,
 } from "@/lib/exchanges/types";
 
-const BYBIT_BASE = process.env.BYBIT_BASE_URL?.trim() || "https://api-demo.bybit.com";
+const BYBIT_BASE =
+  process.env.BYBIT_BASE_URL?.trim() || "https://api-demo.bybit.com";
 
 const STABLE_ASSETS = new Set(["USDT", "USDC"]);
 
@@ -17,6 +18,10 @@ type AnyJson = any;
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function floorToStep(value: number, step: number) {
@@ -44,14 +49,52 @@ function buildQuery(params: Record<string, string | number | undefined | null>) 
   return usp.toString();
 }
 
-function signGet(apiKey: string, apiSecret: string, recvWindow: string, timestamp: string, query: string) {
+function signGet(
+  apiKey: string,
+  apiSecret: string,
+  recvWindow: string,
+  timestamp: string,
+  query: string
+) {
   const payload = `${timestamp}${apiKey}${recvWindow}${query}`;
   return crypto.createHmac("sha256", apiSecret).update(payload).digest("hex");
 }
 
-function signPost(apiKey: string, apiSecret: string, recvWindow: string, timestamp: string, body: string) {
+function signPost(
+  apiKey: string,
+  apiSecret: string,
+  recvWindow: string,
+  timestamp: string,
+  body: string
+) {
   const payload = `${timestamp}${apiKey}${recvWindow}${body}`;
   return crypto.createHmac("sha256", apiSecret).update(payload).digest("hex");
+}
+
+function normalizeBybitStatus(status: unknown): string {
+  const s = String(status || "").trim().toUpperCase();
+
+  if (!s) return "UNKNOWN";
+  if (s === "FILLED") return "FILLED";
+  if (s === "PARTIALLYFILLED" || s === "PARTIALLY_FILLED") return "PARTIALLY_FILLED";
+  if (
+    s === "NEW" ||
+    s === "CREATED" ||
+    s === "UNTRIGGERED" ||
+    s === "ACTIVE"
+  ) {
+    return "NEW";
+  }
+  if (
+    s === "CANCELLED" ||
+    s === "CANCELED" ||
+    s === "DEACTIVATED"
+  ) {
+    return "CANCELED";
+  }
+  if (s === "REJECTED" || s === "FAILED") return "REJECTED";
+
+  return s;
 }
 
 async function bybitPrivateGet<T = AnyJson>(params: {
@@ -117,7 +160,10 @@ async function bybitPrivatePost<T = AnyJson>(params: {
   return json as T;
 }
 
-async function bybitPublicGet<T = AnyJson>(path: string, query?: Record<string, string | number | undefined | null>) {
+async function bybitPublicGet<T = AnyJson>(
+  path: string,
+  query?: Record<string, string | number | undefined | null>
+) {
   const qs = buildQuery(query || {});
   const url = `${BYBIT_BASE}${path}${qs ? `?${qs}` : ""}`;
   const res = await fetch(url, {
@@ -131,6 +177,43 @@ async function bybitPublicGet<T = AnyJson>(path: string, query?: Record<string, 
   }
 
   return json as T;
+}
+
+async function readBybitRealtimeOrder(params: {
+  apiKey: string;
+  apiSecret: string;
+  symbol: string;
+  exchangeOrderId?: string | null;
+  clientOrderId?: string | null;
+}) {
+  const json: AnyJson = await bybitPrivateGet({
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/realtime",
+    query: {
+      category: "spot",
+      symbol: params.symbol,
+      orderId: params.exchangeOrderId,
+      orderLinkId: params.clientOrderId,
+      openOnly: 0,
+    },
+  });
+
+  const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+  const row = list[0] ?? null;
+
+  return { json, row };
+}
+
+function safeSellQty(qty: number, stepSize: number, minQty: number) {
+  let q = floorToStep(qty, stepSize);
+
+  if (stepSize > 0) {
+    const shaved = floorToStep(q - stepSize, stepSize);
+    if (shaved >= minQty) q = shaved;
+  }
+
+  return q;
 }
 
 export const bybitAdapter: ExchangeAdapter = {
@@ -181,7 +264,11 @@ export const bybitAdapter: ExchangeAdapter = {
     if (!row) throw new Error(`Bybit symbol ${symbol} not found`);
 
     const tickSize = toNum(row?.priceFilter?.tickSize || "0.0001");
-    const stepSize = toNum(row?.lotSizeFilter?.basePrecision || row?.lotSizeFilter?.qtyStep || "0.000001");
+    const stepSize = toNum(
+      row?.lotSizeFilter?.basePrecision ||
+        row?.lotSizeFilter?.qtyStep ||
+        "0.000001"
+    );
     const minQty = toNum(row?.lotSizeFilter?.minOrderQty || "0");
     const minNotional = toNum(row?.lotSizeFilter?.minOrderAmt || "0");
 
@@ -194,7 +281,9 @@ export const bybitAdapter: ExchangeAdapter = {
   },
 
   async placeMarketBuy(params): Promise<MarketOrderResult> {
-    const clientOrderId = (params.clientOrderId || `entry_${Date.now()}_${params.symbol}`).slice(0, 36);
+    const clientOrderId = (
+      params.clientOrderId || `entry_${Date.now()}_${params.symbol}`
+    ).slice(0, 36);
 
     const json: AnyJson = await bybitPrivatePost({
       apiKey: params.apiKey,
@@ -208,17 +297,40 @@ export const bybitAdapter: ExchangeAdapter = {
         qty: String(params.quoteAmount),
         marketUnit: "quoteCoin",
         orderLinkId: clientOrderId,
+        orderFilter: "Order",
       },
     });
 
     const orderId = String(json?.result?.orderId || "");
-    const status = await this.getOrderStatus({
+
+    let status = await this.getOrderStatus({
       apiKey: params.apiKey,
       apiSecret: params.apiSecret,
       symbol: params.symbol,
       exchangeOrderId: orderId,
       clientOrderId,
     });
+
+    for (let i = 0; i < 8; i++) {
+      if (
+        status.status === "FILLED" ||
+        status.status === "PARTIALLY_FILLED" ||
+        status.status === "REJECTED" ||
+        status.status === "CANCELED"
+      ) {
+        break;
+      }
+
+      await sleep(500);
+
+      status = await this.getOrderStatus({
+        apiKey: params.apiKey,
+        apiSecret: params.apiSecret,
+        symbol: params.symbol,
+        exchangeOrderId: orderId,
+        clientOrderId,
+      });
+    }
 
     return {
       exchangeOrderId: orderId,
@@ -233,9 +345,24 @@ export const bybitAdapter: ExchangeAdapter = {
 
   async placeLimitOrder(params): Promise<LimitOrderResult> {
     const filters = await this.getSymbolFilters(params.symbol);
-    const qty = formatByStep(params.qty, filters.stepSize);
+
+    let qtyNum = floorToStep(params.qty, filters.stepSize);
+
+    if (params.side === "SELL") {
+      qtyNum = safeSellQty(qtyNum, filters.stepSize, filters.minQty);
+    }
+
+    if (qtyNum < filters.minQty) {
+      throw new Error(
+        `Bybit ${params.side} qty below minQty after rounding: qty=${qtyNum}, minQty=${filters.minQty}`
+      );
+    }
+
+    const qty = formatByStep(qtyNum, filters.stepSize);
     const price = formatByStep(params.price, filters.tickSize);
-    const clientOrderId = (params.clientOrderId || `ord_${Date.now()}_${params.symbol}`).slice(0, 36);
+    const clientOrderId = (
+      params.clientOrderId || `ord_${Date.now()}_${params.symbol}`
+    ).slice(0, 36);
 
     const json: AnyJson = await bybitPrivatePost({
       apiKey: params.apiKey,
@@ -250,34 +377,61 @@ export const bybitAdapter: ExchangeAdapter = {
         qty,
         price,
         orderLinkId: clientOrderId,
+        orderFilter: "Order",
       },
     });
 
-    return {
-      exchangeOrderId: String(json?.result?.orderId || ""),
+    const orderId = String(json?.result?.orderId || "");
+
+    let live = await this.getOrderStatus({
+      apiKey: params.apiKey,
+      apiSecret: params.apiSecret,
+      symbol: params.symbol,
+      exchangeOrderId: orderId,
       clientOrderId,
-      status: "NEW",
+    });
+
+    for (let i = 0; i < 6; i++) {
+      if (
+        live.status === "NEW" ||
+        live.status === "PARTIALLY_FILLED" ||
+        live.status === "FILLED" ||
+        live.status === "REJECTED" ||
+        live.status === "CANCELED"
+      ) {
+        break;
+      }
+
+      await sleep(400);
+
+      live = await this.getOrderStatus({
+        apiKey: params.apiKey,
+        apiSecret: params.apiSecret,
+        symbol: params.symbol,
+        exchangeOrderId: orderId,
+        clientOrderId,
+      });
+    }
+
+    return {
+      exchangeOrderId: orderId,
+      clientOrderId,
+      status: live.status || "NEW",
       price: Number(price),
       qty: Number(qty),
-      raw: json,
+      raw: { create: json, status: live.raw },
     };
   },
 
   async getOrderStatus(params): Promise<OrderStatusResult> {
-    const json: AnyJson = await bybitPrivateGet({
+    const { json, row } = await readBybitRealtimeOrder({
       apiKey: params.apiKey,
       apiSecret: params.apiSecret,
-      path: "/v5/order/realtime",
-      query: {
-        category: "spot",
-        symbol: params.symbol,
-        orderId: params.exchangeOrderId,
-        orderLinkId: params.clientOrderId,
-      },
+      symbol: params.symbol,
+      exchangeOrderId: params.exchangeOrderId,
+      clientOrderId: params.clientOrderId,
     });
 
-    const list = Array.isArray(json?.result?.list) ? json.result.list : [];
-    const row = list[0];
     if (!row) {
       return {
         exchangeOrderId: String(params.exchangeOrderId || ""),
@@ -292,12 +446,13 @@ export const bybitAdapter: ExchangeAdapter = {
 
     const executedQty = toNum(row?.cumExecQty);
     const cumQuote = toNum(row?.cumExecValue);
-    const avgPrice = toNum(row?.avgPrice) || (executedQty > 0 ? cumQuote / executedQty : 0);
+    const avgPrice =
+      toNum(row?.avgPrice) || (executedQty > 0 ? cumQuote / executedQty : 0);
 
     return {
       exchangeOrderId: String(row?.orderId || params.exchangeOrderId || ""),
       clientOrderId: row?.orderLinkId ?? params.clientOrderId ?? null,
-      status: String(row?.orderStatus || "UNKNOWN").toUpperCase(),
+      status: normalizeBybitStatus(row?.orderStatus),
       executedQty,
       cumQuote,
       avgPrice,
@@ -313,8 +468,9 @@ export const bybitAdapter: ExchangeAdapter = {
       body: {
         category: "spot",
         symbol: params.symbol,
-        orderId: params.exchangeOrderId,
-        orderLinkId: params.clientOrderId,
+        ...(params.exchangeOrderId ? { orderId: params.exchangeOrderId } : {}),
+        ...(params.clientOrderId ? { orderLinkId: params.clientOrderId } : {}),
+        orderFilter: "Order",
       },
     });
 
