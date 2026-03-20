@@ -68,23 +68,48 @@ export async function POST(req: Request) {
         ? body.label.trim().slice(0, 64)
         : null;
 
-    // unique: @@unique([userId, exchange, label])
-    const existing = await prisma.userKey.findFirst({
-      where: { userId: user.id, exchange: body.exchange, label },
-      select: { id: true },
-    });
+    const apiKey = String(body.apiKey).trim();
+    const apiSecret = String(body.apiSecret).trim();
+
+    if (!apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
+    if (!apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
     const dataEncrypted = {
       exchange: body.exchange,
       label,
-      apiKey: body.apiKey,
-      secretEnc: encryptString(body.apiSecret),
-      passphraseEnc: body.passphrase ? encryptString(body.passphrase) : null,
+      apiKey,
+      secretEnc: encryptString(apiSecret),
+      passphraseEnc: body.passphrase ? encryptString(String(body.passphrase).trim()) : null,
     };
 
-    const row = existing
+    // 1) сначала ищем точное совпадение по apiKey
+    const existingByApiKey = await prisma.userKey.findFirst({
+      where: {
+        userId: user.id,
+        exchange: body.exchange,
+        apiKey,
+      },
+      select: { id: true },
+    });
+
+    // 2) если не нашли — ищем по label, чтобы можно было обновлять старую запись
+    const existingByLabel =
+      !existingByApiKey && label
+        ? await prisma.userKey.findFirst({
+            where: {
+              userId: user.id,
+              exchange: body.exchange,
+              label,
+            },
+            select: { id: true },
+          })
+        : null;
+
+    const existingId = existingByApiKey?.id ?? existingByLabel?.id ?? null;
+
+    const row = existingId
       ? await prisma.userKey.update({
-          where: { id: existing.id },
+          where: { id: existingId },
           data: dataEncrypted,
           select: {
             id: true,
@@ -110,11 +135,26 @@ export async function POST(req: Request) {
 
     return ok({ key: row });
   } catch (e: any) {
+    const message = e?.message ?? String(e);
+
+    if (
+      message.includes("Unique constraint failed") &&
+      message.includes('"userId"') &&
+      message.includes('"exchange"') &&
+      message.includes('"apiKey"')
+    ) {
+      return fail(
+        400,
+        "DUPLICATE_API_KEY",
+        "Такой ключ для этой биржи уже сохранён. Удали старый или обнови его."
+      );
+    }
+
     const status = typeof e?.status === "number" ? e.status : 500;
     return fail(
       status,
       status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
+      message
     );
   }
 }
