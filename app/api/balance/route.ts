@@ -114,6 +114,64 @@ async function binanceSpotAccount(apiKey: string, apiSecret: string, testnet: bo
   return json;
 }
 
+function bybitSignature(params: {
+  timestamp: string;
+  apiKey: string;
+  recvWindow: string;
+  payload: string;
+  secret: string;
+}) {
+  const preSign = `${params.timestamp}${params.apiKey}${params.recvWindow}${params.payload}`;
+  return crypto.createHmac("sha256", params.secret).update(preSign).digest("hex");
+}
+
+async function bybitWalletBalance(
+  apiKey: string,
+  apiSecret: string,
+  isDemo: boolean
+) {
+  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+  const timestamp = String(Date.now());
+  const recvWindow = "10000";
+  const payload = "accountType=UNIFIED";
+
+  const signature = bybitSignature({
+    timestamp,
+    apiKey,
+    recvWindow,
+    payload,
+    secret: apiSecret,
+  });
+
+  const r = await fetch(`${base}/v5/account/wallet-balance?${payload}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN": signature,
+    },
+  });
+
+  const text = await r.text();
+
+  let json: AnyJson = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok || json?.retCode !== 0) {
+    const msg = json?.retMsg || text || `Bybit error: ${r.status}`;
+    const code = json?.retCode;
+    const err = new Error(msg);
+    (err as AnyJson).bybitCode = code;
+    throw err;
+  }
+
+  return json;
+}
+
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
@@ -139,42 +197,82 @@ export async function GET(req: Request) {
 
     if (!key) return fail(404, "NOT_FOUND", "key not found");
 
-    if (key.exchange !== "BINANCE") {
-      return fail(400, "UNSUPPORTED_EXCHANGE", "Only BINANCE spot supported now");
-    }
-
     if (!key.apiKey) return fail(500, "SERVER_ERROR", "apiKey is empty in DB");
     if (!key.secretEnc) return fail(500, "SERVER_ERROR", "secretEnc is empty in DB");
 
     const apiSecret = decryptString(key.secretEnc);
-    const account = await binanceSpotAccount(key.apiKey, apiSecret, testnet);
 
-    const balances = Array.isArray(account?.balances) ? account.balances : [];
-    const nonZero = balances
-      .map((b: AnyJson) => ({
-        asset: String(b?.asset ?? ""),
-        free: String(b?.free ?? "0"),
-        locked: String(b?.locked ?? "0"),
-      }))
-      .filter((b: AnyJson) => {
-        const free = Number(b.free || 0);
-        const locked = Number(b.locked || 0);
-        return free !== 0 || locked !== 0;
+    if (key.exchange === "BINANCE") {
+      const account = await binanceSpotAccount(key.apiKey, apiSecret, testnet);
+
+      const balances = Array.isArray(account?.balances) ? account.balances : [];
+      const nonZero = balances
+        .map((b: AnyJson) => ({
+          asset: String(b?.asset ?? ""),
+          free: String(b?.free ?? "0"),
+          locked: String(b?.locked ?? "0"),
+        }))
+        .filter((b: AnyJson) => {
+          const free = Number(b.free || 0);
+          const locked = Number(b.locked || 0);
+          return free !== 0 || locked !== 0;
+        });
+
+      return ok({
+        exchange: "BINANCE",
+        network: testnet ? "TESTNET" : "MAINNET",
+        keyId: key.id,
+        label: key.label ?? null,
+        balances: nonZero,
+        raw: {
+          canTrade: account?.canTrade ?? null,
+          accountType: account?.accountType ?? null,
+          makerCommission: account?.makerCommission ?? null,
+          takerCommission: account?.takerCommission ?? null,
+        },
       });
+    }
 
-    return ok({
-      exchange: "BINANCE",
-      network: testnet ? "TESTNET" : "MAINNET",
-      keyId: key.id,
-      label: key.label ?? null,
-      balances: nonZero,
-      raw: {
-        canTrade: account?.canTrade ?? null,
-        accountType: account?.accountType ?? null,
-        makerCommission: account?.makerCommission ?? null,
-        takerCommission: account?.takerCommission ?? null,
-      },
-    });
+    if (key.exchange === "BYBIT") {
+      const isDemo = /demo/i.test(key.label || "");
+      const wallet = await bybitWalletBalance(key.apiKey, apiSecret, isDemo);
+
+      const accounts = Array.isArray(wallet?.result?.list) ? wallet.result.list : [];
+      const firstAccount = accounts[0] ?? null;
+      const coins = Array.isArray(firstAccount?.coin) ? firstAccount.coin : [];
+
+      const nonZero = coins
+        .map((c: AnyJson) => {
+          const walletBalance = String(c?.walletBalance ?? "0");
+          const locked = String(c?.locked ?? "0");
+          return {
+            asset: String(c?.coin ?? ""),
+            free: walletBalance,
+            locked,
+          };
+        })
+        .filter((b: AnyJson) => {
+          const free = Number(b.free || 0);
+          const locked = Number(b.locked || 0);
+          return free !== 0 || locked !== 0;
+        });
+
+      return ok({
+        exchange: "BYBIT",
+        network: isDemo ? "DEMO" : "MAINNET",
+        keyId: key.id,
+        label: key.label ?? null,
+        balances: nonZero,
+        raw: {
+          accountType: firstAccount?.accountType ?? "UNIFIED",
+          totalEquity: firstAccount?.totalEquity ?? null,
+          totalWalletBalance: firstAccount?.totalWalletBalance ?? null,
+          totalAvailableBalance: firstAccount?.totalAvailableBalance ?? null,
+        },
+      });
+    }
+
+    return fail(400, "UNSUPPORTED_EXCHANGE", "Only BINANCE and BYBIT spot supported now");
   } catch (e: AnyJson) {
     const msg = e?.message ?? String(e);
 
@@ -195,7 +293,11 @@ export async function GET(req: Request) {
       status,
       status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
       msg,
-      e?.binanceCode != null ? { binanceCode: e.binanceCode } : undefined
+      e?.binanceCode != null
+        ? { binanceCode: e.binanceCode }
+        : e?.bybitCode != null
+          ? { bybitCode: e.bybitCode }
+          : undefined
     );
   }
 }
