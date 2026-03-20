@@ -161,6 +161,71 @@ async function bybitPost(params: {
   return json;
 }
 
+async function bybitGetWalletCoins(
+  apiKey: string,
+  apiSecret: string,
+  isDemo: boolean
+): Promise<AnyJson[]> {
+  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const wallet = await bybitGet({
+    base,
+    apiKey,
+    apiSecret,
+    path: "/v5/account/wallet-balance",
+    query: "accountType=UNIFIED",
+  });
+
+  const accounts = Array.isArray(wallet?.result?.list) ? wallet.result.list : [];
+  const firstAccount = accounts[0] ?? null;
+  return Array.isArray(firstAccount?.coin) ? firstAccount.coin : [];
+}
+
+async function bybitGetFreeCoinBalance(
+  apiKey: string,
+  apiSecret: string,
+  isDemo: boolean,
+  coin: string
+): Promise<number> {
+  const coins = await bybitGetWalletCoins(apiKey, apiSecret, isDemo);
+  const row = coins.find((x: AnyJson) => String(x?.coin || "").toUpperCase() === coin.toUpperCase());
+  if (!row) return 0;
+
+  const walletBalance = toNum(row?.walletBalance);
+  const locked = toNum(row?.locked);
+  return Math.max(walletBalance - locked, 0);
+}
+
+async function bybitGetOrderRealtime(params: {
+  apiKey: string;
+  apiSecret: string;
+  isDemo: boolean;
+  symbol: string;
+  orderId?: string | null;
+  clientOrderId?: string | null;
+}) {
+  const base = params.isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+
+  const query = new URLSearchParams({
+    category: "spot",
+    symbol: params.symbol,
+  });
+
+  if (params.orderId) query.set("orderId", params.orderId);
+  if (params.clientOrderId) query.set("orderLinkId", params.clientOrderId);
+
+  const live = await bybitGet({
+    base,
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/realtime",
+    query: query.toString(),
+  });
+
+  const list = Array.isArray(live?.result?.list) ? live.result.list : [];
+  return list[0] ?? null;
+}
+
 async function binanceServerTime(): Promise<number> {
   const r = await fetch(`${BINANCE_TESTNET_BASE}/api/v3/time`, {
     method: "GET",
@@ -286,7 +351,9 @@ async function getBybitSymbolFilters(symbol: string, isDemo: boolean): Promise<S
 
   return {
     tickSize: toNum(priceFilter?.tickSize || "0.01"),
-    stepSize: toNum(lotSizeFilter?.basePrecision || lotSizeFilter?.qtyStep || "0.000001"),
+    stepSize: toNum(
+      lotSizeFilter?.basePrecision || lotSizeFilter?.qtyStep || "0.000001"
+    ),
     minQty: toNum(lotSizeFilter?.minOrderQty || "0"),
     minNotional: toNum(lotSizeFilter?.minOrderAmt || "0"),
   };
@@ -319,19 +386,7 @@ function calcStableBalances(account: AnyJson) {
 }
 
 async function getBybitStableBalances(apiKey: string, apiSecret: string, isDemo: boolean) {
-  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
-
-  const wallet = await bybitGet({
-    base,
-    apiKey,
-    apiSecret,
-    path: "/v5/account/wallet-balance",
-    query: "accountType=UNIFIED",
-  });
-
-  const accounts = Array.isArray(wallet?.result?.list) ? wallet.result.list : [];
-  const firstAccount = accounts[0] ?? null;
-  const coins = Array.isArray(firstAccount?.coin) ? firstAccount.coin : [];
+  const coins = await bybitGetWalletCoins(apiKey, apiSecret, isDemo);
 
   let totalStable = 0;
   let freeStable = 0;
@@ -474,6 +529,7 @@ async function placeBybitMarketBuy(params: {
       qty: String(params.quoteOrderQty),
       marketUnit: "quoteCoin",
       orderLinkId: params.newClientOrderId,
+      orderFilter: "Order",
     },
   });
 
@@ -482,18 +538,18 @@ async function placeBybitMarketBuy(params: {
     throw new Error("Bybit market order created without orderId");
   }
 
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     await sleep(700);
 
-    const live = await bybitGet({
-      base,
+    const row = await bybitGetOrderRealtime({
+      isDemo: params.isDemo,
       apiKey: params.apiKey,
       apiSecret: params.apiSecret,
-      path: "/v5/order/realtime",
-      query: `category=spot&symbol=${encodeURIComponent(params.symbol)}&orderId=${encodeURIComponent(orderId)}`,
+      symbol: params.symbol,
+      orderId,
+      clientOrderId: params.newClientOrderId,
     });
 
-    const row = Array.isArray(live?.result?.list) ? live.result.list[0] : null;
     if (!row) continue;
 
     const status = String(row?.orderStatus || "");
@@ -512,6 +568,10 @@ async function placeBybitMarketBuy(params: {
         avgPrice,
         rawOrder: row,
       };
+    }
+
+    if (["Rejected", "Cancelled", "Deactivated"].includes(status)) {
+      throw new Error(`Bybit market order failed: ${status}`);
     }
   }
 
@@ -544,11 +604,46 @@ async function placeBybitLimitOrder(params: {
       price: params.price,
       timeInForce: "GTC",
       orderLinkId: params.newClientOrderId,
+      orderFilter: "Order",
     },
   });
 
+  const orderId = String(created?.result?.orderId || "");
+  if (!orderId) {
+    throw new Error("Bybit limit order created without orderId");
+  }
+
+  for (let i = 0; i < 8; i++) {
+    await sleep(500);
+
+    const row = await bybitGetOrderRealtime({
+      isDemo: params.isDemo,
+      apiKey: params.apiKey,
+      apiSecret: params.apiSecret,
+      symbol: params.symbol,
+      orderId,
+      clientOrderId: params.newClientOrderId,
+    });
+
+    if (!row) continue;
+
+    const status = String(row?.orderStatus || "");
+    if (["New", "PartiallyFilled", "Filled"].includes(status)) {
+      return {
+        orderId,
+        clientOrderId: String(row?.orderLinkId || params.newClientOrderId),
+        status,
+        rawOrder: row,
+      };
+    }
+
+    if (["Rejected", "Cancelled", "Deactivated"].includes(status)) {
+      throw new Error(`Bybit limit order failed: ${status}`);
+    }
+  }
+
   return {
-    orderId: String(created?.result?.orderId || ""),
+    orderId,
     clientOrderId: params.newClientOrderId,
     status: "NEW",
     rawOrder: created,
@@ -632,6 +727,7 @@ async function runTestOpen(req: Request) {
   const bot = await prisma.botConfig.findFirst({
     where: {
       enabled: true,
+      keyId: { not: null },
     },
     select: {
       userId: true,
@@ -813,7 +909,20 @@ async function runTestOpen(req: Request) {
 
   const tpPriceNum = avgPrice * 1.05;
 
-  const tpQtyNum = floorToStep(executedQty, symbolFilters.stepSize);
+  let tpQtyNum = floorToStep(executedQty, symbolFilters.stepSize);
+
+  if (bot.exchange === "BYBIT") {
+    const baseAsset = symbol.replace(/USDT$/, "");
+    const freeBase = await bybitGetFreeCoinBalance(
+      key.apiKey,
+      apiSecret,
+      isBybitDemo,
+      baseAsset
+    );
+
+    tpQtyNum = floorToStep(Math.min(tpQtyNum, freeBase), symbolFilters.stepSize);
+  }
+
   if (tpQtyNum < symbolFilters.minQty) {
     return {
       ok: false,
