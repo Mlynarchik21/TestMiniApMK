@@ -57,6 +57,11 @@ export default function HomePage() {
 
   useEffect(() => {
     checkMe();
+    try {
+      const tg = (window as any)?.Telegram?.WebApp;
+      tg?.ready?.();
+      tg?.expand?.();
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -65,8 +70,8 @@ export default function HomePage() {
       <div style={container()}>
         {/* TOP HERO */}
         <section style={topHero()}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={topHeroGrid()}>
+            <div style={{ minWidth: 0 }}>
               <div style={eyebrow()}>Рын. капитализация</div>
 
               <div style={heroValueRow()}>
@@ -75,11 +80,11 @@ export default function HomePage() {
               </div>
 
               <div style={heroDeltaWrap()}>
-                <span style={{ color: "rgba(255,255,255,0.82)" }}>Изменение за день </span>
-                <span style={{ color: "#ff6b6b", fontWeight: 800 }}>-0.76%</span>
+                <div style={{ color: "rgba(255,255,255,0.88)" }}>Изменение за день</div>
+                <div style={{ color: "#ff6b6b", fontWeight: 900, marginTop: 2 }}>-0.76%</div>
               </div>
 
-              <div style={{ marginTop: 20 }}>
+              <div style={{ marginTop: 18 }}>
                 <div style={fearRow()}>
                   <span style={{ color: "#FFD600" }}>Жадность и страх</span>
                   <span style={{ color: "rgba(255,255,255,0.75)" }}>11%</span>
@@ -106,7 +111,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
             <button
               type="button"
               onClick={() => router.replace("/profile")}
@@ -117,7 +122,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FEAR & GREED HERO */}
+        {/* FEAR & GREED */}
         <section
           style={cardLarge()}
           onClick={() => router.replace("/ai")}
@@ -126,9 +131,11 @@ export default function HomePage() {
         >
           <div style={sectionLabel()}>FEAR & GREED INDEX</div>
 
-          <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
             <div style={gaugeWrap()}>
-              <div style={gaugeArc()} />
+              <div style={gaugeArcRed()} />
+              <div style={gaugeArcYellow()} />
+              <div style={gaugeArcGreen()} />
               <div style={gaugeNeedle(23)} />
               <div style={gaugeCenter()}>
                 <div style={gaugeValue()}>23</div>
@@ -140,24 +147,24 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* MARKET WIDGETS */}
+        {/* BTC DOMINANCE */}
         <section style={cardMedium()} onClick={() => router.replace("/history")} role="button">
           <div style={sectionLabel()}>BTC DOMINANCE</div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14 }}>
             <div style={dominanceRingWrap()}>
               <div style={dominanceRing()} />
               <div style={dominanceRingValue()}>56.5%</div>
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={miniChart()}>
                 {Array.from({ length: 24 }).map((_, i) => (
                   <div
                     key={i}
                     style={{
                       ...miniChartBar(),
-                      height: `${30 + ((i * 17) % 45)}px`,
+                      height: `${28 + ((i * 17) % 36)}px`,
                     }}
                   />
                 ))}
@@ -166,6 +173,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* LONG SHORT */}
         <section style={cardMedium()} onClick={() => router.replace("/history")} role="button">
           <div style={sectionLabel()}>BTC LONG / SHORT RATIO</div>
 
@@ -175,11 +183,12 @@ export default function HomePage() {
           </div>
 
           <div style={ratioMeta()}>
-            <span style={{ color: "#69db7c", fontWeight: 700 }}>61.4% Longs</span>
-            <span style={{ color: "#ff8787", fontWeight: 700 }}>38.6% Shorts</span>
+            <span style={{ color: "#69db7c", fontWeight: 800 }}>61.4% Longs</span>
+            <span style={{ color: "#ff8787", fontWeight: 800 }}>38.6% Shorts</span>
           </div>
         </section>
 
+        {/* SMALL METRICS */}
         <div style={grid2()}>
           <section style={cardSmall()} onClick={() => router.replace("/history")} role="button">
             <div style={sectionLabel()}>TOTAL OI</div>
@@ -195,7 +204,7 @@ export default function HomePage() {
         {/* AI BLOCK */}
         <section style={cardAccent()} onClick={() => router.replace("/ai")} role="button">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={sectionTitle()}>AI Insight</div>
               <div style={sectionSub()}>
                 Рынок в фазе страха. Возможна локальная аккумуляция. Повышенный риск по слабым
@@ -206,7 +215,7 @@ export default function HomePage() {
             <div style={aiBadge()}>AI</div>
           </div>
 
-          <div style={{ marginTop: 14 }}>
+          <div style={{ marginTop: 12 }}>
             <button type="button" style={btnBlueFull()} onClick={() => router.replace("/ai")}>
               Открыть AI
             </button>
@@ -216,6 +225,7 @@ export default function HomePage() {
         {/* BOT SNAPSHOT */}
         <section style={cardMedium()} onClick={() => router.replace("/bot")} role="button">
           <div style={sectionTitle()}>Снимок бота</div>
+
           <div style={statsGrid()}>
             <div style={statBox()}>
               <div style={statLabel()}>Статус</div>
@@ -238,7 +248,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div style={{ marginTop: 14 }}>
+          <div style={{ marginTop: 12 }}>
             <button type="button" style={btnGhostFull()} onClick={() => router.replace("/bot")}>
               Открыть бот
             </button>
@@ -263,7 +273,7 @@ export default function HomePage() {
           />
         </div>
 
-        {/* DEBUG / LAST RESPONSE */}
+        {/* DEBUG */}
         <div style={sectionHeader()}>Технический статус</div>
 
         <section style={cardMedium()}>
@@ -294,8 +304,8 @@ export default function HomePage() {
 function QuickCard(props: { title: string; subtitle: string; onClick: () => void }) {
   return (
     <button type="button" onClick={props.onClick} style={quickCard()}>
-      <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>{props.title}</div>
-      <div style={{ fontSize: 12, opacity: 0.7 }}>{props.subtitle}</div>
+      <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>{props.title}</div>
+      <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>{props.subtitle}</div>
     </button>
   );
 }
@@ -305,32 +315,43 @@ function page(): React.CSSProperties {
     minHeight: "100vh",
     background: "#000",
     color: "#fff",
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 18px)",
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
+    fontFamily:
+      'system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 56px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
   };
 }
 
 function container(): React.CSSProperties {
   return {
     width: "100%",
-    maxWidth: 560,
+    maxWidth: 520,
     margin: "0 auto",
-    padding: "0 16px",
+    padding: "0 14px",
   };
 }
 
 function topHero(): React.CSSProperties {
   return {
-    padding: "8px 2px 10px",
-    marginBottom: 18,
+    padding: "2px 2px 6px",
+    marginBottom: 14,
+  };
+}
+
+function topHeroGrid(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "1fr 64px",
+    gap: 12,
+    alignItems: "start",
   };
 }
 
 function eyebrow(): React.CSSProperties {
   return {
-    fontSize: 18,
-    opacity: 0.88,
+    fontSize: 16,
+    lineHeight: 1.2,
+    color: "rgba(255,255,255,0.86)",
     marginBottom: 8,
   };
 }
@@ -339,25 +360,25 @@ function heroValueRow(): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "baseline",
-    gap: 6,
+    gap: 4,
     flexWrap: "wrap",
   };
 }
 
 function heroValue(): React.CSSProperties {
   return {
-    fontSize: 72,
-    lineHeight: 0.95,
+    fontSize: 56,
+    lineHeight: 0.92,
     fontWeight: 900,
-    letterSpacing: "-0.04em",
+    letterSpacing: "-0.05em",
   };
 }
 
 function heroValueSuffix(): React.CSSProperties {
   return {
-    fontSize: 34,
+    fontSize: 28,
     lineHeight: 1,
-    fontWeight: 700,
+    fontWeight: 800,
     opacity: 0.95,
   };
 }
@@ -366,8 +387,8 @@ function heroDeltaWrap(): React.CSSProperties {
   return {
     marginTop: 18,
     fontSize: 28,
-    lineHeight: 1.1,
-    fontWeight: 700,
+    lineHeight: 1.08,
+    fontWeight: 900,
   };
 }
 
@@ -377,18 +398,18 @@ function fearRow(): React.CSSProperties {
     justifyContent: "space-between",
     gap: 10,
     alignItems: "center",
-    fontSize: 18,
-    marginBottom: 10,
+    fontSize: 16,
+    marginBottom: 8,
   };
 }
 
 function fearBar(): React.CSSProperties {
   return {
     width: "100%",
-    height: 18,
+    height: 14,
     borderRadius: 999,
     background:
-      "linear-gradient(90deg, rgba(255,77,79,0.22) 0%, rgba(255,214,0,0.16) 45%, rgba(0,200,83,0.14) 100%)",
+      "linear-gradient(90deg, rgba(255,77,79,0.35) 0%, rgba(255,214,0,0.22) 45%, rgba(0,200,83,0.22) 100%)",
     overflow: "hidden",
   };
 }
@@ -398,7 +419,7 @@ function fearBarFill(percent: number): React.CSSProperties {
     width: `${Math.max(0, Math.min(100, percent))}%`,
     height: "100%",
     borderRadius: 999,
-    background: "linear-gradient(90deg, #ff6b6b, #ff8787)",
+    background: "#ff7a7a",
   };
 }
 
@@ -408,45 +429,42 @@ function topActions(): React.CSSProperties {
     flexDirection: "column",
     gap: 10,
     alignItems: "flex-end",
-    minWidth: 74,
   };
 }
 
 function iconBtn(): React.CSSProperties {
   return {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.16)",
+    border: "1px solid rgba(255,255,255,0.14)",
     background: "#050505",
     color: "#fff",
-    fontSize: 28,
+    fontSize: 24,
     cursor: "pointer",
   };
 }
 
 function profileBtn(): React.CSSProperties {
   return {
-    padding: "18px 28px",
+    padding: "16px 24px",
     borderRadius: 999,
     border: "none",
     background: "#3b82f6",
     color: "#fff",
     fontWeight: 900,
-    fontSize: 18,
+    fontSize: 16,
     cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(59,130,246,0.22)",
   };
 }
 
 function cardBase(): React.CSSProperties {
   return {
-    background: "linear-gradient(180deg, #101427 0%, #0b0f1d 100%)",
-    border: "1px solid rgba(111,132,255,0.14)",
-    borderRadius: 28,
-    padding: 18,
-    marginBottom: 18,
-    boxShadow: "0 0 0 1px rgba(255,255,255,0.02) inset",
+    background: "#0b1020",
+    border: "1px solid rgba(111,132,255,0.12)",
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 14,
   };
 }
 
@@ -467,7 +485,7 @@ function cardMedium(): React.CSSProperties {
 function cardSmall(): React.CSSProperties {
   return {
     ...cardBase(),
-    minHeight: 152,
+    minHeight: 132,
     cursor: "pointer",
   };
 }
@@ -475,63 +493,93 @@ function cardSmall(): React.CSSProperties {
 function cardAccent(): React.CSSProperties {
   return {
     ...cardBase(),
-    background:
-      "linear-gradient(180deg, rgba(32,40,82,1) 0%, rgba(13,18,36,1) 100%)",
-    border: "1px solid rgba(59,130,246,0.25)",
+    background: "#101833",
+    border: "1px solid rgba(59,130,246,0.16)",
     cursor: "pointer",
   };
 }
 
 function sectionLabel(): React.CSSProperties {
   return {
-    fontSize: 14,
+    fontSize: 13,
     letterSpacing: "0.14em",
-    color: "rgba(255,255,255,0.42)",
-    fontWeight: 700,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: 800,
   };
 }
 
 function sectionTitle(): React.CSSProperties {
   return {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 900,
-    marginBottom: 8,
+    marginBottom: 6,
   };
 }
 
 function sectionSub(): React.CSSProperties {
   return {
-    fontSize: 14,
-    lineHeight: 1.5,
-    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
+    lineHeight: 1.45,
+    color: "rgba(255,255,255,0.74)",
   };
 }
 
 function gaugeWrap(): React.CSSProperties {
   return {
     width: "100%",
-    maxWidth: 420,
+    maxWidth: 360,
     position: "relative",
-    height: 240,
+    height: 210,
   };
 }
 
-function gaugeArc(): React.CSSProperties {
+function gaugeArcCommon(): React.CSSProperties {
   return {
     position: "absolute",
-    left: "50%",
-    top: 14,
-    width: 300,
-    height: 150,
-    transform: "translateX(-50%)",
-    borderTopLeftRadius: 300,
-    borderTopRightRadius: 300,
-    borderBottom: "none",
-    borderLeft: "16px solid #ff6b6b",
-    borderTop: "16px solid rgba(255,214,0,0.25)",
-    borderRight: "16px solid rgba(0,200,83,0.2)",
+    top: 16,
+    width: 118,
+    height: 118,
+    borderTopLeftRadius: 118,
+    borderTopRightRadius: 118,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
+    borderBottom: "none",
+    borderLeftWidth: 14,
+    borderTopWidth: 14,
+    borderRightWidth: 14,
+    borderStyle: "solid",
+  };
+}
+
+function gaugeArcRed(): React.CSSProperties {
+  return {
+    ...gaugeArcCommon(),
+    left: 24,
+    borderColor: "#ff6b6b",
+    borderRightColor: "transparent",
+    borderBottomColor: "transparent",
+  };
+}
+
+function gaugeArcYellow(): React.CSSProperties {
+  return {
+    ...gaugeArcCommon(),
+    left: "50%",
+    transform: "translateX(-50%)",
+    borderColor: "rgba(255,214,0,0.36)",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "transparent",
+  };
+}
+
+function gaugeArcGreen(): React.CSSProperties {
+  return {
+    ...gaugeArcCommon(),
+    right: 24,
+    borderColor: "rgba(0,200,83,0.28)",
+    borderLeftColor: "transparent",
+    borderBottomColor: "transparent",
   };
 }
 
@@ -540,14 +588,13 @@ function gaugeNeedle(percent: number): React.CSSProperties {
   return {
     position: "absolute",
     left: "50%",
-    top: 148,
-    width: 110,
+    top: 132,
+    width: 92,
     height: 4,
     background: "#ff6b6b",
     transformOrigin: "0% 50%",
     transform: `translateX(0) rotate(${deg}deg)`,
     borderRadius: 999,
-    boxShadow: "0 0 14px rgba(255,107,107,0.6)",
   };
 }
 
@@ -555,55 +602,55 @@ function gaugeCenter(): React.CSSProperties {
   return {
     position: "absolute",
     left: "50%",
-    top: 100,
+    top: 92,
     transform: "translateX(-50%)",
     textAlign: "center",
+    width: "100%",
   };
 }
 
 function gaugeValue(): React.CSSProperties {
   return {
-    fontSize: 72,
+    fontSize: 64,
     lineHeight: 1,
     fontWeight: 900,
     color: "#ff6b6b",
-    textShadow: "0 0 20px rgba(255,107,107,0.18)",
   };
 }
 
 function gaugeText(): React.CSSProperties {
   return {
-    marginTop: 10,
-    fontSize: 20,
+    marginTop: 8,
+    fontSize: 18,
     color: "#ff8787",
-    fontWeight: 700,
+    fontWeight: 800,
   };
 }
 
 function gaugeMin(): React.CSSProperties {
   return {
     position: "absolute",
-    left: 16,
-    bottom: 8,
+    left: 18,
+    bottom: 4,
     color: "rgba(255,255,255,0.35)",
-    fontSize: 16,
+    fontSize: 14,
   };
 }
 
 function gaugeMax(): React.CSSProperties {
   return {
     position: "absolute",
-    right: 16,
-    bottom: 8,
+    right: 18,
+    bottom: 4,
     color: "rgba(255,255,255,0.35)",
-    fontSize: 16,
+    fontSize: 14,
   };
 }
 
 function dominanceRingWrap(): React.CSSProperties {
   return {
-    width: 112,
-    height: 112,
+    width: 96,
+    height: 96,
     borderRadius: 999,
     position: "relative",
     flexShrink: 0,
@@ -616,10 +663,10 @@ function dominanceRing(): React.CSSProperties {
     inset: 0,
     borderRadius: "50%",
     background:
-      "conic-gradient(#f59f3a 0 56.5%, rgba(255,255,255,0.08) 56.5% 100%)",
+      "conic-gradient(#f5a33a 0 56.5%, rgba(255,255,255,0.08) 56.5% 100%)",
     WebkitMask:
-      "radial-gradient(circle at center, transparent 56%, #000 57%)",
-    mask: "radial-gradient(circle at center, transparent 56%, #000 57%)",
+      "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   };
 }
 
@@ -630,14 +677,14 @@ function dominanceRingValue(): React.CSSProperties {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 900,
   };
 }
 
 function miniChart(): React.CSSProperties {
   return {
-    height: 92,
+    height: 82,
     display: "flex",
     alignItems: "flex-end",
     gap: 4,
@@ -648,16 +695,16 @@ function miniChartBar(): React.CSSProperties {
   return {
     flex: 1,
     borderRadius: 999,
-    background: "linear-gradient(180deg, rgba(245,159,58,0.92), rgba(245,159,58,0.18))",
-    minWidth: 6,
+    background: "rgba(245,163,58,0.92)",
+    minWidth: 5,
   };
 }
 
 function ratioBar(): React.CSSProperties {
   return {
-    marginTop: 18,
+    marginTop: 16,
     width: "100%",
-    height: 28,
+    height: 20,
     borderRadius: 999,
     overflow: "hidden",
     display: "flex",
@@ -684,8 +731,8 @@ function ratioMeta(): React.CSSProperties {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
-    marginTop: 14,
-    fontSize: 18,
+    marginTop: 12,
+    fontSize: 16,
   };
 }
 
@@ -693,15 +740,15 @@ function grid2(): React.CSSProperties {
   return {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 14,
-    marginBottom: 18,
+    gap: 12,
+    marginBottom: 14,
   };
 }
 
 function smallMetric(): React.CSSProperties {
   return {
-    marginTop: 28,
-    fontSize: 42,
+    marginTop: 22,
+    fontSize: 34,
     lineHeight: 1,
     fontWeight: 900,
   };
@@ -709,30 +756,30 @@ function smallMetric(): React.CSSProperties {
 
 function aiBadge(): React.CSSProperties {
   return {
-    minWidth: 52,
-    height: 52,
-    borderRadius: 16,
+    minWidth: 46,
+    height: 46,
+    borderRadius: 14,
     background: "rgba(59,130,246,0.12)",
     color: "#8ab4ff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: 900,
-    fontSize: 18,
-    border: "1px solid rgba(59,130,246,0.28)",
+    fontSize: 16,
+    border: "1px solid rgba(59,130,246,0.2)",
   };
 }
 
 function btnBlueFull(): React.CSSProperties {
   return {
     width: "100%",
-    padding: "16px 18px",
-    borderRadius: 18,
+    padding: "14px 16px",
+    borderRadius: 16,
     border: "none",
     background: "#3b82f6",
     color: "#fff",
     fontWeight: 900,
-    fontSize: 16,
+    fontSize: 15,
     cursor: "pointer",
   };
 }
@@ -740,13 +787,13 @@ function btnBlueFull(): React.CSSProperties {
 function btnGhostFull(): React.CSSProperties {
   return {
     width: "100%",
-    padding: "15px 18px",
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.16)",
+    padding: "14px 16px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(255,255,255,0.03)",
     color: "#fff",
     fontWeight: 900,
-    fontSize: 16,
+    fontSize: 15,
     cursor: "pointer",
   };
 }
@@ -756,37 +803,37 @@ function statsGrid(): React.CSSProperties {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
-    marginTop: 14,
+    marginTop: 12,
   };
 }
 
 function statBox(): React.CSSProperties {
   return {
     background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 18,
-    padding: 14,
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 16,
+    padding: 12,
   };
 }
 
 function statLabel(): React.CSSProperties {
   return {
-    fontSize: 12,
+    fontSize: 11,
     color: "rgba(255,255,255,0.55)",
-    marginBottom: 8,
+    marginBottom: 6,
   };
 }
 
 function statValue(): React.CSSProperties {
   return {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 900,
   };
 }
 
 function sectionHeader(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 800,
     color: "rgba(255,255,255,0.72)",
     margin: "2px 2px 10px",
@@ -797,21 +844,21 @@ function quickGrid(): React.CSSProperties {
   return {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 14,
-    marginBottom: 18,
+    gap: 12,
+    marginBottom: 14,
   };
 }
 
 function quickCard(): React.CSSProperties {
   return {
     textAlign: "left",
-    background: "#0c0c0f",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 24,
-    padding: 18,
+    background: "#0b0f1b",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 20,
+    padding: 16,
     color: "#fff",
     cursor: "pointer",
-    minHeight: 116,
+    minHeight: 104,
   };
 }
 
@@ -820,9 +867,9 @@ function debugBox(): React.CSSProperties {
     whiteSpace: "pre-wrap",
     background: "#050505",
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.08)",
-    minHeight: 140,
+    minHeight: 120,
     fontSize: 12,
     lineHeight: 1.45,
     overflowX: "auto",
@@ -834,7 +881,7 @@ function btnPrimary(disabled: boolean): React.CSSProperties {
     width: "100%",
     padding: "14px 16px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.2)",
+    border: "1px solid rgba(255,255,255,0.18)",
     background: "#fff",
     color: "#000",
     fontWeight: 900,
