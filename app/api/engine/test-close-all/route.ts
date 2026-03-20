@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { decryptString } from "@/lib/crypto/secretBox";
+import { prisma } from "@/lib/db";
 import { notifyTradeClosed } from "@/lib/notifications/telegram";
 
 export const runtime = "nodejs";
@@ -35,6 +34,22 @@ function sleep(ms: number) {
 function floorStep(v: number, step = 0.000001) {
   if (!Number.isFinite(v) || !Number.isFinite(step) || step <= 0) return v;
   return Math.floor(v / step) * step;
+}
+
+function floorToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
+  return Math.floor(value / step) * step;
+}
+
+function decimalsFromStep(step: number) {
+  const s = String(step);
+  if (!s.includes(".")) return 0;
+  return s.split(".")[1].replace(/0+$/, "").length;
+}
+
+function formatByStep(value: number, step: number) {
+  const d = decimalsFromStep(step);
+  return floorToStep(value, step).toFixed(d);
 }
 
 function signBinance(query: string, secret: string) {
@@ -223,6 +238,59 @@ async function bybitGetOrder(params: {
   return live?.result?.list?.[0] ?? null;
 }
 
+async function bybitGetWalletCoins(params: {
+  base: string;
+  apiKey: string;
+  apiSecret: string;
+}) {
+  const wallet = await bybitGet({
+    base: params.base,
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/account/wallet-balance",
+    query: "accountType=UNIFIED",
+  });
+
+  const accounts = Array.isArray(wallet?.result?.list) ? wallet.result.list : [];
+  const first = accounts[0] ?? null;
+  return Array.isArray(first?.coin) ? first.coin : [];
+}
+
+async function bybitGetSymbolFilters(params: {
+  base: string;
+  symbol: string;
+}) {
+  const r = await fetch(
+    `${params.base}/v5/market/instruments-info?category=spot&symbol=${encodeURIComponent(params.symbol)}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  const text = await r.text();
+  let data: AnyJson = null;
+  try {
+    data = JSON.parse(text);
+  } catch {}
+
+  if (!r.ok || data?.retCode !== 0) {
+    throw new Error(data?.retMsg || text || `Bybit instruments error: ${r.status}`);
+  }
+
+  const sym = Array.isArray(data?.result?.list) ? data.result.list[0] : null;
+  if (!sym) {
+    throw new Error(`BYBIT_SYMBOL_NOT_FOUND_${params.symbol}`);
+  }
+
+  const lot = sym?.lotSizeFilter ?? {};
+
+  return {
+    minQty: toNum(lot?.minOrderQty || "0"),
+    stepSize: toNum(lot?.basePrecision || lot?.qtyStep || "0.000001"),
+  };
+}
+
 function bybitBase(label: string | null) {
   return /demo/i.test(label || "")
     ? "https://api-demo.bybit.com"
@@ -303,16 +371,31 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
 
     const positions = await prisma.botPosition.findMany({
-      where: { userId: user.id, status: "OPEN" },
+      where: {
+        userId: user.id,
+        status: "OPEN",
+      },
       orderBy: { openedAt: "asc" },
     });
 
     const results: AnyJson[] = [];
 
     for (const p of positions) {
+      let entryValue = toNum(p.investedQuote);
+      let exitValue = 0;
+      let exitQty = toNum(p.qty);
+      let exitPrice = 0;
+      let canceledOrdersCount = 0;
+      let closeTime = new Date();
+      let tradeWriteError: string | null = null;
+      let notifyError: string | null = null;
+
       try {
         const key = await prisma.userKey.findFirst({
-          where: { userId: user.id, exchange: p.exchange },
+          where: {
+            userId: user.id,
+            exchange: p.exchange,
+          },
           orderBy: { updatedAt: "desc" },
         });
 
@@ -321,11 +404,6 @@ export async function POST(req: Request) {
         }
 
         const secret = decryptString(key.secretEnc);
-
-        let exitValue = 0;
-        let exitQty = toNum(p.qty);
-        let exitPrice = 0;
-        let canceledOrdersCount = 0;
 
         if (p.exchange === "BINANCE") {
           const res = await binanceMarketSell({
@@ -347,7 +425,7 @@ export async function POST(req: Request) {
 
           exitPrice = exitQty > 0 ? exitValue / exitQty : 0;
         } else if (p.exchange === "BYBIT") {
-          const base = bybitBase(key.label);
+          const base = bybitBase(key.label ?? null);
 
           await bybitCancelAllBySymbol({
             base,
@@ -356,6 +434,38 @@ export async function POST(req: Request) {
             symbol: p.symbol,
           });
 
+          await sleep(1200);
+
+          const baseCoin = p.symbol.replace(/USDT$/, "");
+          const walletCoins = await bybitGetWalletCoins({
+            base,
+            apiKey: key.apiKey,
+            apiSecret: secret,
+          });
+
+          const coinRow = walletCoins.find(
+            (c: AnyJson) => String(c?.coin || "").toUpperCase() === baseCoin.toUpperCase()
+          );
+
+          const freeCoin = Math.max(
+            0,
+            toNum(coinRow?.walletBalance) - toNum(coinRow?.locked)
+          );
+
+          const filters = await bybitGetSymbolFilters({
+            base,
+            symbol: p.symbol,
+          });
+
+          const sellQtyNum = floorToStep(freeCoin, filters.stepSize);
+
+          if (sellQtyNum < filters.minQty || sellQtyNum <= 0) {
+            throw new Error(
+              `BYBIT_NOT_ENOUGH_FREE_BALANCE_${baseCoin}_free=${freeCoin}_sellQty=${sellQtyNum}`
+            );
+          }
+
+          const sellQty = formatByStep(sellQtyNum, filters.stepSize);
           const cid = `close_${Date.now()}_${p.symbol}`.slice(0, 36);
 
           const created = await bybitMarketSell({
@@ -363,7 +473,7 @@ export async function POST(req: Request) {
             apiKey: key.apiKey,
             apiSecret: secret,
             symbol: p.symbol,
-            qty: String(exitQty),
+            qty: sellQty,
             clientOrderId: cid,
           });
 
@@ -372,8 +482,8 @@ export async function POST(req: Request) {
             throw new Error("BYBIT_CLOSE_ORDER_ID_MISSING");
           }
 
-          for (let i = 0; i < 10; i++) {
-            await sleep(500);
+          for (let i = 0; i < 12; i++) {
+            await sleep(700);
 
             const row = await bybitGetOrder({
               base,
@@ -385,45 +495,56 @@ export async function POST(req: Request) {
 
             if (!row) continue;
 
-            exitQty = toNum(row?.cumExecQty || exitQty);
+            exitQty = toNum(row?.cumExecQty || sellQtyNum);
             exitValue = toNum(row?.cumExecValue);
             exitPrice =
               toNum(row?.avgPrice) || (exitQty > 0 ? exitValue / exitQty : 0);
 
-            if (String(row?.orderStatus || "") === "Filled") {
+            const status = String(row?.orderStatus || "");
+            if (status === "Filled") {
               break;
             }
+
+            if (["Rejected", "Cancelled", "Deactivated"].includes(status)) {
+              throw new Error(`BYBIT_CLOSE_FAILED_${status}`);
+            }
+          }
+
+          if (exitQty <= 0 || exitValue <= 0) {
+            throw new Error("BYBIT_CLOSE_NOT_CONFIRMED");
           }
         } else {
           throw new Error(`UNSUPPORTED_EXCHANGE_${String(p.exchange)}`);
         }
 
         canceledOrdersCount = await cancelTrackedOrdersForPosition(p.id);
+        closeTime = new Date();
 
-        const entry = toNum(p.investedQuote);
-        const pnl = exitValue - entry;
-        const pnlPercent = entry > 0 ? (pnl / entry) * 100 : 0;
-        const closeTime = new Date();
-
-        await prisma.botTrade.create({
-          data: {
-            userId: user.id,
-            botPositionId: p.id,
-            exchange: p.exchange,
-            symbol: p.symbol,
-            entryValue: new Prisma.Decimal(entry.toFixed(18)),
-            exitValue: new Prisma.Decimal(exitValue.toFixed(18)),
-            qty: new Prisma.Decimal(exitQty.toFixed(18)),
-            avgEntryPrice: new Prisma.Decimal(Number(p.avgPrice).toFixed(18)),
-            exitPrice: new Prisma.Decimal(exitPrice.toFixed(18)),
-            pnl: new Prisma.Decimal(pnl.toFixed(18)),
-            pnlPercent: new Prisma.Decimal(pnlPercent.toFixed(18)),
-            addsCount: p.addsCount,
-            closeReason: "MANUAL",
-            openedAt: p.openedAt,
-            closedAt: closeTime,
-          },
-        });
+        try {
+          await prisma.botTrade.create({
+            data: {
+              userId: user.id,
+              botPositionId: p.id,
+              exchange: p.exchange,
+              symbol: p.symbol,
+              entryValue: new Prisma.Decimal(entryValue.toFixed(18)),
+              exitValue: new Prisma.Decimal(exitValue.toFixed(18)),
+              qty: new Prisma.Decimal(exitQty.toFixed(18)),
+              avgEntryPrice: new Prisma.Decimal(Number(p.avgPrice).toFixed(18)),
+              exitPrice: new Prisma.Decimal(exitPrice.toFixed(18)),
+              pnl: new Prisma.Decimal((exitValue - entryValue).toFixed(18)),
+              pnlPercent: new Prisma.Decimal(
+                (entryValue > 0 ? ((exitValue - entryValue) / entryValue) * 100 : 0).toFixed(18)
+              ),
+              addsCount: p.addsCount,
+              closeReason: "MANUAL",
+              openedAt: p.openedAt,
+              closedAt: closeTime,
+            },
+          });
+        } catch (e: any) {
+          tradeWriteError = String(e?.message || e);
+        }
 
         await prisma.botPosition.update({
           where: { id: p.id },
@@ -433,29 +554,35 @@ export async function POST(req: Request) {
           },
         });
 
-        await notifyTradeClosed({
-          userId: user.id,
-          symbol: p.symbol,
-          positionId: p.id,
-          avgEntryPrice: Number(p.avgPrice),
-          exitPrice,
-          qty: exitQty,
-          entryValue: entry,
-          exitValue,
-          pnl,
-        });
+        try {
+          await notifyTradeClosed({
+            userId: user.id,
+            symbol: p.symbol,
+            positionId: p.id,
+            avgEntryPrice: Number(p.avgPrice),
+            exitPrice,
+            qty: exitQty,
+            entryValue,
+            exitValue,
+            pnl: exitValue - entryValue,
+          });
+        } catch (e: any) {
+          notifyError = String(e?.message || e);
+        }
 
         results.push({
           symbol: p.symbol,
           exchange: p.exchange,
           ok: true,
           canceledOrdersCount,
-          entryValue: entry,
+          entryValue,
           exitValue,
           exitPrice,
           qty: exitQty,
-          pnl,
-          pnlPercent,
+          pnl: exitValue - entryValue,
+          pnlPercent: entryValue > 0 ? ((exitValue - entryValue) / entryValue) * 100 : 0,
+          tradeWriteError,
+          notifyError,
         });
       } catch (e: any) {
         results.push({
