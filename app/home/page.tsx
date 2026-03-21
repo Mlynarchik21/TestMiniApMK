@@ -1020,6 +1020,3 @@ const styles = {
     color: UI.textMuted,
   } as React.CSSProperties,
 };
-
-Как бы ты улучшил 
-Что добавил что убрал ? 
