@@ -73,36 +73,30 @@ export default function HomePage() {
     <main style={styles.page}>
       <div style={styles.container}>
         <section style={styles.heroCard}>
-          <div style={styles.heroTop}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={styles.metricLabel}>Рын. капитализация</div>
+          <div style={styles.metricLabel}>Рын. капитализация</div>
 
-              <div style={styles.metricValueRow}>
-                <span style={styles.metricValue}>2.48</span>
-                <span style={styles.metricUnit}>T USDT</span>
-              </div>
+          <div style={styles.metricValueRow}>
+            <span style={styles.metricValue}>2.48</span>
+            <span style={styles.metricUnit}>T USDT</span>
+          </div>
 
-              <div style={styles.deltaRow}>
-                <span style={styles.deltaLabel}>Изменение за день</span>
-                <span style={styles.deltaNegative}>-0.76%</span>
-              </div>
-            </div>
+          <div style={styles.deltaRow}>
+            <span style={styles.deltaLabel}>Изменение за день</span>
+            <span style={styles.deltaNegative}>-0.76%</span>
           </div>
 
           <div style={styles.heroDivider} />
 
-          <div style={styles.sentimentWrap}>
-            <div style={styles.sentimentHeader}>
-              <div>
-                <div style={styles.sentimentTitle}>Жадность и страх</div>
-                <div style={styles.sentimentSub}>Рыночное настроение</div>
-              </div>
-              <div style={styles.sentimentBadgeDanger}>11%</div>
+          <div style={styles.sentimentHeader}>
+            <div>
+              <div style={styles.sentimentTitle}>Жадность и страх</div>
+              <div style={styles.sentimentSub}>Рыночное настроение</div>
             </div>
+            <div style={styles.sentimentBadgeDanger}>11%</div>
+          </div>
 
-            <div style={styles.fearTrack}>
-              <div style={styles.fearFill(11)} />
-            </div>
+          <div style={styles.fearTrack}>
+            <div style={styles.fearFill(11)} />
           </div>
 
           <div style={styles.heroButtons}>
@@ -117,32 +111,66 @@ export default function HomePage() {
         </section>
 
         <section style={styles.grid}>
-          <StatCard
-            label="Fear & Greed"
-            value="23"
-            subtitle="Extreme Fear"
-            accent="#ff6262"
-            rightSlot={
-              <div style={styles.miniProgress}>
-                <div style={{ ...styles.miniProgressFill, width: "23%", background: "#ff6262" }} />
-              </div>
-            }
-          />
+          <div style={styles.tripleGrid}>
+            <MiniMetric label="BTC.D" value="56.5%" valueColor="#f0a33e" sub="Сила BTC" />
+            <MiniMetric label="ETH.D" value="17.8%" valueColor="#8eb2ff" sub="Фокус на ETH" />
+            <MiniMetric label="STABLE.D" value="7.2%" valueColor="#64d97b" sub="Risk-off" />
+          </div>
 
-          <StatCard
-            label="BTC Dominance"
-            value="56.5%"
-            subtitle="Лидерство BTC на рынке"
-            accent="#f0a33e"
-            rightSlot={
-              <div style={styles.ringWrap}>
-                <div style={styles.ring(56.5, "#f0a33e")} />
-                <div style={styles.ringTextSmall}>56.5%</div>
-              </div>
-            }
-          />
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Market regime</div>
+              <span style={styles.outlineBadge}>BTC Season</span>
+            </div>
 
-          <WideCard title="BTC Long / Short Ratio" extra={<span style={styles.tag}>Live</span>}>
+            <div style={styles.regimeText}>
+              Деньги остаются в крупных активах. Альтрынок выглядит выборочно слабее, а структура
+              рынка ближе к защитной.
+            </div>
+          </section>
+
+          <div style={styles.quadGrid}>
+            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor="#64d97b" />
+            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor="#8eb2ff" />
+            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor="#f3f3f3" />
+            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor="#64d97b" />
+          </div>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Spot vs Perp pressure</div>
+              <span style={styles.outlineBadge}>Spot-led</span>
+            </div>
+
+            <div style={styles.progressMetaTop}>
+              <span style={styles.metaMuted}>Spot buyers</span>
+              <span style={styles.metaStrong}>68%</span>
+            </div>
+            <div style={styles.barTrack}>
+              <div style={styles.barFill("68%", "#64d97b")} />
+            </div>
+
+            <div style={{ height: 10 }} />
+
+            <div style={styles.progressMetaTop}>
+              <span style={styles.metaMuted}>Perp activity</span>
+              <span style={styles.metaStrong}>32%</span>
+            </div>
+            <div style={styles.barTrack}>
+              <div style={styles.barFill("32%", "#ff6a6a")} />
+            </div>
+
+            <div style={styles.bodyTextTight}>
+              Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
+            </div>
+          </section>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>BTC Long / Short Ratio</div>
+              <span style={styles.outlineBadge}>Live</span>
+            </div>
+
             <div style={styles.splitBar}>
               <div style={styles.splitBarLong} />
               <div style={styles.splitBarShort} />
@@ -152,17 +180,86 @@ export default function HomePage() {
               <span style={{ color: "#64d97b" }}>61.4% Longs</span>
               <span style={{ color: "#ff6a6a" }}>38.6% Shorts</span>
             </div>
-          </WideCard>
+          </section>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Liquidation levels</div>
+              <span style={styles.outlineBadge}>Preview</span>
+            </div>
+
+            <div style={styles.levelsGrid}>
+              <LevelRow label="Short squeeze" value="69 200" color="#64d97b" />
+              <LevelRow label="Mid zone" value="67 850" color="#f0a33e" />
+              <LevelRow label="Long squeeze" value="66 400" color="#ff6a6a" />
+            </div>
+          </section>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Watchlist movers</div>
+              <span style={styles.outlineBadge}>24h</span>
+            </div>
+
+            <div style={styles.watchGrid}>
+              <WatchItem ticker="SOL" move="+6.4%" color="#64d97b" />
+              <WatchItem ticker="LINK" move="+4.1%" color="#64d97b" />
+              <WatchItem ticker="ETH" move="+2.2%" color="#64d97b" />
+              <WatchItem ticker="ARB" move="-3.8%" color="#ff6a6a" />
+              <WatchItem ticker="OP" move="-2.7%" color="#ff6a6a" />
+              <WatchItem ticker="ATOM" move="-1.9%" color="#ff6a6a" />
+            </div>
+          </section>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Fear & Greed</div>
+            </div>
+
+            <div style={styles.statRow}>
+              <div>
+                <div style={{ ...styles.statBigValue, color: "#ff6262" }}>23</div>
+                <div style={styles.statSubtitle}>Extreme Fear</div>
+              </div>
+
+              <div style={styles.miniProgress}>
+                <div style={{ ...styles.miniProgressFill, width: "23%", background: "#ff6262" }} />
+              </div>
+            </div>
+          </section>
+
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>BTC Dominance</div>
+            </div>
+
+            <div style={styles.statRow}>
+              <div>
+                <div style={{ ...styles.statBigValue, color: "#f0a33e" }}>56.5%</div>
+                <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
+              </div>
+
+              <div style={styles.ringWrap}>
+                <div style={styles.ring(56.5, "#f0a33e")} />
+                <div style={styles.ringTextSmall}>56.5%</div>
+              </div>
+            </div>
+          </section>
 
           <div style={styles.twoCol}>
-            <MiniInfoCard label="TOTAL OI" value="$25.58B" />
-            <MiniInfoCard label="COINBASE" value="#359" valueColor="#ff6a6a" />
+            <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
+            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor="#ff6a6a" />
           </div>
 
-          <WideCard title="AI Insight" extra={<span style={styles.aiBadge}>AI</span>}>
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>AI Insight</div>
+              <span style={styles.outlineBadgeBlue}>AI</span>
+            </div>
+
             <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Риск по слабым альтам
-              остаётся повышенным.
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
+              альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
             </div>
 
             <button
@@ -172,14 +269,19 @@ export default function HomePage() {
             >
               Открыть AI
             </button>
-          </WideCard>
+          </section>
 
-          <WideCard title="Снимок бота" extra={<StatusDot text="Активен" />}>
+          <section style={styles.sectionBlock}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Снимок бота</div>
+              <StatusDot text="Активен" />
+            </div>
+
             <div style={styles.botGrid}>
-              <MetricItem label="Статус" value="Активен" />
-              <MetricItem label="Позиции" value="3" />
-              <MetricItem label="PnL сегодня" value="+12.3" valueColor="#64d97b" />
-              <MetricItem label="В работе" value="45 USDT" />
+              <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
+              <MetricBox label="Позиции" value="3" sub="Открыто" />
+              <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor="#64d97b" />
+              <MetricBox label="В работе" value="45" sub="USDT" />
             </div>
 
             <button
@@ -189,7 +291,7 @@ export default function HomePage() {
             >
               Открыть бот
             </button>
-          </WideCard>
+          </section>
         </section>
 
         <section style={styles.section}>
@@ -242,59 +344,57 @@ export default function HomePage() {
   );
 }
 
-function StatCard(props: {
+function MiniMetric(props: {
   label: string;
   value: string;
-  subtitle: string;
-  accent?: string;
-  rightSlot?: React.ReactNode;
+  sub?: string;
+  valueColor?: string;
 }) {
-  return (
-    <section style={styles.statCard}>
-      <div style={styles.cardLabel}>{props.label}</div>
-
-      <div style={styles.statCardRow}>
-        <div>
-          <div style={{ ...styles.statBigValue, color: props.accent || "#fff" }}>{props.value}</div>
-          <div style={styles.statSubtitle}>{props.subtitle}</div>
-        </div>
-
-        {props.rightSlot}
-      </div>
-    </section>
-  );
-}
-
-function WideCard(props: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section style={styles.wideCard}>
-      <div style={styles.wideCardHeader}>
-        <div style={styles.wideCardTitle}>{props.title}</div>
-        {props.extra}
-      </div>
-      <div style={{ marginTop: 12 }}>{props.children}</div>
-    </section>
-  );
-}
-
-function MiniInfoCard(props: { label: string; value: string; valueColor?: string }) {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
       <div style={{ ...styles.miniCardValue, color: props.valueColor || "#f3f3f3" }}>
         {props.value}
       </div>
+      {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
     </section>
   );
 }
 
-function MetricItem(props: { label: string; value: string; valueColor?: string }) {
+function MetricBox(props: {
+  label: string;
+  value: string;
+  sub?: string;
+  valueColor?: string;
+}) {
   return (
     <div style={styles.metricItem}>
       <div style={styles.metricItemLabel}>{props.label}</div>
       <div style={{ ...styles.metricItemValue, color: props.valueColor || "#f3f3f3" }}>
         {props.value}
       </div>
+      {props.sub ? <div style={styles.metricItemSub}>{props.sub}</div> : null}
+    </div>
+  );
+}
+
+function LevelRow(props: { label: string; value: string; color: string }) {
+  return (
+    <div style={styles.levelRow}>
+      <div style={styles.levelLeft}>
+        <span style={{ ...styles.levelDot, background: props.color }} />
+        <span style={styles.levelLabel}>{props.label}</span>
+      </div>
+      <div style={{ ...styles.levelValue, color: props.color }}>{props.value}</div>
+    </div>
+  );
+}
+
+function WatchItem(props: { ticker: string; move: string; color: string }) {
+  return (
+    <div style={styles.watchItem}>
+      <span style={styles.watchTicker}>{props.ticker}</span>
+      <span style={{ ...styles.watchMove, color: props.color }}>{props.move}</span>
     </div>
   );
 }
@@ -336,23 +436,10 @@ const styles = {
   } as React.CSSProperties,
 
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
     background: "transparent",
     border: "none",
-    borderRadius: 0,
     padding: 0,
-    boxShadow: "none",
     marginBottom: 20,
-  } as React.CSSProperties,
-
-  heroTop: {
-    position: "relative",
-    zIndex: 1,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
   } as React.CSSProperties,
 
   metricLabel: {
@@ -409,11 +496,6 @@ const styles = {
     margin: "14px 0 14px",
   } as React.CSSProperties,
 
-  sentimentWrap: {
-    position: "relative",
-    zIndex: 1,
-  } as React.CSSProperties,
-
   sentimentHeader: {
     display: "flex",
     alignItems: "center",
@@ -463,7 +545,6 @@ const styles = {
     height: "100%",
     borderRadius: 999,
     background: "#ff5a5a",
-    boxShadow: "none",
   }),
 
   heroButtons: {
@@ -483,32 +564,268 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
-    boxShadow: "none",
   } as React.CSSProperties,
 
   grid: {
     display: "grid",
-    gap: 16,
+    gap: 18,
   } as React.CSSProperties,
 
-  statCard: {
-    background: "transparent",
-    border: "none",
-    borderRadius: 0,
+  tripleGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  } as React.CSSProperties,
+
+  quadGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  } as React.CSSProperties,
+
+  twoCol: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  } as React.CSSProperties,
+
+  sectionBlock: {
     padding: "0 0 16px",
     borderBottom: "1px solid rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
-  cardLabel: {
+  sectionHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  } as React.CSSProperties,
+
+  sectionMainTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    letterSpacing: "-0.01em",
+  } as React.CSSProperties,
+
+  outlineBadge: {
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.08)",
     fontSize: 11,
+    color: "rgba(255,255,255,0.68)",
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  outlineBadgeBlue: {
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: "1px solid rgba(55,124,255,0.20)",
+    fontSize: 11,
+    color: "#8eb2ff",
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  regimeText: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: "rgba(255,255,255,0.66)",
+  } as React.CSSProperties,
+
+  miniCard: {
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    padding: 10,
+  } as React.CSSProperties,
+
+  cardLabel: {
+    fontSize: 10,
     letterSpacing: "0.10em",
     textTransform: "uppercase",
     color: "rgba(255,255,255,0.28)",
     fontWeight: 700,
-    marginBottom: 10,
+    marginBottom: 8,
   } as React.CSSProperties,
 
-  statCardRow: {
+  miniCardValue: {
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+  } as React.CSSProperties,
+
+  smallSub: {
+    marginTop: 6,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.48)",
+  } as React.CSSProperties,
+
+  metricItem: {
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    padding: 10,
+  } as React.CSSProperties,
+
+  metricItemLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.42)",
+    marginBottom: 6,
+  } as React.CSSProperties,
+
+  metricItemValue: {
+    fontSize: 15,
+    fontWeight: 800,
+    lineHeight: 1.1,
+  } as React.CSSProperties,
+
+  metricItemSub: {
+    marginTop: 5,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.46)",
+  } as React.CSSProperties,
+
+  progressMetaTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 6,
+  } as React.CSSProperties,
+
+  metaMuted: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.48)",
+  } as React.CSSProperties,
+
+  metaStrong: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#f3f3f3",
+  } as React.CSSProperties,
+
+  barTrack: {
+    width: "100%",
+    height: 8,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+  } as React.CSSProperties,
+
+  barFill: (width: string, color: string): React.CSSProperties => ({
+    width,
+    height: "100%",
+    borderRadius: 999,
+    background: color,
+  }),
+
+  bodyText: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "rgba(255,255,255,0.64)",
+  } as React.CSSProperties,
+
+  bodyTextTight: {
+    marginTop: 10,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "rgba(255,255,255,0.56)",
+  } as React.CSSProperties,
+
+  splitBar: {
+    width: "100%",
+    height: 12,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+    display: "flex",
+  } as React.CSSProperties,
+
+  splitBarLong: {
+    width: "61.4%",
+    background: "#64d97b",
+  } as React.CSSProperties,
+
+  splitBarShort: {
+    width: "38.6%",
+    background: "#ff6a6a",
+  } as React.CSSProperties,
+
+  splitMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  levelsGrid: {
+    display: "grid",
+    gap: 10,
+  } as React.CSSProperties,
+
+  levelRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    paddingBottom: 8,
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
+  } as React.CSSProperties,
+
+  levelLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  } as React.CSSProperties,
+
+  levelDot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    flexShrink: 0,
+  } as React.CSSProperties,
+
+  levelLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.62)",
+  } as React.CSSProperties,
+
+  levelValue: {
+    fontSize: 13,
+    fontWeight: 800,
+    letterSpacing: "-0.01em",
+  } as React.CSSProperties,
+
+  watchGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 8,
+  } as React.CSSProperties,
+
+  watchItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    padding: "10px 12px",
+  } as React.CSSProperties,
+
+  watchTicker: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#f3f3f3",
+  } as React.CSSProperties,
+
+  watchMove: {
+    fontSize: 12,
+    fontWeight: 800,
+  } as React.CSSProperties,
+
+  statRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -569,107 +886,6 @@ const styles = {
     color: "#f2f2f2",
   } as React.CSSProperties,
 
-  wideCard: {
-    background: "transparent",
-    border: "none",
-    borderRadius: 0,
-    padding: "0 0 16px",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
-  } as React.CSSProperties,
-
-  wideCardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  } as React.CSSProperties,
-
-  wideCardTitle: {
-    fontSize: 15,
-    fontWeight: 800,
-    letterSpacing: "-0.01em",
-  } as React.CSSProperties,
-
-  tag: {
-    padding: "4px 8px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 700,
-    color: "rgba(255,255,255,0.68)",
-    background: "transparent",
-    border: "1px solid rgba(255,255,255,0.08)",
-  } as React.CSSProperties,
-
-  aiBadge: {
-    minWidth: 32,
-    height: 32,
-    borderRadius: 10,
-    background: "transparent",
-    border: "1px solid rgba(55,124,255,0.20)",
-    color: "#8eb2ff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 11,
-    fontWeight: 800,
-  } as React.CSSProperties,
-
-  splitBar: {
-    width: "100%",
-    height: 12,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.07)",
-    overflow: "hidden",
-    display: "flex",
-  } as React.CSSProperties,
-
-  splitBarLong: {
-    width: "61.4%",
-    background: "#64d97b",
-  } as React.CSSProperties,
-
-  splitBarShort: {
-    width: "38.6%",
-    background: "#ff6a6a",
-  } as React.CSSProperties,
-
-  splitMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: 700,
-  } as React.CSSProperties,
-
-  twoCol: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } as React.CSSProperties,
-
-  miniCard: {
-    background: "transparent",
-    border: "none",
-    borderRadius: 0,
-    padding: "0 0 14px",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
-  } as React.CSSProperties,
-
-  miniCardValue: {
-    marginTop: 10,
-    fontSize: 20,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-  } as React.CSSProperties,
-
-  bodyText: {
-    fontSize: 12,
-    lineHeight: 1.5,
-    color: "rgba(255,255,255,0.64)",
-  } as React.CSSProperties,
-
   blockButton: {
     width: "100%",
     height: 40,
@@ -687,25 +903,6 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
-  } as React.CSSProperties,
-
-  metricItem: {
-    background: "transparent",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 14,
-    padding: 10,
-  } as React.CSSProperties,
-
-  metricItemLabel: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.42)",
-    marginBottom: 6,
-  } as React.CSSProperties,
-
-  metricItemValue: {
-    fontSize: 15,
-    fontWeight: 800,
-    lineHeight: 1.1,
   } as React.CSSProperties,
 
   statusPill: {
