@@ -272,7 +272,7 @@ function WideCard(props: { title: string; extra?: React.ReactNode; children: Rea
         <div style={styles.wideCardTitle}>{props.title}</div>
         {props.extra}
       </div>
-      <div style={{ marginTop: 14 }}>{props.children}</div>
+      <div style={{ marginTop: 12 }}>{props.children}</div>
     </section>
   );
 }
@@ -325,7 +325,7 @@ const styles = {
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 72px)",
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 26px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
   } as React.CSSProperties,
 
   container: {
@@ -338,12 +338,12 @@ const styles = {
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    background: "#070707",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 28,
-    padding: 18,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: 0,
     boxShadow: "none",
-    marginBottom: 16,
+    marginBottom: 20,
   } as React.CSSProperties,
 
   heroTop: {
@@ -352,53 +352,53 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 16,
+    gap: 12,
   } as React.CSSProperties,
 
   metricLabel: {
-    fontSize: 15,
-    color: "rgba(255,255,255,0.62)",
-    marginBottom: 8,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.56)",
+    marginBottom: 6,
     fontWeight: 500,
   } as React.CSSProperties,
 
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
-    gap: 8,
+    gap: 6,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
   metricValue: {
-    fontSize: 46,
+    fontSize: 38,
     lineHeight: 0.95,
     fontWeight: 800,
-    letterSpacing: "-0.065em",
+    letterSpacing: "-0.06em",
   } as React.CSSProperties,
 
   metricUnit: {
-    fontSize: 20,
-    color: "rgba(255,255,255,0.86)",
+    fontSize: 16,
+    color: "rgba(255,255,255,0.82)",
     fontWeight: 600,
-    letterSpacing: "-0.03em",
+    letterSpacing: "-0.02em",
   } as React.CSSProperties,
 
   deltaRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    marginTop: 14,
+    gap: 6,
+    marginTop: 10,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
   deltaLabel: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.64)",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.60)",
     fontWeight: 500,
   } as React.CSSProperties,
 
   deltaNegative: {
-    fontSize: 17,
+    fontSize: 15,
     color: "#ff5f5f",
     fontWeight: 700,
   } as React.CSSProperties,
@@ -406,7 +406,7 @@ const styles = {
   heroDivider: {
     height: 1,
     background: "rgba(255,255,255,0.06)",
-    margin: "18px 0 16px",
+    margin: "14px 0 14px",
   } as React.CSSProperties,
 
   sentimentWrap: {
@@ -418,40 +418,40 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 10,
+    gap: 10,
+    marginBottom: 8,
   } as React.CSSProperties,
 
   sentimentTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     color: "#f3f3f3",
   } as React.CSSProperties,
 
   sentimentSub: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.48)",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.46)",
     marginTop: 2,
   } as React.CSSProperties,
 
   sentimentBadgeDanger: {
-    minWidth: 54,
-    height: 34,
+    minWidth: 48,
+    height: 30,
     borderRadius: 999,
-    padding: "0 12px",
+    padding: "0 10px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "rgba(255,95,95,0.10)",
+    background: "transparent",
     border: "1px solid rgba(255,95,95,0.22)",
     color: "#ff6a6a",
     fontWeight: 700,
-    fontSize: 14,
+    fontSize: 13,
   } as React.CSSProperties,
 
   fearTrack: {
     width: "100%",
-    height: 10,
+    height: 8,
     borderRadius: 999,
     background:
       "linear-gradient(90deg, rgba(99,27,27,0.45) 0%, rgba(91,71,20,0.38) 46%, rgba(13,58,35,0.38) 100%)",
@@ -470,17 +470,17 @@ const styles = {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
-    marginTop: 18,
+    marginTop: 14,
   } as React.CSSProperties,
 
   primaryPill: {
     flex: "1 1 180px",
-    height: 48,
+    height: 42,
     borderRadius: 999,
-    border: "none",
-    background: "#377cff",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "transparent",
     color: "#fff",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
     boxShadow: "none",
@@ -488,49 +488,50 @@ const styles = {
 
   grid: {
     display: "grid",
-    gap: 12,
+    gap: 16,
   } as React.CSSProperties,
 
   statCard: {
-    background: "#080808",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 24,
-    padding: 18,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: "0 0 16px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
   cardLabel: {
-    fontSize: 12,
-    letterSpacing: "0.12em",
+    fontSize: 11,
+    letterSpacing: "0.10em",
     textTransform: "uppercase",
-    color: "rgba(255,255,255,0.30)",
+    color: "rgba(255,255,255,0.28)",
     fontWeight: 700,
-    marginBottom: 14,
+    marginBottom: 10,
   } as React.CSSProperties,
 
   statCardRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 14,
+    gap: 12,
   } as React.CSSProperties,
 
   statBigValue: {
-    fontSize: 36,
+    fontSize: 28,
     lineHeight: 1,
     fontWeight: 800,
-    letterSpacing: "-0.05em",
+    letterSpacing: "-0.04em",
   } as React.CSSProperties,
 
   statSubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "rgba(255,255,255,0.58)",
+    marginTop: 6,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.56)",
     fontWeight: 500,
   } as React.CSSProperties,
 
   miniProgress: {
-    width: 104,
-    height: 10,
+    width: 88,
+    height: 8,
     borderRadius: 999,
     background: "rgba(255,255,255,0.07)",
     overflow: "hidden",
@@ -542,8 +543,8 @@ const styles = {
   } as React.CSSProperties,
 
   ringWrap: {
-    width: 74,
-    height: 74,
+    width: 62,
+    height: 62,
     position: "relative",
     flexShrink: 0,
   } as React.CSSProperties,
@@ -553,8 +554,8 @@ const styles = {
     inset: 0,
     borderRadius: "50%",
     background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.08) ${percent}% 100%)`,
-    WebkitMask: "radial-gradient(circle at center, transparent 56%, #000 57%)",
-    mask: "radial-gradient(circle at center, transparent 56%, #000 57%)",
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   }),
 
   ringTextSmall: {
@@ -563,16 +564,17 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 13,
-    fontWeight: 800,
+    fontSize: 11,
+    fontWeight: 700,
     color: "#f2f2f2",
   } as React.CSSProperties,
 
   wideCard: {
-    background: "#080808",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 24,
-    padding: 18,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: "0 0 16px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
   wideCardHeader: {
@@ -583,38 +585,38 @@ const styles = {
   } as React.CSSProperties,
 
   wideCardTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 800,
-    letterSpacing: "-0.02em",
+    letterSpacing: "-0.01em",
   } as React.CSSProperties,
 
   tag: {
-    padding: "6px 10px",
+    padding: "4px 8px",
     borderRadius: 999,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
-    color: "rgba(255,255,255,0.70)",
-    background: "#101010",
+    color: "rgba(255,255,255,0.68)",
+    background: "transparent",
     border: "1px solid rgba(255,255,255,0.08)",
   } as React.CSSProperties,
 
   aiBadge: {
-    minWidth: 38,
-    height: 38,
-    borderRadius: 12,
-    background: "rgba(55,124,255,0.10)",
+    minWidth: 32,
+    height: 32,
+    borderRadius: 10,
+    background: "transparent",
     border: "1px solid rgba(55,124,255,0.20)",
     color: "#8eb2ff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: 800,
   } as React.CSSProperties,
 
   splitBar: {
     width: "100%",
-    height: 16,
+    height: 12,
     borderRadius: 999,
     background: "rgba(255,255,255,0.07)",
     overflow: "hidden",
@@ -635,8 +637,8 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     gap: 8,
-    marginTop: 12,
-    fontSize: 15,
+    marginTop: 10,
+    fontSize: 13,
     fontWeight: 700,
   } as React.CSSProperties,
 
@@ -647,38 +649,38 @@ const styles = {
   } as React.CSSProperties,
 
   miniCard: {
-    background: "#080808",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 22,
-    padding: 18,
-    minHeight: 118,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: "0 0 14px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
   miniCardValue: {
-    marginTop: 18,
-    fontSize: 24,
+    marginTop: 10,
+    fontSize: 20,
     lineHeight: 1,
     fontWeight: 800,
-    letterSpacing: "-0.04em",
+    letterSpacing: "-0.03em",
   } as React.CSSProperties,
 
   bodyText: {
-    fontSize: 14,
-    lineHeight: 1.55,
-    color: "rgba(255,255,255,0.66)",
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "rgba(255,255,255,0.64)",
   } as React.CSSProperties,
 
   blockButton: {
     width: "100%",
-    height: 48,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "#101010",
+    height: 40,
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "transparent",
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 700,
     cursor: "pointer",
-    marginTop: 16,
+    marginTop: 12,
   } as React.CSSProperties,
 
   botGrid: {
@@ -688,20 +690,20 @@ const styles = {
   } as React.CSSProperties,
 
   metricItem: {
-    background: "#0d0d0d",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 18,
-    padding: 14,
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    padding: 10,
   } as React.CSSProperties,
 
   metricItemLabel: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.44)",
-    marginBottom: 8,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.42)",
+    marginBottom: 6,
   } as React.CSSProperties,
 
   metricItemValue: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 800,
     lineHeight: 1.1,
   } as React.CSSProperties,
@@ -709,69 +711,69 @@ const styles = {
   statusPill: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
+    gap: 6,
+    padding: "6px 10px",
     borderRadius: 999,
-    background: "rgba(100,217,123,0.10)",
+    background: "transparent",
     border: "1px solid rgba(100,217,123,0.18)",
     color: "#77de8c",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
   } as React.CSSProperties,
 
   statusDot: {
-    width: 8,
-    height: 8,
+    width: 6,
+    height: 6,
     borderRadius: "50%",
     background: "#64d97b",
   } as React.CSSProperties,
 
   section: {
-    marginTop: 16,
+    marginTop: 18,
   } as React.CSSProperties,
 
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 600,
-    color: "rgba(255,255,255,0.56)",
+    color: "rgba(255,255,255,0.54)",
     margin: "0 2px 10px",
   } as React.CSSProperties,
 
   quickGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
+    gap: 10,
   } as React.CSSProperties,
 
   quickCard: {
     textAlign: "left",
-    minHeight: 102,
-    borderRadius: 22,
-    padding: 16,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "#080808",
+    minHeight: 82,
+    borderRadius: 16,
+    padding: 12,
+    border: "1px solid rgba(255,255,255,0.06)",
+    background: "transparent",
     color: "#fff",
     cursor: "pointer",
   } as React.CSSProperties,
 
   quickCardTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 800,
-    marginBottom: 6,
+    marginBottom: 4,
   } as React.CSSProperties,
 
   quickCardSub: {
-    fontSize: 12,
-    lineHeight: 1.45,
-    color: "rgba(255,255,255,0.50)",
+    fontSize: 11,
+    lineHeight: 1.4,
+    color: "rgba(255,255,255,0.48)",
   } as React.CSSProperties,
 
   debugCard: {
     marginTop: 18,
-    background: "#070707",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 22,
-    padding: 16,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: 0,
   } as React.CSSProperties,
 
   debugHeader: {
@@ -779,29 +781,29 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 12,
   } as React.CSSProperties,
 
   debugTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 800,
   } as React.CSSProperties,
 
   debugSub: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.44)",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.42)",
     marginTop: 4,
   } as React.CSSProperties,
 
   debugAction: (disabled: boolean): React.CSSProperties => ({
-    height: 40,
-    padding: "0 14px",
+    height: 36,
+    padding: "0 12px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "#fff",
-    color: "#000",
-    fontSize: 13,
-    fontWeight: 800,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "transparent",
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 700,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.8 : 1,
     flexShrink: 0,
@@ -810,36 +812,36 @@ const styles = {
   debugMeta: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 10,
   } as React.CSSProperties,
 
   debugMetaLabel: {
     display: "block",
-    fontSize: 11,
+    fontSize: 10,
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "rgba(255,255,255,0.36)",
-    marginBottom: 6,
+    color: "rgba(255,255,255,0.34)",
+    marginBottom: 5,
   } as React.CSSProperties,
 
   debugMetaValue: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.78)",
     fontWeight: 600,
     wordBreak: "break-word",
   } as React.CSSProperties,
 
   debugBox: {
     whiteSpace: "pre-wrap",
-    background: "#0c0c0c",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 120,
-    fontSize: 12,
-    lineHeight: 1.45,
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    padding: 10,
+    minHeight: 100,
+    fontSize: 11,
+    lineHeight: 1.4,
     overflowX: "auto",
-    color: "rgba(255,255,255,0.72)",
+    color: "rgba(255,255,255,0.68)",
   } as React.CSSProperties,
 };
