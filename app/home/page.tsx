@@ -72,6 +72,7 @@ export default function HomePage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
+        {/* TOP SUMMARY */}
         <section style={styles.heroCard}>
           <div style={styles.metricLabel}>Рын. капитализация</div>
 
@@ -110,35 +111,39 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={styles.grid}>
+        {/* MARKET STRUCTURE */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Market structure</div>
+            <span style={styles.outlineBadge}>Core</span>
+          </div>
+
           <div style={styles.tripleGrid}>
             <MiniMetric label="BTC.D" value="56.5%" valueColor="#f0a33e" sub="Сила BTC" />
-            <MiniMetric label="ETH.D" value="17.8%" valueColor="#8eb2ff" sub="Фокус на ETH" />
+            <MiniMetric label="ETH.D" value="17.8%" valueColor="#8eb2ff" sub="Фокус ETH" />
             <MiniMetric label="STABLE.D" value="7.2%" valueColor="#64d97b" sub="Risk-off" />
           </div>
 
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Market regime</div>
-              <span style={styles.outlineBadge}>BTC Season</span>
-            </div>
+          <div style={styles.stackGap} />
 
-            <div style={styles.regimeText}>
-              Деньги остаются в крупных активах. Альтрынок выглядит выборочно слабее, а структура
-              рынка ближе к защитной.
-            </div>
-          </section>
-
-          <div style={styles.quadGrid}>
+          <div style={styles.compactGrid}>
             <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor="#64d97b" />
             <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor="#8eb2ff" />
             <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor="#f3f3f3" />
             <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor="#64d97b" />
           </div>
+        </section>
 
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Spot vs Perp pressure</div>
+        {/* POSITIONING */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Positioning</div>
+            <span style={styles.outlineBadge}>Live</span>
+          </div>
+
+          <div style={styles.subBlock}>
+            <div style={styles.subBlockTitleRow}>
+              <div style={styles.subBlockTitle}>Spot vs Perp pressure</div>
               <span style={styles.outlineBadge}>Spot-led</span>
             </div>
 
@@ -150,7 +155,7 @@ export default function HomePage() {
               <div style={styles.barFill("68%", "#64d97b")} />
             </div>
 
-            <div style={{ height: 10 }} />
+            <div style={styles.progressSpacer} />
 
             <div style={styles.progressMetaTop}>
               <span style={styles.metaMuted}>Perp activity</span>
@@ -163,11 +168,11 @@ export default function HomePage() {
             <div style={styles.bodyTextTight}>
               Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
             </div>
-          </section>
+          </div>
 
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>BTC Long / Short Ratio</div>
+          <div style={styles.subBlock}>
+            <div style={styles.subBlockTitleRow}>
+              <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
               <span style={styles.outlineBadge}>Live</span>
             </div>
 
@@ -180,120 +185,100 @@ export default function HomePage() {
               <span style={{ color: "#64d97b" }}>61.4% Longs</span>
               <span style={{ color: "#ff6a6a" }}>38.6% Shorts</span>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Liquidation levels</div>
-              <span style={styles.outlineBadge}>Preview</span>
-            </div>
+        {/* SIGNALS */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Signals</div>
+            <span style={styles.outlineBadge}>Overview</span>
+          </div>
 
-            <div style={styles.levelsGrid}>
-              <LevelRow label="Short squeeze" value="69 200" color="#64d97b" />
-              <LevelRow label="Mid zone" value="67 850" color="#f0a33e" />
-              <LevelRow label="Long squeeze" value="66 400" color="#ff6a6a" />
-            </div>
-          </section>
+          <div style={styles.signalGrid}>
+            <SignalCard
+              title="Fear & Greed"
+              value="23"
+              sub="Extreme Fear"
+              accent="#ff6262"
+              right={
+                <div style={styles.miniProgress}>
+                  <div
+                    style={{
+                      ...styles.miniProgressFill,
+                      width: "23%",
+                      background: "#ff6262",
+                    }}
+                  />
+                </div>
+              }
+            />
 
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Watchlist movers</div>
-              <span style={styles.outlineBadge}>24h</span>
-            </div>
-
-            <div style={styles.watchGrid}>
-              <WatchItem ticker="SOL" move="+6.4%" color="#64d97b" />
-              <WatchItem ticker="LINK" move="+4.1%" color="#64d97b" />
-              <WatchItem ticker="ETH" move="+2.2%" color="#64d97b" />
-              <WatchItem ticker="ARB" move="-3.8%" color="#ff6a6a" />
-              <WatchItem ticker="OP" move="-2.7%" color="#ff6a6a" />
-              <WatchItem ticker="ATOM" move="-1.9%" color="#ff6a6a" />
-            </div>
-          </section>
-
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Fear & Greed</div>
-            </div>
-
-            <div style={styles.statRow}>
-              <div>
-                <div style={{ ...styles.statBigValue, color: "#ff6262" }}>23</div>
-                <div style={styles.statSubtitle}>Extreme Fear</div>
-              </div>
-
-              <div style={styles.miniProgress}>
-                <div style={{ ...styles.miniProgressFill, width: "23%", background: "#ff6262" }} />
-              </div>
-            </div>
-          </section>
-
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>BTC Dominance</div>
-            </div>
-
-            <div style={styles.statRow}>
-              <div>
-                <div style={{ ...styles.statBigValue, color: "#f0a33e" }}>56.5%</div>
-                <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
-              </div>
-
-              <div style={styles.ringWrap}>
-                <div style={styles.ring(56.5, "#f0a33e")} />
-                <div style={styles.ringTextSmall}>56.5%</div>
-              </div>
-            </div>
-          </section>
+            <SignalCard
+              title="BTC Dominance"
+              value="56.5%"
+              sub="Лидерство BTC"
+              accent="#f0a33e"
+              right={
+                <div style={styles.ringWrap}>
+                  <div style={styles.ring(56.5, "#f0a33e")} />
+                  <div style={styles.ringTextSmall}>56.5%</div>
+                </div>
+              }
+            />
+          </div>
 
           <div style={styles.twoCol}>
             <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
             <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor="#ff6a6a" />
           </div>
-
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>AI Insight</div>
-              <span style={styles.outlineBadgeBlue}>AI</span>
-            </div>
-
-            <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
-              альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
-            </div>
-
-            <button
-              type="button"
-              style={styles.blockButton}
-              onClick={() => router.replace("/ai")}
-            >
-              Открыть AI
-            </button>
-          </section>
-
-          <section style={styles.sectionBlock}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Снимок бота</div>
-              <StatusDot text="Активен" />
-            </div>
-
-            <div style={styles.botGrid}>
-              <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
-              <MetricBox label="Позиции" value="3" sub="Открыто" />
-              <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor="#64d97b" />
-              <MetricBox label="В работе" value="45" sub="USDT" />
-            </div>
-
-            <button
-              type="button"
-              style={styles.blockButton}
-              onClick={() => router.replace("/bot")}
-            >
-              Открыть бот
-            </button>
-          </section>
         </section>
 
+        {/* AI */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>AI Insight</div>
+            <span style={styles.outlineBadgeBlue}>AI</span>
+          </div>
+
+          <div style={styles.bodyText}>
+            Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
+            альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
+          </div>
+
+          <button
+            type="button"
+            style={styles.blockButton}
+            onClick={() => router.replace("/ai")}
+          >
+            Открыть AI
+          </button>
+        </section>
+
+        {/* BOT */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Снимок бота</div>
+            <StatusDot text="Активен" />
+          </div>
+
+          <div style={styles.compactGrid}>
+            <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
+            <MetricBox label="Позиции" value="3" sub="Открыто" />
+            <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor="#64d97b" />
+            <MetricBox label="В работе" value="45" sub="USDT" />
+          </div>
+
+          <button
+            type="button"
+            style={styles.blockButton}
+            onClick={() => router.replace("/bot")}
+          >
+            Открыть бот
+          </button>
+        </section>
+
+        {/* NAV */}
         <section style={styles.section}>
           <div style={styles.sectionTitle}>Переходы</div>
 
@@ -313,6 +298,7 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* DEBUG */}
         <section style={styles.debugCard}>
           <div style={styles.debugHeader}>
             <div>
@@ -378,24 +364,24 @@ function MetricBox(props: {
   );
 }
 
-function LevelRow(props: { label: string; value: string; color: string }) {
+function SignalCard(props: {
+  title: string;
+  value: string;
+  sub: string;
+  accent: string;
+  right?: React.ReactNode;
+}) {
   return (
-    <div style={styles.levelRow}>
-      <div style={styles.levelLeft}>
-        <span style={{ ...styles.levelDot, background: props.color }} />
-        <span style={styles.levelLabel}>{props.label}</span>
+    <section style={styles.signalCard}>
+      <div style={styles.signalTitle}>{props.title}</div>
+      <div style={styles.signalRow}>
+        <div>
+          <div style={{ ...styles.statBigValue, color: props.accent }}>{props.value}</div>
+          <div style={styles.statSubtitle}>{props.sub}</div>
+        </div>
+        {props.right}
       </div>
-      <div style={{ ...styles.levelValue, color: props.color }}>{props.value}</div>
-    </div>
-  );
-}
-
-function WatchItem(props: { ticker: string; move: string; color: string }) {
-  return (
-    <div style={styles.watchItem}>
-      <span style={styles.watchTicker}>{props.ticker}</span>
-      <span style={{ ...styles.watchMove, color: props.color }}>{props.move}</span>
-    </div>
+    </section>
   );
 }
 
@@ -439,7 +425,7 @@ const styles = {
     background: "transparent",
     border: "none",
     padding: 0,
-    marginBottom: 20,
+    marginBottom: 22,
   } as React.CSSProperties,
 
   metricLabel: {
@@ -568,29 +554,11 @@ const styles = {
 
   grid: {
     display: "grid",
-    gap: 18,
+    gap: 22,
   } as React.CSSProperties,
 
-  tripleGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 10,
-  } as React.CSSProperties,
-
-  quadGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
-  } as React.CSSProperties,
-
-  twoCol: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } as React.CSSProperties,
-
-  sectionBlock: {
-    padding: "0 0 16px",
+  block: {
+    paddingBottom: 18,
     borderBottom: "1px solid rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
@@ -626,10 +594,49 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  regimeText: {
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: "rgba(255,255,255,0.66)",
+  tripleGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  } as React.CSSProperties,
+
+  compactGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  } as React.CSSProperties,
+
+  twoCol: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  } as React.CSSProperties,
+
+  signalGrid: {
+    display: "grid",
+    gap: 14,
+  } as React.CSSProperties,
+
+  stackGap: {
+    height: 10,
+  } as React.CSSProperties,
+
+  subBlock: {
+    marginTop: 10,
+  } as React.CSSProperties,
+
+  subBlockTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  } as React.CSSProperties,
+
+  subBlockTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#f3f3f3",
   } as React.CSSProperties,
 
   miniCard: {
@@ -719,6 +726,10 @@ const styles = {
     background: color,
   }),
 
+  progressSpacer: {
+    height: 10,
+  } as React.CSSProperties,
+
   bodyText: {
     fontSize: 12,
     lineHeight: 1.5,
@@ -760,72 +771,19 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  levelsGrid: {
-    display: "grid",
-    gap: 10,
-  } as React.CSSProperties,
-
-  levelRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    paddingBottom: 8,
+  signalCard: {
     borderBottom: "1px solid rgba(255,255,255,0.05)",
+    paddingBottom: 12,
   } as React.CSSProperties,
 
-  levelLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  } as React.CSSProperties,
-
-  levelDot: {
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    flexShrink: 0,
-  } as React.CSSProperties,
-
-  levelLabel: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.62)",
-  } as React.CSSProperties,
-
-  levelValue: {
-    fontSize: 13,
-    fontWeight: 800,
-    letterSpacing: "-0.01em",
-  } as React.CSSProperties,
-
-  watchGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 8,
-  } as React.CSSProperties,
-
-  watchItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    padding: "10px 12px",
-  } as React.CSSProperties,
-
-  watchTicker: {
+  signalTitle: {
     fontSize: 13,
     fontWeight: 700,
     color: "#f3f3f3",
+    marginBottom: 8,
   } as React.CSSProperties,
 
-  watchMove: {
-    fontSize: 12,
-    fontWeight: 800,
-  } as React.CSSProperties,
-
-  statRow: {
+  signalRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -897,12 +855,6 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     marginTop: 12,
-  } as React.CSSProperties,
-
-  botGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
   } as React.CSSProperties,
 
   statusPill: {
