@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type AnyResp =
@@ -28,6 +28,11 @@ const UI = {
   red: "#ff6a6a",
   orange: "#f0a33e",
   blue: "#8eb2ff",
+  brand: "#2979ff",
+  yellow: "#f3d709",
+  btc: "#f7931a",
+  eth: "#627eea",
+  alt: "#64d97b",
 };
 
 export default function HomePage() {
@@ -36,11 +41,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
-
-  const tokenPreview = useMemo(() => {
-    const t = getToken();
-    return t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена";
-  }, []);
+  const [tokenPreview, setTokenPreview] = useState("нет токена");
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
@@ -60,7 +61,17 @@ export default function HomePage() {
       });
 
       setStatus(res.status);
-      setResult((await res.json()) as AnyResp);
+
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? ((await res.json()) as AnyResp)
+        : ({
+            ok: res.ok,
+            error: res.ok ? "" : "invalid_response",
+            message: await res.text(),
+          } as AnyResp);
+
+      setResult(data);
     } catch (e: any) {
       setResult({ ok: false, error: e?.message ?? "fetch error" });
     } finally {
@@ -71,6 +82,9 @@ export default function HomePage() {
   const checkMe = () => run("/api/me", { method: "GET" });
 
   useEffect(() => {
+    const t = getToken();
+    setTokenPreview(t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена");
+
     checkMe();
 
     try {
@@ -92,7 +106,8 @@ export default function HomePage() {
 
           <div style={styles.metricValueRow}>
             <span style={styles.metricValue}>2.48</span>
-            <span style={styles.metricUnit}>T USDT</span>
+            <span style={styles.metricTinyUnit}>T</span>
+            <span style={styles.metricUnit}>USDT</span>
           </div>
 
           <div style={styles.deltaRow}>
@@ -100,12 +115,9 @@ export default function HomePage() {
             <span style={styles.deltaNegative}>-0.76%</span>
           </div>
 
-          <div style={styles.heroDivider} />
-
           <div style={styles.sentimentHeader}>
             <div>
               <div style={styles.sentimentTitle}>Жадность и страх</div>
-              <div style={styles.sentimentSub}>Рыночное настроение</div>
             </div>
             <div style={styles.sentimentBadgeDanger}>11%</div>
           </div>
@@ -125,75 +137,82 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={styles.block}>
+        <section style={styles.blockNoBorder}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>BTC Dominance</div>
           </div>
 
           <div style={styles.signalRow}>
-            <div>
-              <div style={{ ...styles.statBigValue, color: UI.orange }}>56.5%</div>
-              <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
+            <div style={styles.dominanceLegend}>
+              <div style={styles.dominanceItem}>
+                <div style={styles.legendLeft}>
+                  <span style={{ ...styles.legendDot, background: UI.btc }} />
+                  <span style={styles.legendText}>BTC</span>
+                </div>
+                <span style={{ ...styles.legendValue, color: UI.btc }}>56.6%</span>
+              </div>
+
+              <div style={styles.dominanceItem}>
+                <div style={styles.legendLeft}>
+                  <span style={{ ...styles.legendDot, background: UI.eth }} />
+                  <span style={styles.legendText}>ETH</span>
+                </div>
+                <span style={{ ...styles.legendValue, color: UI.eth }}>17.8%</span>
+              </div>
+
+              <div style={styles.dominanceItem}>
+                <div style={styles.legendLeft}>
+                  <span style={{ ...styles.legendDot, background: UI.alt }} />
+                  <span style={styles.legendText}>Альткойны</span>
+                </div>
+                <span style={{ ...styles.legendValue, color: UI.alt }}>25.6%</span>
+              </div>
             </div>
 
             <div style={styles.ringWrap}>
-              <div style={styles.ring(56.5, UI.orange)} />
-              <div style={styles.ringTextSmall}>56.5%</div>
+              <div style={styles.multiRing} />
+              <div style={styles.ringCenterLabel}>
+                <div style={styles.ringCenterValue}>56.6%</div>
+                <div style={styles.ringCenterSub}>BTC</div>
+              </div>
             </div>
           </div>
         </section>
 
         <section style={styles.block}>
           <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Signals</div>
+            <div style={styles.sectionMainTitle}>Индекс альтсезона</div>
             <span style={styles.outlineBadge}>Overview</span>
           </div>
 
-          <div style={styles.signalGrid}>
-            <SignalCard
-              title="Fear & Greed"
-              value="23"
-              sub="Extreme Fear"
-              accent={UI.red}
-              right={
-                <div style={styles.miniProgress}>
-                  <div
-                    style={{
-                      ...styles.miniProgressFill,
-                      width: "23%",
-                      background: UI.red,
-                    }}
-                  />
-                </div>
-              }
-            />
+          <div style={styles.signalCard}>
+            <div style={styles.signalRow}>
+              <div>
+                <div style={styles.signalTitle}>Altseason Index</div>
+                <div style={{ ...styles.statBigValue, color: UI.blue }}>34</div>
+                <div style={styles.statSubtitle}>Пока рынок ближе к BTC phase</div>
+              </div>
+
+              <div style={styles.ringWrap}>
+                <div style={styles.ring(34, UI.blue)} />
+                <div style={styles.ringTextSmall}>34%</div>
+              </div>
+            </div>
           </div>
 
           <div style={styles.twoCol}>
-            <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
-            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor={UI.red} />
-          </div>
-        </section>
-
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Market structure</div>
-            <span style={styles.outlineBadge}>Core</span>
-          </div>
-
-          <div style={styles.tripleGrid}>
-            <MiniMetric label="BTC.D" value="56.5%" valueColor={UI.orange} sub="Сила BTC" />
-            <MiniMetric label="ETH.D" value="17.8%" valueColor={UI.blue} sub="Фокус ETH" />
-            <MiniMetric label="STABLE.D" value="7.2%" valueColor={UI.green} sub="Risk-off" />
-          </div>
-
-          <div style={styles.stackGap} />
-
-          <div style={styles.compactGrid}>
-            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
-            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
-            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor={UI.textMain} />
-            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor={UI.green} />
+            <MiniMetric
+              label="BTC CAP"
+              value="$1.41T"
+              sub="Изменение за день +1.8%"
+              valueColor={UI.btc}
+            />
+            <MiniMetric
+              label="ALT CAP"
+              value="$0.64T"
+              sub="Изменение за день -2.4%"
+              valueColor={UI.alt}
+            />
           </div>
         </section>
 
@@ -205,30 +224,23 @@ export default function HomePage() {
 
           <div style={styles.subBlock}>
             <div style={styles.subBlockTitleRow}>
-              <div style={styles.subBlockTitle}>Spot vs Perp pressure</div>
-              <span style={styles.outlineBadge}>Spot-led</span>
+              <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
+              <span style={styles.outlineBadge}>Live</span>
             </div>
 
-            <div style={styles.progressMetaTop}>
-              <span style={styles.metaMuted}>Spot buyers</span>
-              <span style={styles.metaStrong}>68%</span>
-            </div>
-            <div style={styles.barTrack}>
-              <div style={styles.barFill("68%", UI.green)} />
+            <div style={styles.splitBar}>
+              <div style={styles.splitBarSpot} />
+              <div style={styles.splitBarPerp} />
             </div>
 
-            <div style={styles.progressSpacer} />
-
-            <div style={styles.progressMetaTop}>
-              <span style={styles.metaMuted}>Perp activity</span>
-              <span style={styles.metaStrong}>32%</span>
-            </div>
-            <div style={styles.barTrack}>
-              <div style={styles.barFill("32%", UI.red)} />
+            <div style={styles.splitMeta}>
+              <span style={{ color: UI.green }}>68% Spot Activity</span>
+              <span style={{ color: UI.red }}>32% Perp Activity</span>
             </div>
 
             <div style={styles.bodyTextTight}>
-              Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
+              Движение подтверждается в большей степени спотовым спросом, а не перегретым
+              деривативным потоком.
             </div>
           </div>
 
@@ -250,7 +262,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={styles.block}>
+        <section style={styles.aiBlock}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>AI Insight</div>
             <span style={styles.outlineBadgeBlue}>AI</span>
@@ -272,8 +284,13 @@ export default function HomePage() {
 
         <section style={styles.block}>
           <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Снимок бота</div>
+            <div style={styles.sectionMainTitle}>Состояние бота</div>
             <StatusDot text="Активен" />
+          </div>
+
+          <div style={styles.bodyTextBot}>
+            Торговый модуль активен, основные процессы выполняются стабильно, позиции под
+            контролем.
           </div>
 
           <div style={styles.compactGrid}>
@@ -285,7 +302,7 @@ export default function HomePage() {
 
           <button
             type="button"
-            style={styles.blockButton}
+            style={styles.blockButtonBlue}
             onClick={() => router.replace("/bot")}
           >
             Открыть бот
@@ -296,8 +313,16 @@ export default function HomePage() {
           <div style={styles.sectionTitle}>Переходы</div>
 
           <div style={styles.quickGrid}>
-            <QuickNavCard title="Bot" subtitle="Сделки и контроль" onClick={() => router.replace("/bot")} />
-            <QuickNavCard title="AI" subtitle="Аналитика рынка" onClick={() => router.replace("/ai")} />
+            <QuickNavCard
+              title="Bot"
+              subtitle="Сделки и контроль"
+              onClick={() => router.replace("/bot")}
+            />
+            <QuickNavCard
+              title="AI"
+              subtitle="Аналитика рынка"
+              onClick={() => router.replace("/ai")}
+            />
             <QuickNavCard
               title="Profile"
               subtitle="Статус и аккаунт"
@@ -376,27 +401,6 @@ function MetricBox(props: {
   );
 }
 
-function SignalCard(props: {
-  title: string;
-  value: string;
-  sub: string;
-  accent: string;
-  right?: React.ReactNode;
-}) {
-  return (
-    <section style={styles.signalCard}>
-      <div style={styles.signalTitle}>{props.title}</div>
-      <div style={styles.signalRow}>
-        <div>
-          <div style={{ ...styles.statBigValue, color: props.accent }}>{props.value}</div>
-          <div style={styles.statSubtitle}>{props.sub}</div>
-        </div>
-        {props.right}
-      </div>
-    </section>
-  );
-}
-
 function StatusDot(props: { text: string }) {
   return (
     <div style={styles.statusPill}>
@@ -450,7 +454,7 @@ const styles = {
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
-    gap: 6,
+    gap: 0,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
@@ -459,13 +463,22 @@ const styles = {
     lineHeight: 0.95,
     fontWeight: 800,
     letterSpacing: "-0.06em",
-    color: UI.textMain,
+    color: "#ffffff",
+  } as React.CSSProperties,
+
+  metricTinyUnit: {
+    fontSize: 15,
+    color: "#ffffff",
+    fontWeight: 700,
+    letterSpacing: "-0.03em",
+    marginLeft: 1,
+    marginRight: 3,
   } as React.CSSProperties,
 
   metricUnit: {
-    fontSize: 16,
-    color: UI.textSoft,
-    fontWeight: 600,
+    fontSize: 18,
+    color: UI.textMain,
+    fontWeight: 700,
     letterSpacing: "-0.02em",
   } as React.CSSProperties,
 
@@ -474,6 +487,7 @@ const styles = {
     alignItems: "center",
     gap: 6,
     marginTop: 12,
+    marginBottom: 14,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
@@ -490,9 +504,7 @@ const styles = {
   } as React.CSSProperties,
 
   heroDivider: {
-    height: 1,
-    background: UI.borderSoft,
-    margin: "16px 0 16px",
+    display: "none",
   } as React.CSSProperties,
 
   sentimentHeader: {
@@ -506,13 +518,11 @@ const styles = {
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
-    color: UI.textMain,
+    color: UI.yellow,
   } as React.CSSProperties,
 
   sentimentSub: {
-    fontSize: 11,
-    color: UI.textFaint,
-    marginTop: 2,
+    display: "none",
   } as React.CSSProperties,
 
   sentimentBadgeDanger: {
@@ -524,10 +534,10 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     background: "transparent",
-    border: `1px solid ${UI.borderHard}`,
+    border: "none",
     color: UI.red,
-    fontWeight: 700,
-    fontSize: 13,
+    fontWeight: 800,
+    fontSize: 14,
   } as React.CSSProperties,
 
   fearTrack: {
@@ -557,22 +567,22 @@ const styles = {
     flex: "1 1 180px",
     height: 46,
     borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 800,
     cursor: "pointer",
-  } as React.CSSProperties,
-
-  grid: {
-    display: "grid",
-    gap: 24,
   } as React.CSSProperties,
 
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
+  } as React.CSSProperties,
+
+  blockNoBorder: {
+    paddingBottom: 20,
+    borderBottom: "none",
   } as React.CSSProperties,
 
   sectionHead: {
@@ -608,12 +618,6 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  tripleGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 12,
-  } as React.CSSProperties,
-
   compactGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -624,16 +628,6 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } as React.CSSProperties,
-
-  signalGrid: {
-    display: "grid",
-    gap: 14,
-    marginBottom: 12,
-  } as React.CSSProperties,
-
-  stackGap: {
-    height: 12,
   } as React.CSSProperties,
 
   subBlock: {
@@ -685,7 +679,7 @@ const styles = {
     marginTop: 8,
     fontSize: 11,
     color: UI.textMuted,
-    lineHeight: 1.35,
+    lineHeight: 1.4,
   } as React.CSSProperties,
 
   metricItem: {
@@ -718,43 +712,6 @@ const styles = {
     lineHeight: 1.35,
   } as React.CSSProperties,
 
-  progressMetaTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 6,
-  } as React.CSSProperties,
-
-  metaMuted: {
-    fontSize: 11,
-    color: UI.textMuted,
-  } as React.CSSProperties,
-
-  metaStrong: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: UI.textMain,
-  } as React.CSSProperties,
-
-  barTrack: {
-    width: "100%",
-    height: 9,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  } as React.CSSProperties,
-
-  barFill: (width: string, color: string): React.CSSProperties => ({
-    width,
-    height: "100%",
-    borderRadius: 999,
-    background: color,
-  }),
-
-  progressSpacer: {
-    height: 12,
-  } as React.CSSProperties,
-
   bodyText: {
     fontSize: 12,
     lineHeight: 1.55,
@@ -768,6 +725,13 @@ const styles = {
     color: UI.textMuted,
   } as React.CSSProperties,
 
+  bodyTextBot: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: UI.textSoft,
+    marginBottom: 14,
+  } as React.CSSProperties,
+
   splitBar: {
     width: "100%",
     height: 12,
@@ -775,6 +739,16 @@ const styles = {
     background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     display: "flex",
+  } as React.CSSProperties,
+
+  splitBarSpot: {
+    width: "68%",
+    background: UI.green,
+  } as React.CSSProperties,
+
+  splitBarPerp: {
+    width: "32%",
+    background: UI.red,
   } as React.CSSProperties,
 
   splitBarLong: {
@@ -799,6 +773,7 @@ const styles = {
   signalCard: {
     borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
+    marginBottom: 12,
   } as React.CSSProperties,
 
   signalTitle: {
@@ -829,19 +804,6 @@ const styles = {
     fontWeight: 500,
   } as React.CSSProperties,
 
-  miniProgress: {
-    width: 96,
-    height: 9,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  } as React.CSSProperties,
-
-  miniProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-  } as React.CSSProperties,
-
   ringWrap: {
     width: 68,
     height: 68,
@@ -869,6 +831,91 @@ const styles = {
     color: UI.textMain,
   } as React.CSSProperties,
 
+  dominanceLegend: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  } as React.CSSProperties,
+
+  dominanceItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  } as React.CSSProperties,
+
+  legendLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  } as React.CSSProperties,
+
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    display: "inline-block",
+    flexShrink: 0,
+  } as React.CSSProperties,
+
+  legendText: {
+    fontSize: 13,
+    color: UI.textSoft,
+    fontWeight: 600,
+  } as React.CSSProperties,
+
+  legendValue: {
+    fontSize: 15,
+    fontWeight: 800,
+  } as React.CSSProperties,
+
+  multiRing: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    background: `conic-gradient(
+      ${UI.btc} 0 56.6%,
+      ${UI.eth} 56.6% 74.4%,
+      ${UI.alt} 74.4% 100%
+    )`,
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+  } as React.CSSProperties,
+
+  ringCenterLabel: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+  } as React.CSSProperties,
+
+  ringCenterValue: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: UI.textMain,
+    lineHeight: 1,
+  } as React.CSSProperties,
+
+  ringCenterSub: {
+    marginTop: 3,
+    fontSize: 10,
+    fontWeight: 700,
+    color: UI.btc,
+  } as React.CSSProperties,
+
+  aiBlock: {
+    marginTop: 4,
+    marginBottom: 2,
+    padding: 16,
+    borderRadius: 20,
+    border: `1px solid ${UI.border}`,
+    background: "rgba(255,255,255,0.03)",
+  } as React.CSSProperties,
+
   blockButton: {
     width: "100%",
     height: 42,
@@ -878,6 +925,19 @@ const styles = {
     color: UI.textMain,
     fontSize: 13,
     fontWeight: 700,
+    cursor: "pointer",
+    marginTop: 14,
+  } as React.CSSProperties,
+
+  blockButtonBlue: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 800,
     cursor: "pointer",
     marginTop: 14,
   } as React.CSSProperties,
