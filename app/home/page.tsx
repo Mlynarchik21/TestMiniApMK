@@ -1,19 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-
-type AnyResp =
-  | { ok: true; [k: string]: any }
-  | { ok: false; error: string; message?: string; [k: string]: any };
-
-function getToken() {
-  try {
-    return localStorage.getItem("sessionToken") || "";
-  } catch {
-    return "";
-  }
-}
 
 const UI = {
   border: "rgba(255,255,255,0.12)",
@@ -33,46 +21,7 @@ const UI = {
 export default function HomePage() {
   const router = useRouter();
 
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<number | null>(null);
-  const [result, setResult] = useState<AnyResp | null>(null);
-
-  const tokenPreview = useMemo(() => {
-    const t = getToken();
-    return t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена";
-  }, []);
-
-  async function run(path: string, init?: RequestInit) {
-    setLoading(true);
-    setStatus(null);
-    setResult(null);
-
-    const token = getToken();
-
-    try {
-      const res = await fetch(path, {
-        cache: "no-store",
-        ...init,
-        headers: {
-          ...(init?.headers || {}),
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      setStatus(res.status);
-      setResult((await res.json()) as AnyResp);
-    } catch (e: any) {
-      setResult({ ok: false, error: e?.message ?? "fetch error" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const checkMe = () => run("/api/me", { method: "GET" });
-
   useEffect(() => {
-    checkMe();
-
     try {
       const tg = (window as any)?.Telegram?.WebApp;
       tg?.ready?.();
@@ -80,13 +29,12 @@ export default function HomePage() {
       tg?.setHeaderColor?.("#000000");
       tg?.setBackgroundColor?.("#000000");
     } catch {}
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <main style={styles.page}>
       <div style={styles.container}>
+        {/* OVERVIEW */}
         <section style={styles.heroCard}>
           <div style={styles.metricLabel}>Рын. капитализация</div>
 
@@ -102,16 +50,19 @@ export default function HomePage() {
 
           <div style={styles.heroDivider} />
 
-          <div style={styles.sentimentHeader}>
-            <div>
-              <div style={styles.sentimentTitle}>Жадность и страх</div>
-              <div style={styles.sentimentSub}>Рыночное настроение</div>
-            </div>
-            <div style={styles.sentimentBadgeDanger}>11%</div>
-          </div>
-
-          <div style={styles.fearTrack}>
-            <div style={styles.fearFill(11)} />
+          <div style={styles.heroOverviewGrid}>
+            <OverviewMetric
+              label="Fear & Greed"
+              value="23"
+              sub="Extreme Fear"
+              valueColor={UI.red}
+            />
+            <OverviewMetric
+              label="BTC Dominance"
+              value="56.5%"
+              sub="BTC lead"
+              valueColor={UI.orange}
+            />
           </div>
 
           <div style={styles.heroButtons}>
@@ -125,82 +76,74 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* MARKET REGIME */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>BTC Dominance</div>
+            <div style={styles.sectionMainTitle}>Market regime</div>
+            <span style={styles.outlineBadge}>Now</span>
           </div>
 
-          <div style={styles.signalRow}>
-            <div>
-              <div style={{ ...styles.statBigValue, color: UI.orange }}>56.5%</div>
-              <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
-            </div>
-
-            <div style={styles.ringWrap}>
-              <div style={styles.ring(56.5, UI.orange)} />
-              <div style={styles.ringTextSmall}>56.5%</div>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Signals</div>
-            <span style={styles.outlineBadge}>Overview</span>
-          </div>
-
-          <div style={styles.signalGrid}>
-            <SignalCard
-              title="Fear & Greed"
-              value="23"
-              sub="Extreme Fear"
-              accent={UI.red}
-              right={
-                <div style={styles.miniProgress}>
-                  <div
-                    style={{
-                      ...styles.miniProgressFill,
-                      width: "23%",
-                      background: UI.red,
-                    }}
-                  />
+          <div style={styles.regimeCard}>
+            <div style={styles.regimeTop}>
+              <div>
+                <div style={styles.regimeStatus}>BTC leads market</div>
+                <div style={styles.regimeSub}>
+                  Капитал концентрируется в крупных активах. По альтам структура остаётся избирательной.
                 </div>
-              }
-            />
-          </div>
+              </div>
 
-          <div style={styles.twoCol}>
-            <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
-            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor={UI.red} />
+              <div style={styles.regimePill}>Neutral / Risk-off</div>
+            </div>
+
+            <div style={styles.compactGrid}>
+              <InfoTile
+                title="Trend"
+                value="Neutral Bullish"
+                sub="Короткий горизонт"
+              />
+              <InfoTile
+                title="Risk level"
+                value="Medium"
+                sub="Альты слабее BTC"
+              />
+              <InfoTile
+                title="Leadership"
+                value="BTC / ETH"
+                sub="Фокус капитала"
+              />
+              <InfoTile
+                title="Momentum"
+                value="Selective"
+                sub="Не весь рынок"
+              />
+            </div>
           </div>
         </section>
 
+        {/* KEY SIGNALS */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Market structure</div>
-            <span style={styles.outlineBadge}>Core</span>
+            <div style={styles.sectionMainTitle}>Key signals</div>
+            <span style={styles.outlineBadge}>Live</span>
           </div>
-
-          <div style={styles.tripleGrid}>
-            <MiniMetric label="BTC.D" value="56.5%" valueColor={UI.orange} sub="Сила BTC" />
-            <MiniMetric label="ETH.D" value="17.8%" valueColor={UI.blue} sub="Фокус ETH" />
-            <MiniMetric label="STABLE.D" value="7.2%" valueColor={UI.green} sub="Risk-off" />
-          </div>
-
-          <div style={styles.stackGap} />
 
           <div style={styles.compactGrid}>
-            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
-            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
-            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor={UI.textMain} />
-            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor={UI.green} />
+            <InfoTile title="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
+            <InfoTile title="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
+            <InfoTile title="Long / Short" value="61 / 39" sub="Лонги выше" />
+            <InfoTile title="Spot vs Perp" value="68 / 32" sub="Spot-led" valueColor={UI.green} />
+          </div>
+
+          <div style={styles.noteBox}>
+            Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
           </div>
         </section>
 
+        {/* POSITIONING */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Positioning</div>
-            <span style={styles.outlineBadge}>Live</span>
+            <span style={styles.outlineBadge}>Flow</span>
           </div>
 
           <div style={styles.subBlock}>
@@ -226,10 +169,6 @@ export default function HomePage() {
             <div style={styles.barTrack}>
               <div style={styles.barFill("32%", UI.red)} />
             </div>
-
-            <div style={styles.bodyTextTight}>
-              Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
-            </div>
           </div>
 
           <div style={styles.subBlock}>
@@ -250,6 +189,40 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* KEY LEVELS */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>BTC key levels</div>
+            <span style={styles.outlineBadge}>Levels</span>
+          </div>
+
+          <div style={styles.levelsGrid}>
+            <LevelItem
+              label="Resistance"
+              value="69 200"
+              sub="Зона продавца"
+              color={UI.red}
+            />
+            <LevelItem
+              label="Pivot"
+              value="67 850"
+              sub="Ключевая середина"
+              color={UI.orange}
+            />
+            <LevelItem
+              label="Support"
+              value="66 400"
+              sub="Удержание тренда"
+              color={UI.green}
+            />
+          </div>
+
+          <div style={styles.noteBox}>
+            Пока BTC выше поддержки, сценарий локальной аккумуляции остаётся в силе.
+          </div>
+        </section>
+
+        {/* AI */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>AI Insight</div>
@@ -257,8 +230,9 @@ export default function HomePage() {
           </div>
 
           <div style={styles.bodyText}>
-            Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
-            альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
+            Рынок находится в фазе осторожного восстановления внутри режима страха. Приоритет — BTC,
+            ETH и сильные альты с подтверждённым спросом. Входы по слабым альтам лучше ограничивать
+            или сокращать по риску.
           </div>
 
           <button
@@ -270,6 +244,7 @@ export default function HomePage() {
           </button>
         </section>
 
+        {/* BOT */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Снимок бота</div>
@@ -277,10 +252,10 @@ export default function HomePage() {
           </div>
 
           <div style={styles.compactGrid}>
-            <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
-            <MetricBox label="Позиции" value="3" sub="Открыто" />
-            <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
-            <MetricBox label="В работе" value="45" sub="USDT" />
+            <InfoTile title="Статус" value="Активен" sub="Runtime ok" />
+            <InfoTile title="Позиции" value="3" sub="Открыто" />
+            <InfoTile title="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
+            <InfoTile title="В работе" value="45" sub="USDT" />
           </div>
 
           <button
@@ -292,6 +267,7 @@ export default function HomePage() {
           </button>
         </section>
 
+        {/* NAV */}
         <section style={styles.section}>
           <div style={styles.sectionTitle}>Переходы</div>
 
@@ -310,64 +286,37 @@ export default function HomePage() {
             />
           </div>
         </section>
-
-        <section style={styles.debugCard}>
-          <div style={styles.debugHeader}>
-            <div>
-              <div style={styles.debugTitle}>Технический статус</div>
-              <div style={styles.debugSub}>Сервисная информация</div>
-            </div>
-
-            <button onClick={checkMe} disabled={loading} style={styles.debugAction(loading)}>
-              {loading ? "..." : "Проверить /api/me"}
-            </button>
-          </div>
-
-          <div style={styles.debugMeta}>
-            <div>
-              <span style={styles.debugMetaLabel}>sessionToken</span>
-              <div style={styles.debugMetaValue}>{tokenPreview}</div>
-            </div>
-
-            <div>
-              <span style={styles.debugMetaLabel}>HTTP статус</span>
-              <div style={styles.debugMetaValue}>{status ?? "—"}</div>
-            </div>
-          </div>
-
-          <div style={styles.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
-        </section>
       </div>
     </main>
   );
 }
 
-function MiniMetric(props: {
+function OverviewMetric(props: {
   label: string;
   value: string;
   sub?: string;
   valueColor?: string;
 }) {
   return (
-    <section style={styles.miniCard}>
-      <div style={styles.cardLabel}>{props.label}</div>
-      <div style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}>
+    <div style={styles.overviewMetric}>
+      <div style={styles.overviewLabel}>{props.label}</div>
+      <div style={{ ...styles.overviewValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
-      {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
-    </section>
+      {props.sub ? <div style={styles.overviewSub}>{props.sub}</div> : null}
+    </div>
   );
 }
 
-function MetricBox(props: {
-  label: string;
+function InfoTile(props: {
+  title: string;
   value: string;
   sub?: string;
   valueColor?: string;
 }) {
   return (
     <div style={styles.metricItem}>
-      <div style={styles.metricItemLabel}>{props.label}</div>
+      <div style={styles.metricItemLabel}>{props.title}</div>
       <div style={{ ...styles.metricItemValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
@@ -376,24 +325,21 @@ function MetricBox(props: {
   );
 }
 
-function SignalCard(props: {
-  title: string;
+function LevelItem(props: {
+  label: string;
   value: string;
-  sub: string;
-  accent: string;
-  right?: React.ReactNode;
+  sub?: string;
+  color: string;
 }) {
   return (
-    <section style={styles.signalCard}>
-      <div style={styles.signalTitle}>{props.title}</div>
-      <div style={styles.signalRow}>
-        <div>
-          <div style={{ ...styles.statBigValue, color: props.accent }}>{props.value}</div>
-          <div style={styles.statSubtitle}>{props.sub}</div>
-        </div>
-        {props.right}
+    <div style={styles.levelItem}>
+      <div style={styles.levelHead}>
+        <span style={{ ...styles.levelDot, background: props.color }} />
+        <span style={styles.levelLabel}>{props.label}</span>
       </div>
-    </section>
+      <div style={{ ...styles.levelValue, color: props.color }}>{props.value}</div>
+      {props.sub ? <div style={styles.levelSub}>{props.sub}</div> : null}
+    </div>
   );
 }
 
@@ -543,7 +489,7 @@ const styles = {
     width: `${percent}%`,
     height: "100%",
     borderRadius: 999,
-    background: "#ff5a5a",
+    background: UI.red,
   }),
 
   heroButtons: {
@@ -565,14 +511,45 @@ const styles = {
     cursor: "pointer",
   } as React.CSSProperties,
 
-  grid: {
+  heroOverviewGrid: {
     display: "grid",
-    gap: 24,
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  } as React.CSSProperties,
+
+  overviewMetric: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 92,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  } as React.CSSProperties,
+
+  overviewLabel: {
+    fontSize: 11,
+    color: UI.textMuted,
+    marginBottom: 6,
+  } as React.CSSProperties,
+
+  overviewValue: {
+    fontSize: 22,
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "-0.03em",
+  } as React.CSSProperties,
+
+  overviewSub: {
+    fontSize: 11,
+    color: UI.textMuted,
+    marginTop: 6,
   } as React.CSSProperties,
 
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
+    marginBottom: 22,
   } as React.CSSProperties,
 
   sectionHead: {
@@ -608,84 +585,47 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  tripleGrid: {
+  regimeCard: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 12,
+  } as React.CSSProperties,
+
+  regimeTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  } as React.CSSProperties,
+
+  regimeStatus: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: UI.textMain,
+    lineHeight: 1.1,
+    marginBottom: 6,
+  } as React.CSSProperties,
+
+  regimeSub: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: UI.textSoft,
+    maxWidth: 420,
+  } as React.CSSProperties,
+
+  regimePill: {
+    flexShrink: 0,
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    color: UI.textSoft,
+    fontSize: 11,
+    fontWeight: 700,
   } as React.CSSProperties,
 
   compactGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } as React.CSSProperties,
-
-  twoCol: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } as React.CSSProperties,
-
-  signalGrid: {
-    display: "grid",
-    gap: 14,
-    marginBottom: 12,
-  } as React.CSSProperties,
-
-  stackGap: {
-    height: 12,
-  } as React.CSSProperties,
-
-  subBlock: {
-    marginTop: 12,
-  } as React.CSSProperties,
-
-  subBlockTitleRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-  } as React.CSSProperties,
-
-  subBlockTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: UI.textMain,
-  } as React.CSSProperties,
-
-  miniCard: {
-    background: "transparent",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 108,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-  } as React.CSSProperties,
-
-  cardLabel: {
-    fontSize: 10,
-    letterSpacing: "0.10em",
-    textTransform: "uppercase",
-    color: UI.textFaint,
-    fontWeight: 700,
-    marginBottom: 8,
-  } as React.CSSProperties,
-
-  miniCardValue: {
-    fontSize: 18,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-  } as React.CSSProperties,
-
-  smallSub: {
-    marginTop: 8,
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.35,
   } as React.CSSProperties,
 
   metricItem: {
@@ -716,6 +656,24 @@ const styles = {
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.35,
+  } as React.CSSProperties,
+
+  subBlock: {
+    marginTop: 12,
+  } as React.CSSProperties,
+
+  subBlockTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  } as React.CSSProperties,
+
+  subBlockTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: UI.textMain,
   } as React.CSSProperties,
 
   progressMetaTop: {
@@ -755,19 +713,6 @@ const styles = {
     height: 12,
   } as React.CSSProperties,
 
-  bodyText: {
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: UI.textSoft,
-  } as React.CSSProperties,
-
-  bodyTextTight: {
-    marginTop: 10,
-    fontSize: 11,
-    lineHeight: 1.5,
-    color: UI.textMuted,
-  } as React.CSSProperties,
-
   splitBar: {
     width: "100%",
     height: 12,
@@ -796,77 +741,69 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  signalCard: {
-    borderBottom: `1px solid ${UI.borderSoft}`,
-    paddingBottom: 12,
-  } as React.CSSProperties,
-
-  signalTitle: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: UI.textMain,
-    marginBottom: 8,
-  } as React.CSSProperties,
-
-  signalRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+  levelsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 12,
   } as React.CSSProperties,
 
-  statBigValue: {
-    fontSize: 30,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: "-0.04em",
+  levelItem: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 112,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
   } as React.CSSProperties,
 
-  statSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    color: UI.textMuted,
-    fontWeight: 500,
+  levelHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
   } as React.CSSProperties,
 
-  miniProgress: {
-    width: 96,
-    height: 9,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  } as React.CSSProperties,
-
-  miniProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-  } as React.CSSProperties,
-
-  ringWrap: {
-    width: 68,
-    height: 68,
-    position: "relative",
+  levelDot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
     flexShrink: 0,
   } as React.CSSProperties,
 
-  ring: (percent: number, color: string): React.CSSProperties => ({
-    position: "absolute",
-    inset: 0,
-    borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
-    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-  }),
-
-  ringTextSmall: {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  levelLabel: {
     fontSize: 11,
-    fontWeight: 700,
-    color: UI.textMain,
+    color: UI.textMuted,
+  } as React.CSSProperties,
+
+  levelValue: {
+    fontSize: 20,
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "-0.03em",
+    marginTop: 8,
+  } as React.CSSProperties,
+
+  levelSub: {
+    fontSize: 11,
+    color: UI.textMuted,
+    lineHeight: 1.35,
+    marginTop: 8,
+  } as React.CSSProperties,
+
+  noteBox: {
+    marginTop: 12,
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: UI.textSoft,
+  } as React.CSSProperties,
+
+  bodyText: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: UI.textSoft,
   } as React.CSSProperties,
 
   blockButton: {
@@ -939,84 +876,6 @@ const styles = {
   quickCardSub: {
     fontSize: 11,
     lineHeight: 1.4,
-    color: UI.textMuted,
-  } as React.CSSProperties,
-
-  debugCard: {
-    marginTop: 20,
-    background: "transparent",
-    border: "none",
-    borderRadius: 0,
-    padding: 0,
-  } as React.CSSProperties,
-
-  debugHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 12,
-  } as React.CSSProperties,
-
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: UI.textMain,
-  } as React.CSSProperties,
-
-  debugSub: {
-    fontSize: 11,
-    color: UI.textFaint,
-    marginTop: 4,
-  } as React.CSSProperties,
-
-  debugAction: (disabled: boolean): React.CSSProperties => ({
-    height: 36,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.8 : 1,
-    flexShrink: 0,
-  }),
-
-  debugMeta: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
-    marginBottom: 10,
-  } as React.CSSProperties,
-
-  debugMetaLabel: {
-    display: "block",
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: UI.textFaint,
-    marginBottom: 5,
-  } as React.CSSProperties,
-
-  debugMetaValue: {
-    fontSize: 12,
-    color: UI.textSoft,
-    fontWeight: 600,
-    wordBreak: "break-word",
-  } as React.CSSProperties,
-
-  debugBox: {
-    whiteSpace: "pre-wrap",
-    background: "transparent",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 14,
-    padding: 10,
-    minHeight: 100,
-    fontSize: 11,
-    lineHeight: 1.4,
-    overflowX: "auto",
     color: UI.textMuted,
   } as React.CSSProperties,
 };
