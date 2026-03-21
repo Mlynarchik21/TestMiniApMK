@@ -145,28 +145,6 @@ export default function HomePage() {
 
         <section style={styles.block}>
           <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Market structure</div>
-            <span style={styles.outlineBadge}>Core</span>
-          </div>
-
-          <div style={styles.tripleGrid}>
-            <MiniMetric label="BTC.D" value="56.5%" valueColor={UI.orange} sub="Сила BTC" />
-            <MiniMetric label="ETH.D" value="17.8%" valueColor={UI.blue} sub="Фокус ETH" />
-            <MiniMetric label="STABLE.D" value="7.2%" valueColor={UI.green} sub="Risk-off" />
-          </div>
-
-          <div style={styles.stackGap} />
-
-          <div style={styles.compactGrid}>
-            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
-            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
-            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor={UI.textMain} />
-            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor={UI.green} />
-          </div>
-        </section>
-
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Signals</div>
             <span style={styles.outlineBadge}>Overview</span>
           </div>
@@ -194,6 +172,28 @@ export default function HomePage() {
           <div style={styles.twoCol}>
             <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
             <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor={UI.red} />
+          </div>
+        </section>
+
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Market structure</div>
+            <span style={styles.outlineBadge}>Core</span>
+          </div>
+
+          <div style={styles.tripleGrid}>
+            <MiniMetric label="BTC.D" value="56.5%" valueColor={UI.orange} sub="Сила BTC" />
+            <MiniMetric label="ETH.D" value="17.8%" valueColor={UI.blue} sub="Фокус ETH" />
+            <MiniMetric label="STABLE.D" value="7.2%" valueColor={UI.green} sub="Risk-off" />
+          </div>
+
+          <div style={styles.stackGap} />
+
+          <div style={styles.compactGrid}>
+            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
+            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
+            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor={UI.textMain} />
+            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor={UI.green} />
           </div>
         </section>
 
