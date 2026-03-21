@@ -111,6 +111,25 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* BTC DOMINANCE UNDER PROFILE */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>BTC Dominance</div>
+          </div>
+
+          <div style={styles.signalRow}>
+            <div>
+              <div style={{ ...styles.statBigValue, color: "#f0a33e" }}>56.5%</div>
+              <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
+            </div>
+
+            <div style={styles.ringWrap}>
+              <div style={styles.ring(56.5, "#f0a33e")} />
+              <div style={styles.ringTextSmall}>56.5%</div>
+            </div>
+          </div>
+        </section>
+
         {/* MARKET STRUCTURE */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
@@ -210,19 +229,6 @@ export default function HomePage() {
                       background: "#ff6262",
                     }}
                   />
-                </div>
-              }
-            />
-
-            <SignalCard
-              title="BTC Dominance"
-              value="56.5%"
-              sub="Лидерство BTC"
-              accent="#f0a33e"
-              right={
-                <div style={styles.ringWrap}>
-                  <div style={styles.ring(56.5, "#f0a33e")} />
-                  <div style={styles.ringTextSmall}>56.5%</div>
                 </div>
               }
             />
