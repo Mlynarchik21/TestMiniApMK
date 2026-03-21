@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 type AnyResp =
@@ -84,7 +85,9 @@ export default function HomePage() {
 
   useEffect(() => {
     const t = getToken();
-    setTokenPreview(t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена");
+    setTokenPreview(
+      t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена"
+    );
 
     checkMe();
 
@@ -131,18 +134,6 @@ export default function HomePage() {
             transform: scale(1);
             opacity: 0.9;
             box-shadow: 0 0 0 0 rgba(100, 217, 123, 0);
-          }
-        }
-
-        @keyframes softGlow {
-          0% {
-            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
-          }
-          50% {
-            box-shadow: 0 0 28px rgba(41, 121, 255, 0.08);
-          }
-          100% {
-            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
           }
         }
 
@@ -347,8 +338,9 @@ export default function HomePage() {
             </div>
 
             <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
-              альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и
+              сильные альты с подтверждённым спросом. По слабым альтам риск остаётся
+              повышенным.
             </div>
 
             <button
@@ -360,21 +352,47 @@ export default function HomePage() {
             </button>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Состояние бота</div>
+          <section style={{ ...styles.botBlock, ...reveal(5, mounted) }}>
+            <div style={styles.botTopRow}>
+              <div>
+                <div style={styles.botEyebrow}>TRADING SYSTEM</div>
+                <div style={styles.botTitle}>Состояние бота</div>
+              </div>
               <StatusDot text="Активен" />
             </div>
 
-            <div style={styles.bodyTextBot}>
-              Торговый модуль активен, основные процессы выполняются стабильно, позиции под
-              контролем.
+            <div style={styles.botLead}>
+              Алгоритм работает стабильно, сделки и активные процессы под контролем,
+              критических отклонений не обнаружено.
+            </div>
+
+            <div style={styles.botHighlightRow}>
+              <div style={styles.botHighlightCard}>
+                <div style={styles.botHighlightLabel}>Режим</div>
+                <div style={styles.botHighlightValue}>Автоторговля</div>
+                <div style={styles.botHighlightSub}>
+                  Система исполняет сценарии в штатном режиме
+                </div>
+              </div>
+
+              <div style={styles.botHighlightCard}>
+                <div style={styles.botHighlightLabel}>Контроль риска</div>
+                <div style={styles.botHighlightValue}>Нормальный</div>
+                <div style={styles.botHighlightSub}>
+                  Ограничения и фильтры активны
+                </div>
+              </div>
             </div>
 
             <div style={styles.compactGrid}>
               <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
               <MetricBox label="Позиции" value="3" sub="Открыто" />
-              <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
+              <MetricBox
+                label="PnL today"
+                value="+12.3"
+                sub="USDT"
+                valueColor={UI.green}
+              />
               <MetricBox label="В работе" value="45" sub="USDT" />
             </div>
 
@@ -438,7 +456,9 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div style={styles.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
+            <div style={styles.debugBox}>
+              {result ? JSON.stringify(result, null, 2) : "—"}
+            </div>
           </section>
         </div>
       </main>
@@ -498,7 +518,7 @@ function QuickNavCard(props: { title: string; subtitle: string; onClick: () => v
   );
 }
 
-function reveal(index: number, mounted: boolean): React.CSSProperties {
+function reveal(index: number, mounted: boolean): CSSProperties {
   return mounted
     ? {
         opacity: 1,
@@ -515,7 +535,7 @@ function reveal(index: number, mounted: boolean): React.CSSProperties {
       };
 }
 
-const styles = {
+const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)> = {
   page: {
     minHeight: "100vh",
     background: "#000",
@@ -524,21 +544,21 @@ const styles = {
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 88px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
-  } as React.CSSProperties,
+  },
 
   container: {
     width: "100%",
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
-  } as React.CSSProperties,
+  },
 
   heroCard: {
     background: "transparent",
     border: "none",
     padding: 0,
     marginBottom: 26,
-  } as React.CSSProperties,
+  },
 
   metricLabel: {
     fontSize: 13,
@@ -546,14 +566,14 @@ const styles = {
     marginBottom: 8,
     fontWeight: 500,
     transition: "color 180ms ease",
-  } as React.CSSProperties,
+  },
 
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
     gap: 0,
     flexWrap: "wrap",
-  } as React.CSSProperties,
+  },
 
   metricValue: {
     fontSize: 40,
@@ -562,7 +582,7 @@ const styles = {
     letterSpacing: "-0.06em",
     color: "#ffffff",
     textShadow: "0 0 18px rgba(255,255,255,0.05)",
-  } as React.CSSProperties,
+  },
 
   metricTinyUnit: {
     fontSize: 15,
@@ -571,14 +591,14 @@ const styles = {
     letterSpacing: "-0.03em",
     marginLeft: 1,
     marginRight: 3,
-  } as React.CSSProperties,
+  },
 
   metricUnit: {
     fontSize: 18,
     color: UI.textMain,
     fontWeight: 700,
     letterSpacing: "-0.02em",
-  } as React.CSSProperties,
+  },
 
   deltaRow: {
     display: "flex",
@@ -587,19 +607,19 @@ const styles = {
     marginTop: 12,
     marginBottom: 14,
     flexWrap: "wrap",
-  } as React.CSSProperties,
+  },
 
   deltaLabel: {
     fontSize: 14,
     color: UI.textMuted,
     fontWeight: 500,
-  } as React.CSSProperties,
+  },
 
   deltaNegative: {
     fontSize: 15,
     color: "#ff5f5f",
     fontWeight: 700,
-  } as React.CSSProperties,
+  },
 
   sentimentHeader: {
     display: "flex",
@@ -607,14 +627,14 @@ const styles = {
     justifyContent: "space-between",
     gap: 10,
     marginBottom: 8,
-  } as React.CSSProperties,
+  },
 
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.yellow,
     textShadow: "0 0 14px rgba(243, 215, 9, 0.08)",
-  } as React.CSSProperties,
+  },
 
   sentimentBadgeDanger: {
     minWidth: 52,
@@ -629,7 +649,7 @@ const styles = {
     color: UI.red,
     fontWeight: 800,
     fontSize: 14,
-  } as React.CSSProperties,
+  },
 
   fearTrack: {
     width: "100%",
@@ -639,9 +659,9 @@ const styles = {
       "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
     overflow: "hidden",
     position: "relative",
-  } as React.CSSProperties,
+  },
 
-  fearFill: (percent: number): React.CSSProperties => ({
+  fearFill: (percent: number): CSSProperties => ({
     width: `${percent}%`,
     height: "100%",
     borderRadius: 999,
@@ -658,14 +678,14 @@ const styles = {
     background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
     animation: "shimmer 2.8s linear infinite",
     pointerEvents: "none",
-  } as React.CSSProperties,
+  },
 
   heroButtons: {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
     marginTop: 16,
-  } as React.CSSProperties,
+  },
 
   primaryPill: {
     flex: "1 1 180px",
@@ -680,17 +700,17 @@ const styles = {
     transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
-  } as React.CSSProperties,
+  },
 
   blockNoBorder: {
     paddingBottom: 20,
     borderBottom: "none",
-  } as React.CSSProperties,
+  },
 
   sectionHead: {
     display: "flex",
@@ -698,14 +718,14 @@ const styles = {
     alignItems: "center",
     gap: 10,
     marginBottom: 12,
-  } as React.CSSProperties,
+  },
 
   sectionMainTitle: {
     fontSize: 16,
     fontWeight: 800,
     letterSpacing: "-0.01em",
     color: UI.textMain,
-  } as React.CSSProperties,
+  },
 
   outlineBadge: {
     padding: "5px 9px",
@@ -715,7 +735,7 @@ const styles = {
     color: UI.textSoft,
     fontWeight: 700,
     transition: "opacity 180ms ease, transform 180ms ease",
-  } as React.CSSProperties,
+  },
 
   outlineBadgeBlue: {
     padding: "5px 9px",
@@ -725,23 +745,23 @@ const styles = {
     color: UI.blue,
     fontWeight: 700,
     transition: "opacity 180ms ease, transform 180ms ease",
-  } as React.CSSProperties,
+  },
 
   compactGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   twoCol: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   subBlock: {
     marginTop: 12,
-  } as React.CSSProperties,
+  },
 
   subBlockTitleRow: {
     display: "flex",
@@ -749,13 +769,13 @@ const styles = {
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
-  } as React.CSSProperties,
+  },
 
   subBlockTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.textMain,
-  } as React.CSSProperties,
+  },
 
   miniCard: {
     background: "transparent",
@@ -769,7 +789,7 @@ const styles = {
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   cardLabel: {
     fontSize: 10,
@@ -778,21 +798,21 @@ const styles = {
     color: UI.textFaint,
     fontWeight: 700,
     marginBottom: 8,
-  } as React.CSSProperties,
+  },
 
   miniCardValue: {
     fontSize: 18,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.03em",
-  } as React.CSSProperties,
+  },
 
   smallSub: {
     marginTop: 8,
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.4,
-  } as React.CSSProperties,
+  },
 
   metricItem: {
     background: "transparent",
@@ -806,46 +826,39 @@ const styles = {
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   metricItemLabel: {
     fontSize: 11,
     color: UI.textMuted,
     marginBottom: 6,
-  } as React.CSSProperties,
+  },
 
   metricItemValue: {
     fontSize: 15,
     fontWeight: 800,
     lineHeight: 1.1,
-  } as React.CSSProperties,
+  },
 
   metricItemSub: {
     marginTop: 6,
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.35,
-  } as React.CSSProperties,
+  },
 
   bodyText: {
     fontSize: 12,
     lineHeight: 1.55,
     color: UI.textSoft,
-  } as React.CSSProperties,
+  },
 
   bodyTextTight: {
     marginTop: 10,
     fontSize: 11,
     lineHeight: 1.5,
     color: UI.textMuted,
-  } as React.CSSProperties,
-
-  bodyTextBot: {
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: UI.textSoft,
-    marginBottom: 14,
-  } as React.CSSProperties,
+  },
 
   splitBar: {
     width: "100%",
@@ -854,35 +867,35 @@ const styles = {
     background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     display: "flex",
-  } as React.CSSProperties,
+  },
 
   splitBarSpot: {
     width: "68%",
     background: UI.green,
     transformOrigin: "left center",
     animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } as React.CSSProperties,
+  },
 
   splitBarPerp: {
     width: "32%",
     background: UI.red,
     transformOrigin: "left center",
     animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } as React.CSSProperties,
+  },
 
   splitBarLong: {
     width: "61.4%",
     background: UI.green,
     transformOrigin: "left center",
     animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } as React.CSSProperties,
+  },
 
   splitBarShort: {
     width: "38.6%",
     background: UI.red,
     transformOrigin: "left center",
     animation: "fillX 1060ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } as React.CSSProperties,
+  },
 
   splitMeta: {
     display: "flex",
@@ -891,50 +904,50 @@ const styles = {
     marginTop: 10,
     fontSize: 13,
     fontWeight: 700,
-  } as React.CSSProperties,
+  },
 
   signalCard: {
     borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
     marginBottom: 12,
-  } as React.CSSProperties,
+  },
 
   signalTitle: {
     fontSize: 13,
     fontWeight: 700,
     color: UI.textMain,
     marginBottom: 8,
-  } as React.CSSProperties,
+  },
 
   signalRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   statBigValue: {
     fontSize: 30,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.04em",
-  } as React.CSSProperties,
+  },
 
   statSubtitle: {
     marginTop: 6,
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 500,
-  } as React.CSSProperties,
+  },
 
   ringWrap: {
     width: 68,
     height: 68,
     position: "relative",
     flexShrink: 0,
-  } as React.CSSProperties,
+  },
 
-  ring: (percent: number, color: string): React.CSSProperties => ({
+  ring: (percent: number, color: string): CSSProperties => ({
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
@@ -953,27 +966,27 @@ const styles = {
     fontSize: 11,
     fontWeight: 700,
     color: UI.textMain,
-  } as React.CSSProperties,
+  },
 
   dominanceLegend: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   dominanceItem: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   legendLeft: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-  } as React.CSSProperties,
+  },
 
   legendDot: {
     width: 10,
@@ -982,18 +995,18 @@ const styles = {
     display: "inline-block",
     flexShrink: 0,
     boxShadow: "0 0 12px rgba(255,255,255,0.06)",
-  } as React.CSSProperties,
+  },
 
   legendText: {
     fontSize: 13,
     color: UI.textSoft,
     fontWeight: 600,
-  } as React.CSSProperties,
+  },
 
   legendValue: {
     fontSize: 15,
     fontWeight: 800,
-  } as React.CSSProperties,
+  },
 
   multiRing: {
     position: "absolute",
@@ -1007,7 +1020,7 @@ const styles = {
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     animation: "ringAppear 760ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } as React.CSSProperties,
+  },
 
   ringCenterLabel: {
     position: "absolute",
@@ -1017,21 +1030,21 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
-  } as React.CSSProperties,
+  },
 
   ringCenterValue: {
     fontSize: 12,
     fontWeight: 800,
     color: UI.textMain,
     lineHeight: 1,
-  } as React.CSSProperties,
+  },
 
   ringCenterSub: {
     marginTop: 3,
     fontSize: 10,
     fontWeight: 700,
     color: UI.btc,
-  } as React.CSSProperties,
+  },
 
   aiBlock: {
     marginTop: 4,
@@ -1041,8 +1054,89 @@ const styles = {
     border: `1px solid ${UI.border}`,
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
-    animation: "softGlow 4.8s ease-in-out infinite",
-  } as React.CSSProperties,
+  },
+
+  botBlock: {
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 22,
+    border: "1px solid rgba(100,217,123,0.16)",
+    background:
+      "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
+    boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
+  },
+
+  botTopRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  botEyebrow: {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "rgba(100,217,123,0.72)",
+    marginBottom: 6,
+  },
+
+  botTitle: {
+    fontSize: 19,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    color: UI.textMain,
+  },
+
+  botLead: {
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: UI.textSoft,
+    marginBottom: 14,
+    maxWidth: "92%",
+  },
+
+  botHighlightRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  botHighlightCard: {
+    border: "1px solid rgba(255,255,255,0.09)",
+    background: "rgba(255,255,255,0.025)",
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 104,
+    transition:
+      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
+  },
+
+  botHighlightLabel: {
+    fontSize: 10,
+    letterSpacing: "0.10em",
+    textTransform: "uppercase",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 8,
+  },
+
+  botHighlightValue: {
+    fontSize: 17,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    color: UI.textMain,
+    marginBottom: 8,
+  },
+
+  botHighlightSub: {
+    fontSize: 11,
+    lineHeight: 1.45,
+    color: UI.textMuted,
+  },
 
   blockButton: {
     width: "100%",
@@ -1057,7 +1151,7 @@ const styles = {
     marginTop: 14,
     transition: "transform 160ms ease, border-color 180ms ease, background 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   blockButtonBlue: {
     width: "100%",
@@ -1073,7 +1167,7 @@ const styles = {
     transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   statusPill: {
     display: "inline-flex",
@@ -1081,12 +1175,13 @@ const styles = {
     gap: 6,
     padding: "6px 10px",
     borderRadius: 999,
-    background: "transparent",
-    border: "1px solid rgba(100,217,123,0.24)",
+    background: "rgba(100,217,123,0.08)",
+    border: "1px solid rgba(100,217,123,0.22)",
     color: UI.green,
     fontSize: 11,
     fontWeight: 700,
-  } as React.CSSProperties,
+    backdropFilter: "blur(4px)",
+  },
 
   statusDot: {
     width: 6,
@@ -1094,24 +1189,24 @@ const styles = {
     borderRadius: "50%",
     background: UI.green,
     animation: "pulseDot 1.9s ease-in-out infinite",
-  } as React.CSSProperties,
+  },
 
   section: {
     marginTop: 20,
-  } as React.CSSProperties,
+  },
 
   sectionTitle: {
     fontSize: 12,
     fontWeight: 600,
     color: UI.textMuted,
     margin: "0 2px 10px",
-  } as React.CSSProperties,
+  },
 
   quickGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } as React.CSSProperties,
+  },
 
   quickCard: {
     textAlign: "left",
@@ -1125,19 +1220,19 @@ const styles = {
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  } as React.CSSProperties,
+  },
 
   quickCardTitle: {
     fontSize: 14,
     fontWeight: 800,
     marginBottom: 4,
-  } as React.CSSProperties,
+  },
 
   quickCardSub: {
     fontSize: 11,
     lineHeight: 1.4,
     color: UI.textMuted,
-  } as React.CSSProperties,
+  },
 
   debugCard: {
     marginTop: 20,
@@ -1145,7 +1240,7 @@ const styles = {
     border: "none",
     borderRadius: 0,
     padding: 0,
-  } as React.CSSProperties,
+  },
 
   debugHeader: {
     display: "flex",
@@ -1153,21 +1248,21 @@ const styles = {
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 12,
-  } as React.CSSProperties,
+  },
 
   debugTitle: {
     fontSize: 14,
     fontWeight: 800,
     color: UI.textMain,
-  } as React.CSSProperties,
+  },
 
   debugSub: {
     fontSize: 11,
     color: UI.textFaint,
     marginTop: 4,
-  } as React.CSSProperties,
+  },
 
-  debugAction: (disabled: boolean): React.CSSProperties => ({
+  debugAction: (disabled: boolean): CSSProperties => ({
     height: 36,
     padding: "0 12px",
     borderRadius: 999,
@@ -1188,7 +1283,7 @@ const styles = {
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
     marginBottom: 10,
-  } as React.CSSProperties,
+  },
 
   debugMetaLabel: {
     display: "block",
@@ -1197,14 +1292,14 @@ const styles = {
     letterSpacing: "0.08em",
     color: UI.textFaint,
     marginBottom: 5,
-  } as React.CSSProperties,
+  },
 
   debugMetaValue: {
     fontSize: 12,
     color: UI.textSoft,
     fontWeight: 600,
     wordBreak: "break-word",
-  } as React.CSSProperties,
+  },
 
   debugBox: {
     whiteSpace: "pre-wrap",
@@ -1217,5 +1312,5 @@ const styles = {
     lineHeight: 1.4,
     overflowX: "auto",
     color: UI.textMuted,
-  } as React.CSSProperties,
+  },
 };
