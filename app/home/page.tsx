@@ -15,6 +15,21 @@ function getToken() {
   }
 }
 
+const UI = {
+  border: "rgba(255,255,255,0.12)",
+  borderSoft: "rgba(255,255,255,0.09)",
+  borderHard: "rgba(255,255,255,0.16)",
+  text: "#f3f3f3",
+  textMain: "rgba(255,255,255,0.96)",
+  textSoft: "rgba(255,255,255,0.78)",
+  textMuted: "rgba(255,255,255,0.60)",
+  textFaint: "rgba(255,255,255,0.42)",
+  green: "#64d97b",
+  red: "#ff6a6a",
+  orange: "#f0a33e",
+  blue: "#8eb2ff",
+};
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -72,7 +87,6 @@ export default function HomePage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        {/* TOP SUMMARY */}
         <section style={styles.heroCard}>
           <div style={styles.metricLabel}>Рын. капитализация</div>
 
@@ -111,7 +125,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* BTC DOMINANCE UNDER PROFILE */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>BTC Dominance</div>
@@ -119,18 +132,17 @@ export default function HomePage() {
 
           <div style={styles.signalRow}>
             <div>
-              <div style={{ ...styles.statBigValue, color: "#f0a33e" }}>56.5%</div>
+              <div style={{ ...styles.statBigValue, color: UI.orange }}>56.5%</div>
               <div style={styles.statSubtitle}>Лидерство BTC на рынке</div>
             </div>
 
             <div style={styles.ringWrap}>
-              <div style={styles.ring(56.5, "#f0a33e")} />
+              <div style={styles.ring(56.5, UI.orange)} />
               <div style={styles.ringTextSmall}>56.5%</div>
             </div>
           </div>
         </section>
 
-        {/* MARKET STRUCTURE */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Market structure</div>
@@ -138,22 +150,21 @@ export default function HomePage() {
           </div>
 
           <div style={styles.tripleGrid}>
-            <MiniMetric label="BTC.D" value="56.5%" valueColor="#f0a33e" sub="Сила BTC" />
-            <MiniMetric label="ETH.D" value="17.8%" valueColor="#8eb2ff" sub="Фокус ETH" />
-            <MiniMetric label="STABLE.D" value="7.2%" valueColor="#64d97b" sub="Risk-off" />
+            <MiniMetric label="BTC.D" value="56.5%" valueColor={UI.orange} sub="Сила BTC" />
+            <MiniMetric label="ETH.D" value="17.8%" valueColor={UI.blue} sub="Фокус ETH" />
+            <MiniMetric label="STABLE.D" value="7.2%" valueColor={UI.green} sub="Risk-off" />
           </div>
 
           <div style={styles.stackGap} />
 
           <div style={styles.compactGrid}>
-            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor="#64d97b" />
-            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor="#8eb2ff" />
-            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor="#f3f3f3" />
-            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor="#64d97b" />
+            <MetricBox label="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
+            <MetricBox label="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
+            <MetricBox label="Breadth" value="62/100" sub="В плюсе" valueColor={UI.textMain} />
+            <MetricBox label="ETF Flow" value="+184M" sub="Сегодня" valueColor={UI.green} />
           </div>
         </section>
 
-        {/* SIGNALS */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Signals</div>
@@ -165,14 +176,14 @@ export default function HomePage() {
               title="Fear & Greed"
               value="23"
               sub="Extreme Fear"
-              accent="#ff6262"
+              accent={UI.red}
               right={
                 <div style={styles.miniProgress}>
                   <div
                     style={{
                       ...styles.miniProgressFill,
                       width: "23%",
-                      background: "#ff6262",
+                      background: UI.red,
                     }}
                   />
                 </div>
@@ -182,11 +193,10 @@ export default function HomePage() {
 
           <div style={styles.twoCol}>
             <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
-            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor="#ff6a6a" />
+            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor={UI.red} />
           </div>
         </section>
 
-        {/* POSITIONING */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Positioning</div>
@@ -204,7 +214,7 @@ export default function HomePage() {
               <span style={styles.metaStrong}>68%</span>
             </div>
             <div style={styles.barTrack}>
-              <div style={styles.barFill("68%", "#64d97b")} />
+              <div style={styles.barFill("68%", UI.green)} />
             </div>
 
             <div style={styles.progressSpacer} />
@@ -214,7 +224,7 @@ export default function HomePage() {
               <span style={styles.metaStrong}>32%</span>
             </div>
             <div style={styles.barTrack}>
-              <div style={styles.barFill("32%", "#ff6a6a")} />
+              <div style={styles.barFill("32%", UI.red)} />
             </div>
 
             <div style={styles.bodyTextTight}>
@@ -234,13 +244,12 @@ export default function HomePage() {
             </div>
 
             <div style={styles.splitMeta}>
-              <span style={{ color: "#64d97b" }}>61.4% Longs</span>
-              <span style={{ color: "#ff6a6a" }}>38.6% Shorts</span>
+              <span style={{ color: UI.green }}>61.4% Longs</span>
+              <span style={{ color: UI.red }}>38.6% Shorts</span>
             </div>
           </div>
         </section>
 
-        {/* AI */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>AI Insight</div>
@@ -261,7 +270,6 @@ export default function HomePage() {
           </button>
         </section>
 
-        {/* BOT */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>Снимок бота</div>
@@ -271,7 +279,7 @@ export default function HomePage() {
           <div style={styles.compactGrid}>
             <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
             <MetricBox label="Позиции" value="3" sub="Открыто" />
-            <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor="#64d97b" />
+            <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
             <MetricBox label="В работе" value="45" sub="USDT" />
           </div>
 
@@ -284,7 +292,6 @@ export default function HomePage() {
           </button>
         </section>
 
-        {/* NAV */}
         <section style={styles.section}>
           <div style={styles.sectionTitle}>Переходы</div>
 
@@ -304,7 +311,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* DEBUG */}
         <section style={styles.debugCard}>
           <div style={styles.debugHeader}>
             <div>
@@ -345,7 +351,7 @@ function MiniMetric(props: {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
-      <div style={{ ...styles.miniCardValue, color: props.valueColor || "#f3f3f3" }}>
+      <div style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
       {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
@@ -362,7 +368,7 @@ function MetricBox(props: {
   return (
     <div style={styles.metricItem}>
       <div style={styles.metricItemLabel}>{props.label}</div>
-      <div style={{ ...styles.metricItemValue, color: props.valueColor || "#f3f3f3" }}>
+      <div style={{ ...styles.metricItemValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
       {props.sub ? <div style={styles.metricItemSub}>{props.sub}</div> : null}
@@ -413,11 +419,11 @@ const styles = {
   page: {
     minHeight: "100vh",
     background: "#000",
-    color: "#f3f3f3",
+    color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 72px)",
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 88px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
   } as React.CSSProperties,
 
   container: {
@@ -431,13 +437,13 @@ const styles = {
     background: "transparent",
     border: "none",
     padding: 0,
-    marginBottom: 22,
+    marginBottom: 26,
   } as React.CSSProperties,
 
   metricLabel: {
     fontSize: 13,
-    color: "rgba(255,255,255,0.56)",
-    marginBottom: 6,
+    color: UI.textMuted,
+    marginBottom: 8,
     fontWeight: 500,
   } as React.CSSProperties,
 
@@ -449,15 +455,16 @@ const styles = {
   } as React.CSSProperties,
 
   metricValue: {
-    fontSize: 38,
+    fontSize: 40,
     lineHeight: 0.95,
     fontWeight: 800,
     letterSpacing: "-0.06em",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   metricUnit: {
     fontSize: 16,
-    color: "rgba(255,255,255,0.82)",
+    color: UI.textSoft,
     fontWeight: 600,
     letterSpacing: "-0.02em",
   } as React.CSSProperties,
@@ -466,13 +473,13 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    marginTop: 10,
+    marginTop: 12,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
   deltaLabel: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.60)",
+    color: UI.textMuted,
     fontWeight: 500,
   } as React.CSSProperties,
 
@@ -484,8 +491,8 @@ const styles = {
 
   heroDivider: {
     height: 1,
-    background: "rgba(255,255,255,0.06)",
-    margin: "14px 0 14px",
+    background: UI.borderSoft,
+    margin: "16px 0 16px",
   } as React.CSSProperties,
 
   sentimentHeader: {
@@ -499,36 +506,36 @@ const styles = {
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
-    color: "#f3f3f3",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   sentimentSub: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.46)",
+    color: UI.textFaint,
     marginTop: 2,
   } as React.CSSProperties,
 
   sentimentBadgeDanger: {
-    minWidth: 48,
-    height: 30,
+    minWidth: 52,
+    height: 32,
     borderRadius: 999,
-    padding: "0 10px",
+    padding: "0 12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     background: "transparent",
-    border: "1px solid rgba(255,95,95,0.22)",
-    color: "#ff6a6a",
+    border: `1px solid ${UI.borderHard}`,
+    color: UI.red,
     fontWeight: 700,
     fontSize: 13,
   } as React.CSSProperties,
 
   fearTrack: {
     width: "100%",
-    height: 8,
+    height: 9,
     borderRadius: 999,
     background:
-      "linear-gradient(90deg, rgba(99,27,27,0.45) 0%, rgba(91,71,20,0.38) 46%, rgba(13,58,35,0.38) 100%)",
+      "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
     overflow: "hidden",
   } as React.CSSProperties,
 
@@ -543,16 +550,16 @@ const styles = {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
-    marginTop: 14,
+    marginTop: 16,
   } as React.CSSProperties,
 
   primaryPill: {
     flex: "1 1 180px",
-    height: 42,
+    height: 46,
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: `1px solid ${UI.borderHard}`,
     background: "transparent",
-    color: "#fff",
+    color: UI.textMain,
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
@@ -560,12 +567,12 @@ const styles = {
 
   grid: {
     display: "grid",
-    gap: 22,
+    gap: 24,
   } as React.CSSProperties,
 
   block: {
-    paddingBottom: 18,
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    paddingBottom: 20,
+    borderBottom: `1px solid ${UI.borderSoft}`,
   } as React.CSSProperties,
 
   sectionHead: {
@@ -573,43 +580,44 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   } as React.CSSProperties,
 
   sectionMainTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 800,
     letterSpacing: "-0.01em",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   outlineBadge: {
-    padding: "4px 8px",
+    padding: "5px 9px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: `1px solid ${UI.borderHard}`,
     fontSize: 11,
-    color: "rgba(255,255,255,0.68)",
+    color: UI.textSoft,
     fontWeight: 700,
   } as React.CSSProperties,
 
   outlineBadgeBlue: {
-    padding: "4px 8px",
+    padding: "5px 9px",
     borderRadius: 999,
-    border: "1px solid rgba(55,124,255,0.20)",
+    border: "1px solid rgba(142,178,255,0.34)",
     fontSize: 11,
-    color: "#8eb2ff",
+    color: UI.blue,
     fontWeight: 700,
   } as React.CSSProperties,
 
   tripleGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 10,
+    gap: 12,
   } as React.CSSProperties,
 
   compactGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
+    gap: 12,
   } as React.CSSProperties,
 
   twoCol: {
@@ -621,14 +629,15 @@ const styles = {
   signalGrid: {
     display: "grid",
     gap: 14,
+    marginBottom: 12,
   } as React.CSSProperties,
 
   stackGap: {
-    height: 10,
+    height: 12,
   } as React.CSSProperties,
 
   subBlock: {
-    marginTop: 10,
+    marginTop: 12,
   } as React.CSSProperties,
 
   subBlockTitleRow: {
@@ -636,27 +645,31 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 10,
   } as React.CSSProperties,
 
   subBlockTitle: {
     fontSize: 14,
     fontWeight: 700,
-    color: "#f3f3f3",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   miniCard: {
     background: "transparent",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 14,
-    padding: 10,
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 108,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
   } as React.CSSProperties,
 
   cardLabel: {
     fontSize: 10,
     letterSpacing: "0.10em",
     textTransform: "uppercase",
-    color: "rgba(255,255,255,0.28)",
+    color: UI.textFaint,
     fontWeight: 700,
     marginBottom: 8,
   } as React.CSSProperties,
@@ -669,21 +682,26 @@ const styles = {
   } as React.CSSProperties,
 
   smallSub: {
-    marginTop: 6,
+    marginTop: 8,
     fontSize: 11,
-    color: "rgba(255,255,255,0.48)",
+    color: UI.textMuted,
+    lineHeight: 1.35,
   } as React.CSSProperties,
 
   metricItem: {
     background: "transparent",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 14,
-    padding: 10,
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 108,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
   } as React.CSSProperties,
 
   metricItemLabel: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.42)",
+    color: UI.textMuted,
     marginBottom: 6,
   } as React.CSSProperties,
 
@@ -694,9 +712,10 @@ const styles = {
   } as React.CSSProperties,
 
   metricItemSub: {
-    marginTop: 5,
+    marginTop: 6,
     fontSize: 11,
-    color: "rgba(255,255,255,0.46)",
+    color: UI.textMuted,
+    lineHeight: 1.35,
   } as React.CSSProperties,
 
   progressMetaTop: {
@@ -708,20 +727,20 @@ const styles = {
 
   metaMuted: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.48)",
+    color: UI.textMuted,
   } as React.CSSProperties,
 
   metaStrong: {
     fontSize: 12,
     fontWeight: 700,
-    color: "#f3f3f3",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   barTrack: {
     width: "100%",
-    height: 8,
+    height: 9,
     borderRadius: 999,
-    background: "rgba(255,255,255,0.07)",
+    background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   } as React.CSSProperties,
 
@@ -733,39 +752,39 @@ const styles = {
   }),
 
   progressSpacer: {
-    height: 10,
+    height: 12,
   } as React.CSSProperties,
 
   bodyText: {
     fontSize: 12,
-    lineHeight: 1.5,
-    color: "rgba(255,255,255,0.64)",
+    lineHeight: 1.55,
+    color: UI.textSoft,
   } as React.CSSProperties,
 
   bodyTextTight: {
     marginTop: 10,
     fontSize: 11,
     lineHeight: 1.5,
-    color: "rgba(255,255,255,0.56)",
+    color: UI.textMuted,
   } as React.CSSProperties,
 
   splitBar: {
     width: "100%",
     height: 12,
     borderRadius: 999,
-    background: "rgba(255,255,255,0.07)",
+    background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     display: "flex",
   } as React.CSSProperties,
 
   splitBarLong: {
     width: "61.4%",
-    background: "#64d97b",
+    background: UI.green,
   } as React.CSSProperties,
 
   splitBarShort: {
     width: "38.6%",
-    background: "#ff6a6a",
+    background: UI.red,
   } as React.CSSProperties,
 
   splitMeta: {
@@ -778,14 +797,14 @@ const styles = {
   } as React.CSSProperties,
 
   signalCard: {
-    borderBottom: "1px solid rgba(255,255,255,0.05)",
+    borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
   } as React.CSSProperties,
 
   signalTitle: {
     fontSize: 13,
     fontWeight: 700,
-    color: "#f3f3f3",
+    color: UI.textMain,
     marginBottom: 8,
   } as React.CSSProperties,
 
@@ -797,7 +816,7 @@ const styles = {
   } as React.CSSProperties,
 
   statBigValue: {
-    fontSize: 28,
+    fontSize: 30,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.04em",
@@ -806,15 +825,15 @@ const styles = {
   statSubtitle: {
     marginTop: 6,
     fontSize: 12,
-    color: "rgba(255,255,255,0.56)",
+    color: UI.textMuted,
     fontWeight: 500,
   } as React.CSSProperties,
 
   miniProgress: {
-    width: 88,
-    height: 8,
+    width: 96,
+    height: 9,
     borderRadius: 999,
-    background: "rgba(255,255,255,0.07)",
+    background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   } as React.CSSProperties,
 
@@ -824,8 +843,8 @@ const styles = {
   } as React.CSSProperties,
 
   ringWrap: {
-    width: 62,
-    height: 62,
+    width: 68,
+    height: 68,
     position: "relative",
     flexShrink: 0,
   } as React.CSSProperties,
@@ -834,7 +853,7 @@ const styles = {
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.08) ${percent}% 100%)`,
+    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   }),
@@ -847,20 +866,20 @@ const styles = {
     justifyContent: "center",
     fontSize: 11,
     fontWeight: 700,
-    color: "#f2f2f2",
+    color: UI.textMain,
   } as React.CSSProperties,
 
   blockButton: {
     width: "100%",
-    height: 40,
+    height: 42,
     borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: `1px solid ${UI.borderHard}`,
     background: "transparent",
-    color: "#fff",
+    color: UI.textMain,
     fontSize: 13,
     fontWeight: 700,
     cursor: "pointer",
-    marginTop: 12,
+    marginTop: 14,
   } as React.CSSProperties,
 
   statusPill: {
@@ -870,8 +889,8 @@ const styles = {
     padding: "6px 10px",
     borderRadius: 999,
     background: "transparent",
-    border: "1px solid rgba(100,217,123,0.18)",
-    color: "#77de8c",
+    border: "1px solid rgba(100,217,123,0.24)",
+    color: UI.green,
     fontSize: 11,
     fontWeight: 700,
   } as React.CSSProperties,
@@ -880,34 +899,34 @@ const styles = {
     width: 6,
     height: 6,
     borderRadius: "50%",
-    background: "#64d97b",
+    background: UI.green,
   } as React.CSSProperties,
 
   section: {
-    marginTop: 18,
+    marginTop: 20,
   } as React.CSSProperties,
 
   sectionTitle: {
     fontSize: 12,
     fontWeight: 600,
-    color: "rgba(255,255,255,0.54)",
+    color: UI.textMuted,
     margin: "0 2px 10px",
   } as React.CSSProperties,
 
   quickGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
+    gap: 12,
   } as React.CSSProperties,
 
   quickCard: {
     textAlign: "left",
-    minHeight: 82,
+    minHeight: 88,
     borderRadius: 16,
     padding: 12,
-    border: "1px solid rgba(255,255,255,0.06)",
+    border: `1px solid ${UI.border}`,
     background: "transparent",
-    color: "#fff",
+    color: UI.textMain,
     cursor: "pointer",
   } as React.CSSProperties,
 
@@ -920,11 +939,11 @@ const styles = {
   quickCardSub: {
     fontSize: 11,
     lineHeight: 1.4,
-    color: "rgba(255,255,255,0.48)",
+    color: UI.textMuted,
   } as React.CSSProperties,
 
   debugCard: {
-    marginTop: 18,
+    marginTop: 20,
     background: "transparent",
     border: "none",
     borderRadius: 0,
@@ -942,11 +961,12 @@ const styles = {
   debugTitle: {
     fontSize: 14,
     fontWeight: 800,
+    color: UI.textMain,
   } as React.CSSProperties,
 
   debugSub: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.42)",
+    color: UI.textFaint,
     marginTop: 4,
   } as React.CSSProperties,
 
@@ -954,9 +974,9 @@ const styles = {
     height: 36,
     padding: "0 12px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
+    border: `1px solid ${UI.borderHard}`,
     background: "transparent",
-    color: "#fff",
+    color: UI.textMain,
     fontSize: 12,
     fontWeight: 700,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -976,13 +996,13 @@ const styles = {
     fontSize: 10,
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "rgba(255,255,255,0.34)",
+    color: UI.textFaint,
     marginBottom: 5,
   } as React.CSSProperties,
 
   debugMetaValue: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.78)",
+    color: UI.textSoft,
     fontWeight: 600,
     wordBreak: "break-word",
   } as React.CSSProperties,
@@ -990,13 +1010,13 @@ const styles = {
   debugBox: {
     whiteSpace: "pre-wrap",
     background: "transparent",
-    border: "1px solid rgba(255,255,255,0.06)",
+    border: `1px solid ${UI.border}`,
     borderRadius: 14,
     padding: 10,
     minHeight: 100,
     fontSize: 11,
     lineHeight: 1.4,
     overflowX: "auto",
-    color: "rgba(255,255,255,0.68)",
+    color: UI.textMuted,
   } as React.CSSProperties,
 };
