@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 type AnyResp =
@@ -35,6 +35,64 @@ const UI = {
   eth: "#627eea",
   alt: "#64d97b",
 };
+
+function reveal(index: number, mounted: boolean): CSSProperties {
+  return mounted
+    ? {
+        opacity: 1,
+        animationName: "fadeUp",
+        animationDuration: "560ms",
+        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+        animationFillMode: "both",
+        animationDelay: `${index * 70}ms`,
+        willChange: "transform, opacity",
+      }
+    : {
+        opacity: 0,
+        transform: "translate3d(0, 18px, 0)",
+      };
+}
+
+function fearFill(percent: number): CSSProperties {
+  return {
+    width: `${percent}%`,
+    height: "100%",
+    borderRadius: 999,
+    background: "#ff5a5a",
+    transformOrigin: "left center",
+    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
+  };
+}
+
+function ringStyle(percent: number, color: string): CSSProperties {
+  return {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    animation: "ringAppear 700ms cubic-bezier(0.22, 1, 0.36, 1) both",
+  };
+}
+
+function debugActionStyle(disabled: boolean): CSSProperties {
+  return {
+    height: 36,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.8 : 1,
+    flexShrink: 0,
+    transition: "transform 160ms ease, border-color 180ms ease",
+    WebkitTapHighlightColor: "transparent",
+  };
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -191,7 +249,7 @@ export default function HomePage() {
             </div>
 
             <div style={styles.fearTrack}>
-              <div style={styles.fearFill(11)} />
+              <div style={fearFill(11)} />
               <div style={styles.trackShimmer} />
             </div>
 
@@ -263,7 +321,7 @@ export default function HomePage() {
                 </div>
 
                 <div style={styles.ringWrap}>
-                  <div style={styles.ring(34, UI.blue)} />
+                  <div style={ringStyle(34, UI.blue)} />
                   <div style={styles.ringTextSmall}>34%</div>
                 </div>
               </div>
@@ -439,7 +497,11 @@ export default function HomePage() {
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
 
-              <button onClick={checkMe} disabled={loading} style={styles.debugAction(loading)}>
+              <button
+                onClick={checkMe}
+                disabled={loading}
+                style={debugActionStyle(loading)}
+              >
                 {loading ? "..." : "Проверить /api/me"}
               </button>
             </div>
@@ -518,24 +580,7 @@ function QuickNavCard(props: { title: string; subtitle: string; onClick: () => v
   );
 }
 
-function reveal(index: number, mounted: boolean): CSSProperties {
-  return mounted
-    ? {
-        opacity: 1,
-        animationName: "fadeUp",
-        animationDuration: "560ms",
-        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
-        animationFillMode: "both",
-        animationDelay: `${index * 70}ms`,
-        willChange: "transform, opacity",
-      }
-    : {
-        opacity: 0,
-        transform: "translate3d(0, 18px, 0)",
-      };
-}
-
-const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)> = {
+const styles = {
   page: {
     minHeight: "100vh",
     background: "#000",
@@ -544,21 +589,21 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
     paddingTop: "calc(env(safe-area-inset-top, 0px) + 88px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
-  },
+  } satisfies CSSProperties,
 
   container: {
     width: "100%",
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
-  },
+  } satisfies CSSProperties,
 
   heroCard: {
     background: "transparent",
     border: "none",
     padding: 0,
     marginBottom: 26,
-  },
+  } satisfies CSSProperties,
 
   metricLabel: {
     fontSize: 13,
@@ -566,14 +611,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     marginBottom: 8,
     fontWeight: 500,
     transition: "color 180ms ease",
-  },
+  } satisfies CSSProperties,
 
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
     gap: 0,
     flexWrap: "wrap",
-  },
+  } satisfies CSSProperties,
 
   metricValue: {
     fontSize: 40,
@@ -582,7 +627,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     letterSpacing: "-0.06em",
     color: "#ffffff",
     textShadow: "0 0 18px rgba(255,255,255,0.05)",
-  },
+  } satisfies CSSProperties,
 
   metricTinyUnit: {
     fontSize: 15,
@@ -591,14 +636,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     letterSpacing: "-0.03em",
     marginLeft: 1,
     marginRight: 3,
-  },
+  } satisfies CSSProperties,
 
   metricUnit: {
     fontSize: 18,
     color: UI.textMain,
     fontWeight: 700,
     letterSpacing: "-0.02em",
-  },
+  } satisfies CSSProperties,
 
   deltaRow: {
     display: "flex",
@@ -607,19 +652,19 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     marginTop: 12,
     marginBottom: 14,
     flexWrap: "wrap",
-  },
+  } satisfies CSSProperties,
 
   deltaLabel: {
     fontSize: 14,
     color: UI.textMuted,
     fontWeight: 500,
-  },
+  } satisfies CSSProperties,
 
   deltaNegative: {
     fontSize: 15,
     color: "#ff5f5f",
     fontWeight: 700,
-  },
+  } satisfies CSSProperties,
 
   sentimentHeader: {
     display: "flex",
@@ -627,14 +672,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     justifyContent: "space-between",
     gap: 10,
     marginBottom: 8,
-  },
+  } satisfies CSSProperties,
 
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.yellow,
     textShadow: "0 0 14px rgba(243, 215, 9, 0.08)",
-  },
+  } satisfies CSSProperties,
 
   sentimentBadgeDanger: {
     minWidth: 52,
@@ -649,7 +694,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.red,
     fontWeight: 800,
     fontSize: 14,
-  },
+  } satisfies CSSProperties,
 
   fearTrack: {
     width: "100%",
@@ -659,16 +704,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
       "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
     overflow: "hidden",
     position: "relative",
-  },
-
-  fearFill: (percent: number): CSSProperties => ({
-    width: `${percent}%`,
-    height: "100%",
-    borderRadius: 999,
-    background: "#ff5a5a",
-    transformOrigin: "left center",
-    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  }),
+  } satisfies CSSProperties,
 
   trackShimmer: {
     position: "absolute",
@@ -678,14 +714,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
     animation: "shimmer 2.8s linear infinite",
     pointerEvents: "none",
-  },
+  } satisfies CSSProperties,
 
   heroButtons: {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
     marginTop: 16,
-  },
+  } satisfies CSSProperties,
 
   primaryPill: {
     flex: "1 1 180px",
@@ -700,17 +736,17 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
-  },
+  } satisfies CSSProperties,
 
   blockNoBorder: {
     paddingBottom: 20,
     borderBottom: "none",
-  },
+  } satisfies CSSProperties,
 
   sectionHead: {
     display: "flex",
@@ -718,14 +754,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     alignItems: "center",
     gap: 10,
     marginBottom: 12,
-  },
+  } satisfies CSSProperties,
 
   sectionMainTitle: {
     fontSize: 16,
     fontWeight: 800,
     letterSpacing: "-0.01em",
     color: UI.textMain,
-  },
+  } satisfies CSSProperties,
 
   outlineBadge: {
     padding: "5px 9px",
@@ -735,7 +771,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.textSoft,
     fontWeight: 700,
     transition: "opacity 180ms ease, transform 180ms ease",
-  },
+  } satisfies CSSProperties,
 
   outlineBadgeBlue: {
     padding: "5px 9px",
@@ -745,23 +781,23 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.blue,
     fontWeight: 700,
     transition: "opacity 180ms ease, transform 180ms ease",
-  },
+  } satisfies CSSProperties,
 
   compactGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   twoCol: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   subBlock: {
     marginTop: 12,
-  },
+  } satisfies CSSProperties,
 
   subBlockTitleRow: {
     display: "flex",
@@ -769,13 +805,13 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
-  },
+  } satisfies CSSProperties,
 
   subBlockTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.textMain,
-  },
+  } satisfies CSSProperties,
 
   miniCard: {
     background: "transparent",
@@ -789,7 +825,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   cardLabel: {
     fontSize: 10,
@@ -798,21 +834,21 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.textFaint,
     fontWeight: 700,
     marginBottom: 8,
-  },
+  } satisfies CSSProperties,
 
   miniCardValue: {
     fontSize: 18,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.03em",
-  },
+  } satisfies CSSProperties,
 
   smallSub: {
     marginTop: 8,
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.4,
-  },
+  } satisfies CSSProperties,
 
   metricItem: {
     background: "transparent",
@@ -826,39 +862,39 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   metricItemLabel: {
     fontSize: 11,
     color: UI.textMuted,
     marginBottom: 6,
-  },
+  } satisfies CSSProperties,
 
   metricItemValue: {
     fontSize: 15,
     fontWeight: 800,
     lineHeight: 1.1,
-  },
+  } satisfies CSSProperties,
 
   metricItemSub: {
     marginTop: 6,
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.35,
-  },
+  } satisfies CSSProperties,
 
   bodyText: {
     fontSize: 12,
     lineHeight: 1.55,
     color: UI.textSoft,
-  },
+  } satisfies CSSProperties,
 
   bodyTextTight: {
     marginTop: 10,
     fontSize: 11,
     lineHeight: 1.5,
     color: UI.textMuted,
-  },
+  } satisfies CSSProperties,
 
   splitBar: {
     width: "100%",
@@ -867,35 +903,35 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     background: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     display: "flex",
-  },
+  } satisfies CSSProperties,
 
   splitBarSpot: {
     width: "68%",
     background: UI.green,
     transformOrigin: "left center",
     animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  },
+  } satisfies CSSProperties,
 
   splitBarPerp: {
     width: "32%",
     background: UI.red,
     transformOrigin: "left center",
     animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  },
+  } satisfies CSSProperties,
 
   splitBarLong: {
     width: "61.4%",
     background: UI.green,
     transformOrigin: "left center",
     animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  },
+  } satisfies CSSProperties,
 
   splitBarShort: {
     width: "38.6%",
     background: UI.red,
     transformOrigin: "left center",
     animation: "fillX 1060ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  },
+  } satisfies CSSProperties,
 
   splitMeta: {
     display: "flex",
@@ -904,58 +940,48 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     marginTop: 10,
     fontSize: 13,
     fontWeight: 700,
-  },
+  } satisfies CSSProperties,
 
   signalCard: {
     borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
     marginBottom: 12,
-  },
+  } satisfies CSSProperties,
 
   signalTitle: {
     fontSize: 13,
     fontWeight: 700,
     color: UI.textMain,
     marginBottom: 8,
-  },
+  } satisfies CSSProperties,
 
   signalRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   statBigValue: {
     fontSize: 30,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.04em",
-  },
+  } satisfies CSSProperties,
 
   statSubtitle: {
     marginTop: 6,
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 500,
-  },
+  } satisfies CSSProperties,
 
   ringWrap: {
     width: 68,
     height: 68,
     position: "relative",
     flexShrink: 0,
-  },
-
-  ring: (percent: number, color: string): CSSProperties => ({
-    position: "absolute",
-    inset: 0,
-    borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
-    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    animation: "ringAppear 700ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  }),
+  } satisfies CSSProperties,
 
   ringTextSmall: {
     position: "absolute",
@@ -966,27 +992,27 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     fontSize: 11,
     fontWeight: 700,
     color: UI.textMain,
-  },
+  } satisfies CSSProperties,
 
   dominanceLegend: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   dominanceItem: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   legendLeft: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-  },
+  } satisfies CSSProperties,
 
   legendDot: {
     width: 10,
@@ -995,18 +1021,18 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     display: "inline-block",
     flexShrink: 0,
     boxShadow: "0 0 12px rgba(255,255,255,0.06)",
-  },
+  } satisfies CSSProperties,
 
   legendText: {
     fontSize: 13,
     color: UI.textSoft,
     fontWeight: 600,
-  },
+  } satisfies CSSProperties,
 
   legendValue: {
     fontSize: 15,
     fontWeight: 800,
-  },
+  } satisfies CSSProperties,
 
   multiRing: {
     position: "absolute",
@@ -1020,7 +1046,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     animation: "ringAppear 760ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  },
+  } satisfies CSSProperties,
 
   ringCenterLabel: {
     position: "absolute",
@@ -1030,21 +1056,21 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
-  },
+  } satisfies CSSProperties,
 
   ringCenterValue: {
     fontSize: 12,
     fontWeight: 800,
     color: UI.textMain,
     lineHeight: 1,
-  },
+  } satisfies CSSProperties,
 
   ringCenterSub: {
     marginTop: 3,
     fontSize: 10,
     fontWeight: 700,
     color: UI.btc,
-  },
+  } satisfies CSSProperties,
 
   aiBlock: {
     marginTop: 4,
@@ -1054,7 +1080,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     border: `1px solid ${UI.border}`,
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
-  },
+  } satisfies CSSProperties,
 
   botBlock: {
     marginTop: 8,
@@ -1064,7 +1090,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     background:
       "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
     boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
-  },
+  } satisfies CSSProperties,
 
   botTopRow: {
     display: "flex",
@@ -1072,7 +1098,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     justifyContent: "space-between",
     gap: 12,
     marginBottom: 12,
-  },
+  } satisfies CSSProperties,
 
   botEyebrow: {
     fontSize: 10,
@@ -1081,14 +1107,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     textTransform: "uppercase",
     color: "rgba(100,217,123,0.72)",
     marginBottom: 6,
-  },
+  } satisfies CSSProperties,
 
   botTitle: {
     fontSize: 19,
     fontWeight: 800,
     letterSpacing: "-0.03em",
     color: UI.textMain,
-  },
+  } satisfies CSSProperties,
 
   botLead: {
     fontSize: 12,
@@ -1096,14 +1122,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.textSoft,
     marginBottom: 14,
     maxWidth: "92%",
-  },
+  } satisfies CSSProperties,
 
   botHighlightRow: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
     marginBottom: 12,
-  },
+  } satisfies CSSProperties,
 
   botHighlightCard: {
     border: "1px solid rgba(255,255,255,0.09)",
@@ -1113,7 +1139,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     minHeight: 104,
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
-  },
+  } satisfies CSSProperties,
 
   botHighlightLabel: {
     fontSize: 10,
@@ -1122,7 +1148,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     color: UI.textFaint,
     fontWeight: 700,
     marginBottom: 8,
-  },
+  } satisfies CSSProperties,
 
   botHighlightValue: {
     fontSize: 17,
@@ -1130,13 +1156,13 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     fontWeight: 800,
     color: UI.textMain,
     marginBottom: 8,
-  },
+  } satisfies CSSProperties,
 
   botHighlightSub: {
     fontSize: 11,
     lineHeight: 1.45,
     color: UI.textMuted,
-  },
+  } satisfies CSSProperties,
 
   blockButton: {
     width: "100%",
@@ -1151,7 +1177,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     marginTop: 14,
     transition: "transform 160ms ease, border-color 180ms ease, background 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   blockButtonBlue: {
     width: "100%",
@@ -1167,7 +1193,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   statusPill: {
     display: "inline-flex",
@@ -1181,7 +1207,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     fontSize: 11,
     fontWeight: 700,
     backdropFilter: "blur(4px)",
-  },
+  } satisfies CSSProperties,
 
   statusDot: {
     width: 6,
@@ -1189,24 +1215,24 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     borderRadius: "50%",
     background: UI.green,
     animation: "pulseDot 1.9s ease-in-out infinite",
-  },
+  } satisfies CSSProperties,
 
   section: {
     marginTop: 20,
-  },
+  } satisfies CSSProperties,
 
   sectionTitle: {
     fontSize: 12,
     fontWeight: 600,
     color: UI.textMuted,
     margin: "0 2px 10px",
-  },
+  } satisfies CSSProperties,
 
   quickGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  },
+  } satisfies CSSProperties,
 
   quickCard: {
     textAlign: "left",
@@ -1220,19 +1246,19 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     transition:
       "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
     WebkitTapHighlightColor: "transparent",
-  },
+  } satisfies CSSProperties,
 
   quickCardTitle: {
     fontSize: 14,
     fontWeight: 800,
     marginBottom: 4,
-  },
+  } satisfies CSSProperties,
 
   quickCardSub: {
     fontSize: 11,
     lineHeight: 1.4,
     color: UI.textMuted,
-  },
+  } satisfies CSSProperties,
 
   debugCard: {
     marginTop: 20,
@@ -1240,7 +1266,7 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     border: "none",
     borderRadius: 0,
     padding: 0,
-  },
+  } satisfies CSSProperties,
 
   debugHeader: {
     display: "flex",
@@ -1248,42 +1274,26 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 12,
-  },
+  } satisfies CSSProperties,
 
   debugTitle: {
     fontSize: 14,
     fontWeight: 800,
     color: UI.textMain,
-  },
+  } satisfies CSSProperties,
 
   debugSub: {
     fontSize: 11,
     color: UI.textFaint,
     marginTop: 4,
-  },
-
-  debugAction: (disabled: boolean): CSSProperties => ({
-    height: 36,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.8 : 1,
-    flexShrink: 0,
-    transition: "transform 160ms ease, border-color 180ms ease",
-    WebkitTapHighlightColor: "transparent",
-  }),
+  } satisfies CSSProperties,
 
   debugMeta: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
     marginBottom: 10,
-  },
+  } satisfies CSSProperties,
 
   debugMetaLabel: {
     display: "block",
@@ -1292,14 +1302,14 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     letterSpacing: "0.08em",
     color: UI.textFaint,
     marginBottom: 5,
-  },
+  } satisfies CSSProperties,
 
   debugMetaValue: {
     fontSize: 12,
     color: UI.textSoft,
     fontWeight: 600,
     wordBreak: "break-word",
-  },
+  } satisfies CSSProperties,
 
   debugBox: {
     whiteSpace: "pre-wrap",
@@ -1312,5 +1322,5 @@ const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)
     lineHeight: 1.4,
     overflowX: "auto",
     color: UI.textMuted,
-  },
+  } satisfies CSSProperties,
 };
