@@ -8,6 +8,34 @@ type AnyResp =
   | { ok: true; [k: string]: any }
   | { ok: false; error: string; message?: string; [k: string]: any };
 
+type HomeMarketResp =
+  | {
+      ok: true;
+      market: {
+        totalMarketCapUsd: number;
+        totalMarketCapT: string;
+        marketCapChange24h: number;
+        btcDominance: number;
+        ethDominance: number;
+        altDominance: number;
+        activeCryptocurrencies: number;
+        markets: number;
+        totalVolumeUsd: number;
+      };
+      fearGreed: {
+        value: number;
+        classification: string;
+        timestamp: string | null;
+        timeUntilUpdate: number;
+      };
+      altseason: {
+        value: number | null;
+        source: string | null;
+      };
+      updatedAt: string;
+    }
+  | { ok: false; error: string; message?: string };
+
 function getToken() {
   try {
     return localStorage.getItem("sessionToken") || "";
@@ -54,7 +82,7 @@ function reveal(index: number, mounted: boolean): CSSProperties {
 
 function fearFill(percent: number): CSSProperties {
   return {
-    width: `${percent}%`,
+    width: `${Math.max(0, Math.min(100, percent))}%`,
     height: "100%",
     borderRadius: 999,
     background: "#ff5a5a",
@@ -68,7 +96,10 @@ function ringStyle(percent: number, color: string): CSSProperties {
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
+    background: `conic-gradient(${color} 0 ${Math.max(
+      0,
+      Math.min(100, percent)
+    )}%, rgba(255,255,255,0.10) ${Math.max(0, Math.min(100, percent))}% 100%)`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     animation: "ringAppear 700ms cubic-bezier(0.22, 1, 0.36, 1) both",
@@ -93,6 +124,29 @@ function debugActionStyle(disabled: boolean): CSSProperties {
   };
 }
 
+function formatPct(n: number) {
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function formatTrillionsFromUsdAndPercent(totalUsd: number, percent: number) {
+  if (!Number.isFinite(totalUsd) || !Number.isFinite(percent)) return "—";
+  return `$${((totalUsd * percent) / 100 / 1_000_000_000_000).toFixed(2)}T`;
+}
+
+function getFearColor(value: number) {
+  if (value < 25) return UI.red;
+  if (value < 50) return UI.yellow;
+  if (value < 75) return UI.green;
+  return UI.green;
+}
+
+function getAltseasonLabel(value: number | null) {
+  if (value == null) return "Нет данных";
+  if (value >= 75) return "Altseason";
+  if (value <= 25) return "Bitcoin season";
+  return "Промежуточная фаза";
+}
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -101,6 +155,9 @@ export default function HomePage() {
   const [result, setResult] = useState<AnyResp | null>(null);
   const [tokenPreview, setTokenPreview] = useState("нет токена");
   const [mounted, setMounted] = useState(false);
+
+  const [marketData, setMarketData] = useState<HomeMarketResp | null>(null);
+  const [marketLoading, setMarketLoading] = useState(false);
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
@@ -138,6 +195,27 @@ export default function HomePage() {
     }
   }
 
+  async function loadHomeMarket() {
+    setMarketLoading(true);
+
+    try {
+      const res = await fetch("/api/home-market", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = (await res.json()) as HomeMarketResp;
+      setMarketData(data);
+    } catch (e: any) {
+      setMarketData({
+        ok: false,
+        error: e?.message ?? "home market fetch error",
+      });
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
   const checkMe = () => run("/api/me", { method: "GET" });
 
   useEffect(() => {
@@ -147,6 +225,7 @@ export default function HomePage() {
     );
 
     checkMe();
+    loadHomeMarket();
 
     try {
       const tg = (window as any)?.Telegram?.WebApp;
@@ -161,6 +240,16 @@ export default function HomePage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const marketCapT = marketData?.ok ? marketData.market.totalMarketCapT : "—";
+  const marketChange24h = marketData?.ok ? marketData.market.marketCapChange24h : null;
+  const fearValue = marketData?.ok ? marketData.fearGreed.value : 0;
+  const fearText = marketData?.ok ? marketData.fearGreed.classification : "Нет данных";
+
+  const btcDominance = marketData?.ok ? marketData.market.btcDominance : null;
+  const ethDominance = marketData?.ok ? marketData.market.ethDominance : null;
+  const altDominance = marketData?.ok ? marketData.market.altDominance : null;
+  const altseasonValue = marketData?.ok ? marketData.altseason.value : null;
 
   return (
     <>
@@ -230,27 +319,43 @@ export default function HomePage() {
             <div style={styles.metricLabel}>Рын. капитализация</div>
 
             <div style={styles.metricValueRow}>
-              <span style={styles.metricValue}>2.48</span>
+              <span style={styles.metricValue}>{marketCapT}</span>
               <span style={styles.metricTinyUnit}>T</span>
               <span style={styles.metricUnit}>USDT</span>
             </div>
 
             <div style={styles.deltaRow}>
               <span style={styles.deltaLabel}>Изменение за день</span>
-              <span style={styles.deltaNegative}>-0.76%</span>
+              <span
+                style={{
+                  ...styles.deltaNegative,
+                  color:
+                    marketChange24h != null
+                      ? marketChange24h >= 0
+                        ? UI.green
+                        : UI.red
+                      : UI.textMuted,
+                }}
+              >
+                {marketChange24h != null ? formatPct(marketChange24h) : "—"}
+              </span>
             </div>
 
             <div style={styles.sentimentHeader}>
               <div>
                 <div style={styles.sentimentTitle}>Жадность и страх</div>
               </div>
-              <div style={styles.sentimentBadgeDanger}>11%</div>
+              <div style={styles.sentimentBadgeDanger}>
+                {marketData?.ok ? `${marketData.fearGreed.value}%` : "—"}
+              </div>
             </div>
 
             <div style={styles.fearTrack}>
-              <div style={fearFill(11)} />
+              <div style={fearFill(fearValue)} />
               <div style={styles.trackShimmer} />
             </div>
+
+            <div style={{ ...styles.smallSub, marginTop: 8 }}>{fearText}</div>
 
             <div style={styles.heroButtons}>
               <button
@@ -275,7 +380,9 @@ export default function HomePage() {
                     <span style={{ ...styles.legendDot, background: UI.btc }} />
                     <span style={styles.legendText}>BTC</span>
                   </div>
-                  <span style={{ ...styles.legendValue, color: UI.btc }}>56.6%</span>
+                  <span style={{ ...styles.legendValue, color: UI.btc }}>
+                    {btcDominance != null ? `${btcDominance.toFixed(1)}%` : "—"}
+                  </span>
                 </div>
 
                 <div style={styles.dominanceItem}>
@@ -283,7 +390,9 @@ export default function HomePage() {
                     <span style={{ ...styles.legendDot, background: UI.eth }} />
                     <span style={styles.legendText}>ETH</span>
                   </div>
-                  <span style={{ ...styles.legendValue, color: UI.eth }}>17.8%</span>
+                  <span style={{ ...styles.legendValue, color: UI.eth }}>
+                    {ethDominance != null ? `${ethDominance.toFixed(1)}%` : "—"}
+                  </span>
                 </div>
 
                 <div style={styles.dominanceItem}>
@@ -291,14 +400,34 @@ export default function HomePage() {
                     <span style={{ ...styles.legendDot, background: UI.alt }} />
                     <span style={styles.legendText}>Альткойны</span>
                   </div>
-                  <span style={{ ...styles.legendValue, color: UI.alt }}>25.6%</span>
+                  <span style={{ ...styles.legendValue, color: UI.alt }}>
+                    {altDominance != null ? `${altDominance.toFixed(1)}%` : "—"}
+                  </span>
                 </div>
               </div>
 
               <div style={styles.ringWrap}>
-                <div style={styles.multiRing} />
+                <div
+                  style={{
+                    ...styles.multiRing,
+                    background:
+                      marketData?.ok
+                        ? `conic-gradient(
+                            ${UI.btc} 0 ${marketData.market.btcDominance}%,
+                            ${UI.eth} ${marketData.market.btcDominance}% ${
+                            marketData.market.btcDominance + marketData.market.ethDominance
+                          }%,
+                            ${UI.alt} ${
+                            marketData.market.btcDominance + marketData.market.ethDominance
+                          }% 100%
+                          )`
+                        : styles.multiRing.background,
+                  }}
+                />
                 <div style={styles.ringCenterLabel}>
-                  <div style={styles.ringCenterValue}>56.6%</div>
+                  <div style={styles.ringCenterValue}>
+                    {btcDominance != null ? `${btcDominance.toFixed(1)}%` : "—"}
+                  </div>
                   <div style={styles.ringCenterSub}>BTC</div>
                 </div>
               </div>
@@ -315,13 +444,17 @@ export default function HomePage() {
               <div style={styles.signalRow}>
                 <div>
                   <div style={styles.signalTitle}>Altseason Index</div>
-                  <div style={{ ...styles.statBigValue, color: UI.blue }}>34</div>
-                  <div style={styles.statSubtitle}>Пока рынок ближе к BTC phase</div>
+                  <div style={{ ...styles.statBigValue, color: UI.blue }}>
+                    {altseasonValue != null ? altseasonValue : "—"}
+                  </div>
+                  <div style={styles.statSubtitle}>{getAltseasonLabel(altseasonValue)}</div>
                 </div>
 
                 <div style={styles.ringWrap}>
-                  <div style={ringStyle(34, UI.blue)} />
-                  <div style={styles.ringTextSmall}>34%</div>
+                  <div style={ringStyle(altseasonValue ?? 0, UI.blue)} />
+                  <div style={styles.ringTextSmall}>
+                    {altseasonValue != null ? `${altseasonValue}%` : "—"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -329,14 +462,36 @@ export default function HomePage() {
             <div style={styles.twoCol}>
               <MiniMetric
                 label="BTC CAP"
-                value="$1.41T"
-                sub="Изменение за день +1.8%"
+                value={
+                  marketData?.ok
+                    ? formatTrillionsFromUsdAndPercent(
+                        marketData.market.totalMarketCapUsd,
+                        marketData.market.btcDominance
+                      )
+                    : "—"
+                }
+                sub={
+                  marketData?.ok
+                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(1)}%`
+                    : "Нет данных"
+                }
                 valueColor={UI.btc}
               />
               <MiniMetric
                 label="ALT CAP"
-                value="$0.64T"
-                sub="Изменение за день -2.4%"
+                value={
+                  marketData?.ok
+                    ? formatTrillionsFromUsdAndPercent(
+                        marketData.market.totalMarketCapUsd,
+                        marketData.market.altDominance
+                      )
+                    : "—"
+                }
+                sub={
+                  marketData?.ok
+                    ? `Alt dominance ${marketData.market.altDominance.toFixed(1)}%`
+                    : "Нет данных"
+                }
                 valueColor={UI.alt}
               />
             </div>
@@ -492,13 +647,23 @@ export default function HomePage() {
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
 
-              <button
-                onClick={checkMe}
-                disabled={loading}
-                style={debugActionStyle(loading)}
-              >
-                {loading ? "..." : "Проверить /api/me"}
-              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  onClick={loadHomeMarket}
+                  disabled={marketLoading}
+                  style={debugActionStyle(marketLoading)}
+                >
+                  {marketLoading ? "..." : "Обновить рынок"}
+                </button>
+
+                <button
+                  onClick={checkMe}
+                  disabled={loading}
+                  style={debugActionStyle(loading)}
+                >
+                  {loading ? "..." : "Проверить /api/me"}
+                </button>
+              </div>
             </div>
 
             <div style={styles.debugMeta}>
@@ -510,6 +675,22 @@ export default function HomePage() {
               <div>
                 <span style={styles.debugMetaLabel}>HTTP статус</span>
                 <div style={styles.debugMetaValue}>{status ?? "—"}</div>
+              </div>
+            </div>
+
+            <div style={styles.debugMeta}>
+              <div>
+                <span style={styles.debugMetaLabel}>fear & greed</span>
+                <div style={styles.debugMetaValue}>
+                  {marketData?.ok ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}` : "—"}
+                </div>
+              </div>
+
+              <div>
+                <span style={styles.debugMetaLabel}>updatedAt</span>
+                <div style={styles.debugMetaValue}>
+                  {marketData?.ok ? marketData.updatedAt : "—"}
+                </div>
               </div>
             </div>
 
