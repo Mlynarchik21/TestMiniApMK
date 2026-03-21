@@ -42,6 +42,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
   const [tokenPreview, setTokenPreview] = useState("нет токена");
+  const [mounted, setMounted] = useState(false);
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
@@ -95,275 +96,353 @@ export default function HomePage() {
       tg?.setBackgroundColor?.("#000000");
     } catch {}
 
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main style={styles.page}>
-      <div style={styles.container}>
-        <section style={styles.heroCard}>
-          <div style={styles.metricLabel}>Рын. капитализация</div>
+    <>
+      <style jsx global>{`
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 18px, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
 
-          <div style={styles.metricValueRow}>
-            <span style={styles.metricValue}>2.48</span>
-            <span style={styles.metricTinyUnit}>T</span>
-            <span style={styles.metricUnit}>USDT</span>
-          </div>
+        @keyframes pulseDot {
+          0% {
+            transform: scale(1);
+            opacity: 0.9;
+            box-shadow: 0 0 0 0 rgba(100, 217, 123, 0.35);
+          }
+          70% {
+            transform: scale(1.08);
+            opacity: 1;
+            box-shadow: 0 0 0 8px rgba(100, 217, 123, 0);
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.9;
+            box-shadow: 0 0 0 0 rgba(100, 217, 123, 0);
+          }
+        }
 
-          <div style={styles.deltaRow}>
-            <span style={styles.deltaLabel}>Изменение за день</span>
-            <span style={styles.deltaNegative}>-0.76%</span>
-          </div>
+        @keyframes softGlow {
+          0% {
+            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
+          }
+          50% {
+            box-shadow: 0 0 28px rgba(41, 121, 255, 0.08);
+          }
+          100% {
+            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
+          }
+        }
 
-          <div style={styles.sentimentHeader}>
-            <div>
-              <div style={styles.sentimentTitle}>Жадность и страх</div>
+        @keyframes ringAppear {
+          from {
+            opacity: 0;
+            transform: scale(0.92);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes fillX {
+          from {
+            transform: scaleX(0);
+          }
+          to {
+            transform: scaleX(1);
+          }
+        }
+
+        @keyframes shimmer {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(120%);
+          }
+        }
+      `}</style>
+
+      <main style={styles.page}>
+        <div style={styles.container}>
+          <section style={{ ...styles.heroCard, ...reveal(0, mounted) }}>
+            <div style={styles.metricLabel}>Рын. капитализация</div>
+
+            <div style={styles.metricValueRow}>
+              <span style={styles.metricValue}>2.48</span>
+              <span style={styles.metricTinyUnit}>T</span>
+              <span style={styles.metricUnit}>USDT</span>
             </div>
-            <div style={styles.sentimentBadgeDanger}>11%</div>
-          </div>
 
-          <div style={styles.fearTrack}>
-            <div style={styles.fearFill(11)} />
-          </div>
-
-          <div style={styles.heroButtons}>
-            <button
-              type="button"
-              style={styles.primaryPill}
-              onClick={() => router.replace("/profile")}
-            >
-              Профиль
-            </button>
-          </div>
-        </section>
-
-        <section style={styles.blockNoBorder}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>BTC Dominance</div>
-          </div>
-
-          <div style={styles.signalRow}>
-            <div style={styles.dominanceLegend}>
-              <div style={styles.dominanceItem}>
-                <div style={styles.legendLeft}>
-                  <span style={{ ...styles.legendDot, background: UI.btc }} />
-                  <span style={styles.legendText}>BTC</span>
-                </div>
-                <span style={{ ...styles.legendValue, color: UI.btc }}>56.6%</span>
-              </div>
-
-              <div style={styles.dominanceItem}>
-                <div style={styles.legendLeft}>
-                  <span style={{ ...styles.legendDot, background: UI.eth }} />
-                  <span style={styles.legendText}>ETH</span>
-                </div>
-                <span style={{ ...styles.legendValue, color: UI.eth }}>17.8%</span>
-              </div>
-
-              <div style={styles.dominanceItem}>
-                <div style={styles.legendLeft}>
-                  <span style={{ ...styles.legendDot, background: UI.alt }} />
-                  <span style={styles.legendText}>Альткойны</span>
-                </div>
-                <span style={{ ...styles.legendValue, color: UI.alt }}>25.6%</span>
-              </div>
+            <div style={styles.deltaRow}>
+              <span style={styles.deltaLabel}>Изменение за день</span>
+              <span style={styles.deltaNegative}>-0.76%</span>
             </div>
 
-            <div style={styles.ringWrap}>
-              <div style={styles.multiRing} />
-              <div style={styles.ringCenterLabel}>
-                <div style={styles.ringCenterValue}>56.6%</div>
-                <div style={styles.ringCenterSub}>BTC</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Индекс альтсезона</div>
-            <span style={styles.outlineBadge}>Overview</span>
-          </div>
-
-          <div style={styles.signalCard}>
-            <div style={styles.signalRow}>
+            <div style={styles.sentimentHeader}>
               <div>
-                <div style={styles.signalTitle}>Altseason Index</div>
-                <div style={{ ...styles.statBigValue, color: UI.blue }}>34</div>
-                <div style={styles.statSubtitle}>Пока рынок ближе к BTC phase</div>
+                <div style={styles.sentimentTitle}>Жадность и страх</div>
+              </div>
+              <div style={styles.sentimentBadgeDanger}>11%</div>
+            </div>
+
+            <div style={styles.fearTrack}>
+              <div style={styles.fearFill(11)} />
+              <div style={styles.trackShimmer} />
+            </div>
+
+            <div style={styles.heroButtons}>
+              <button
+                type="button"
+                style={styles.primaryPill}
+                onClick={() => router.replace("/profile")}
+              >
+                Профиль
+              </button>
+            </div>
+          </section>
+
+          <section style={{ ...styles.blockNoBorder, ...reveal(1, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>BTC Dominance</div>
+            </div>
+
+            <div style={styles.signalRow}>
+              <div style={styles.dominanceLegend}>
+                <div style={styles.dominanceItem}>
+                  <div style={styles.legendLeft}>
+                    <span style={{ ...styles.legendDot, background: UI.btc }} />
+                    <span style={styles.legendText}>BTC</span>
+                  </div>
+                  <span style={{ ...styles.legendValue, color: UI.btc }}>56.6%</span>
+                </div>
+
+                <div style={styles.dominanceItem}>
+                  <div style={styles.legendLeft}>
+                    <span style={{ ...styles.legendDot, background: UI.eth }} />
+                    <span style={styles.legendText}>ETH</span>
+                  </div>
+                  <span style={{ ...styles.legendValue, color: UI.eth }}>17.8%</span>
+                </div>
+
+                <div style={styles.dominanceItem}>
+                  <div style={styles.legendLeft}>
+                    <span style={{ ...styles.legendDot, background: UI.alt }} />
+                    <span style={styles.legendText}>Альткойны</span>
+                  </div>
+                  <span style={{ ...styles.legendValue, color: UI.alt }}>25.6%</span>
+                </div>
               </div>
 
               <div style={styles.ringWrap}>
-                <div style={styles.ring(34, UI.blue)} />
-                <div style={styles.ringTextSmall}>34%</div>
+                <div style={styles.multiRing} />
+                <div style={styles.ringCenterLabel}>
+                  <div style={styles.ringCenterValue}>56.6%</div>
+                  <div style={styles.ringCenterSub}>BTC</div>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div style={styles.twoCol}>
-            <MiniMetric
-              label="BTC CAP"
-              value="$1.41T"
-              sub="Изменение за день +1.8%"
-              valueColor={UI.btc}
-            />
-            <MiniMetric
-              label="ALT CAP"
-              value="$0.64T"
-              sub="Изменение за день -2.4%"
-              valueColor={UI.alt}
-            />
-          </div>
-        </section>
+          <section style={{ ...styles.block, ...reveal(2, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Индекс альтсезона</div>
+              <span style={styles.outlineBadge}>Overview</span>
+            </div>
 
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Positioning</div>
-            <span style={styles.outlineBadge}>Live</span>
-          </div>
+            <div style={styles.signalCard}>
+              <div style={styles.signalRow}>
+                <div>
+                  <div style={styles.signalTitle}>Altseason Index</div>
+                  <div style={{ ...styles.statBigValue, color: UI.blue }}>34</div>
+                  <div style={styles.statSubtitle}>Пока рынок ближе к BTC phase</div>
+                </div>
 
-          <div style={styles.subBlock}>
-            <div style={styles.subBlockTitleRow}>
-              <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
+                <div style={styles.ringWrap}>
+                  <div style={styles.ring(34, UI.blue)} />
+                  <div style={styles.ringTextSmall}>34%</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.twoCol}>
+              <MiniMetric
+                label="BTC CAP"
+                value="$1.41T"
+                sub="Изменение за день +1.8%"
+                valueColor={UI.btc}
+              />
+              <MiniMetric
+                label="ALT CAP"
+                value="$0.64T"
+                sub="Изменение за день -2.4%"
+                valueColor={UI.alt}
+              />
+            </div>
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Positioning</div>
               <span style={styles.outlineBadge}>Live</span>
             </div>
 
-            <div style={styles.splitBar}>
-              <div style={styles.splitBarSpot} />
-              <div style={styles.splitBarPerp} />
+            <div style={styles.subBlock}>
+              <div style={styles.subBlockTitleRow}>
+                <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
+                <span style={styles.outlineBadge}>Live</span>
+              </div>
+
+              <div style={styles.splitBar}>
+                <div style={styles.splitBarSpot} />
+                <div style={styles.splitBarPerp} />
+              </div>
+
+              <div style={styles.splitMeta}>
+                <span style={{ color: UI.green }}>68% Spot Activity</span>
+                <span style={{ color: UI.red }}>32% Perp Activity</span>
+              </div>
+
+              <div style={styles.bodyTextTight}>
+                Движение подтверждается в большей степени спотовым спросом, а не перегретым
+                деривативным потоком.
+              </div>
             </div>
 
-            <div style={styles.splitMeta}>
-              <span style={{ color: UI.green }}>68% Spot Activity</span>
-              <span style={{ color: UI.red }}>32% Perp Activity</span>
+            <div style={styles.subBlock}>
+              <div style={styles.subBlockTitleRow}>
+                <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
+                <span style={styles.outlineBadge}>Live</span>
+              </div>
+
+              <div style={styles.splitBar}>
+                <div style={styles.splitBarLong} />
+                <div style={styles.splitBarShort} />
+              </div>
+
+              <div style={styles.splitMeta}>
+                <span style={{ color: UI.green }}>61.4% Longs</span>
+                <span style={{ color: UI.red }}>38.6% Shorts</span>
+              </div>
+            </div>
+          </section>
+
+          <section style={{ ...styles.aiBlock, ...reveal(4, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>AI Insight</div>
+              <span style={styles.outlineBadgeBlue}>AI</span>
             </div>
 
-            <div style={styles.bodyTextTight}>
-              Движение подтверждается в большей степени спотовым спросом, а не перегретым
-              деривативным потоком.
-            </div>
-          </div>
-
-          <div style={styles.subBlock}>
-            <div style={styles.subBlockTitleRow}>
-              <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
-              <span style={styles.outlineBadge}>Live</span>
+            <div style={styles.bodyText}>
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
+              альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
             </div>
 
-            <div style={styles.splitBar}>
-              <div style={styles.splitBarLong} />
-              <div style={styles.splitBarShort} />
-            </div>
-
-            <div style={styles.splitMeta}>
-              <span style={{ color: UI.green }}>61.4% Longs</span>
-              <span style={{ color: UI.red }}>38.6% Shorts</span>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.aiBlock}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>AI Insight</div>
-            <span style={styles.outlineBadgeBlue}>AI</span>
-          </div>
-
-          <div style={styles.bodyText}>
-            Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и сильные
-            альты с подтверждённым спросом. По слабым альтам риск остаётся повышенным.
-          </div>
-
-          <button
-            type="button"
-            style={styles.blockButton}
-            onClick={() => router.replace("/ai")}
-          >
-            Открыть AI
-          </button>
-        </section>
-
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Состояние бота</div>
-            <StatusDot text="Активен" />
-          </div>
-
-          <div style={styles.bodyTextBot}>
-            Торговый модуль активен, основные процессы выполняются стабильно, позиции под
-            контролем.
-          </div>
-
-          <div style={styles.compactGrid}>
-            <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
-            <MetricBox label="Позиции" value="3" sub="Открыто" />
-            <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
-            <MetricBox label="В работе" value="45" sub="USDT" />
-          </div>
-
-          <button
-            type="button"
-            style={styles.blockButtonBlue}
-            onClick={() => router.replace("/bot")}
-          >
-            Открыть бот
-          </button>
-        </section>
-
-        <section style={styles.section}>
-          <div style={styles.sectionTitle}>Переходы</div>
-
-          <div style={styles.quickGrid}>
-            <QuickNavCard
-              title="Bot"
-              subtitle="Сделки и контроль"
-              onClick={() => router.replace("/bot")}
-            />
-            <QuickNavCard
-              title="AI"
-              subtitle="Аналитика рынка"
+            <button
+              type="button"
+              style={styles.blockButton}
               onClick={() => router.replace("/ai")}
-            />
-            <QuickNavCard
-              title="Profile"
-              subtitle="Статус и аккаунт"
-              onClick={() => router.replace("/profile")}
-            />
-            <QuickNavCard
-              title="Settings"
-              subtitle="Параметры"
-              onClick={() => router.replace("/settings")}
-            />
-          </div>
-        </section>
-
-        <section style={styles.debugCard}>
-          <div style={styles.debugHeader}>
-            <div>
-              <div style={styles.debugTitle}>Технический статус</div>
-              <div style={styles.debugSub}>Сервисная информация</div>
-            </div>
-
-            <button onClick={checkMe} disabled={loading} style={styles.debugAction(loading)}>
-              {loading ? "..." : "Проверить /api/me"}
+            >
+              Открыть AI
             </button>
-          </div>
+          </section>
 
-          <div style={styles.debugMeta}>
-            <div>
-              <span style={styles.debugMetaLabel}>sessionToken</span>
-              <div style={styles.debugMetaValue}>{tokenPreview}</div>
+          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Состояние бота</div>
+              <StatusDot text="Активен" />
             </div>
 
-            <div>
-              <span style={styles.debugMetaLabel}>HTTP статус</span>
-              <div style={styles.debugMetaValue}>{status ?? "—"}</div>
+            <div style={styles.bodyTextBot}>
+              Торговый модуль активен, основные процессы выполняются стабильно, позиции под
+              контролем.
             </div>
-          </div>
 
-          <div style={styles.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
-        </section>
-      </div>
-    </main>
+            <div style={styles.compactGrid}>
+              <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
+              <MetricBox label="Позиции" value="3" sub="Открыто" />
+              <MetricBox label="PnL today" value="+12.3" sub="USDT" valueColor={UI.green} />
+              <MetricBox label="В работе" value="45" sub="USDT" />
+            </div>
+
+            <button
+              type="button"
+              style={styles.blockButtonBlue}
+              onClick={() => router.replace("/bot")}
+            >
+              Открыть бот
+            </button>
+          </section>
+
+          <section style={{ ...styles.section, ...reveal(6, mounted) }}>
+            <div style={styles.sectionTitle}>Переходы</div>
+
+            <div style={styles.quickGrid}>
+              <QuickNavCard
+                title="Bot"
+                subtitle="Сделки и контроль"
+                onClick={() => router.replace("/bot")}
+              />
+              <QuickNavCard
+                title="AI"
+                subtitle="Аналитика рынка"
+                onClick={() => router.replace("/ai")}
+              />
+              <QuickNavCard
+                title="Profile"
+                subtitle="Статус и аккаунт"
+                onClick={() => router.replace("/profile")}
+              />
+              <QuickNavCard
+                title="Settings"
+                subtitle="Параметры"
+                onClick={() => router.replace("/settings")}
+              />
+            </div>
+          </section>
+
+          <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
+            <div style={styles.debugHeader}>
+              <div>
+                <div style={styles.debugTitle}>Технический статус</div>
+                <div style={styles.debugSub}>Сервисная информация</div>
+              </div>
+
+              <button onClick={checkMe} disabled={loading} style={styles.debugAction(loading)}>
+                {loading ? "..." : "Проверить /api/me"}
+              </button>
+            </div>
+
+            <div style={styles.debugMeta}>
+              <div>
+                <span style={styles.debugMetaLabel}>sessionToken</span>
+                <div style={styles.debugMetaValue}>{tokenPreview}</div>
+              </div>
+
+              <div>
+                <span style={styles.debugMetaLabel}>HTTP статус</span>
+                <div style={styles.debugMetaValue}>{status ?? "—"}</div>
+              </div>
+            </div>
+
+            <div style={styles.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
+          </section>
+        </div>
+      </main>
+    </>
   );
 }
 
@@ -419,6 +498,23 @@ function QuickNavCard(props: { title: string; subtitle: string; onClick: () => v
   );
 }
 
+function reveal(index: number, mounted: boolean): React.CSSProperties {
+  return mounted
+    ? {
+        opacity: 1,
+        animationName: "fadeUp",
+        animationDuration: "560ms",
+        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+        animationFillMode: "both",
+        animationDelay: `${index * 70}ms`,
+        willChange: "transform, opacity",
+      }
+    : {
+        opacity: 0,
+        transform: "translate3d(0, 18px, 0)",
+      };
+}
+
 const styles = {
   page: {
     minHeight: "100vh",
@@ -449,6 +545,7 @@ const styles = {
     color: UI.textMuted,
     marginBottom: 8,
     fontWeight: 500,
+    transition: "color 180ms ease",
   } as React.CSSProperties,
 
   metricValueRow: {
@@ -464,6 +561,7 @@ const styles = {
     fontWeight: 800,
     letterSpacing: "-0.06em",
     color: "#ffffff",
+    textShadow: "0 0 18px rgba(255,255,255,0.05)",
   } as React.CSSProperties,
 
   metricTinyUnit: {
@@ -503,10 +601,6 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  heroDivider: {
-    display: "none",
-  } as React.CSSProperties,
-
   sentimentHeader: {
     display: "flex",
     alignItems: "center",
@@ -519,10 +613,7 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
     color: UI.yellow,
-  } as React.CSSProperties,
-
-  sentimentSub: {
-    display: "none",
+    textShadow: "0 0 14px rgba(243, 215, 9, 0.08)",
   } as React.CSSProperties,
 
   sentimentBadgeDanger: {
@@ -547,6 +638,7 @@ const styles = {
     background:
       "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
     overflow: "hidden",
+    position: "relative",
   } as React.CSSProperties,
 
   fearFill: (percent: number): React.CSSProperties => ({
@@ -554,7 +646,19 @@ const styles = {
     height: "100%",
     borderRadius: 999,
     background: "#ff5a5a",
+    transformOrigin: "left center",
+    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
   }),
+
+  trackShimmer: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: "24%",
+    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+    animation: "shimmer 2.8s linear infinite",
+    pointerEvents: "none",
+  } as React.CSSProperties,
 
   heroButtons: {
     display: "flex",
@@ -573,6 +677,9 @@ const styles = {
     fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
+    transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   block: {
@@ -607,6 +714,7 @@ const styles = {
     fontSize: 11,
     color: UI.textSoft,
     fontWeight: 700,
+    transition: "opacity 180ms ease, transform 180ms ease",
   } as React.CSSProperties,
 
   outlineBadgeBlue: {
@@ -616,6 +724,7 @@ const styles = {
     fontSize: 11,
     color: UI.blue,
     fontWeight: 700,
+    transition: "opacity 180ms ease, transform 180ms ease",
   } as React.CSSProperties,
 
   compactGrid: {
@@ -657,6 +766,9 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
+    transition:
+      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   cardLabel: {
@@ -691,6 +803,9 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
+    transition:
+      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   metricItemLabel: {
@@ -744,21 +859,29 @@ const styles = {
   splitBarSpot: {
     width: "68%",
     background: UI.green,
+    transformOrigin: "left center",
+    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } as React.CSSProperties,
 
   splitBarPerp: {
     width: "32%",
     background: UI.red,
+    transformOrigin: "left center",
+    animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } as React.CSSProperties,
 
   splitBarLong: {
     width: "61.4%",
     background: UI.green,
+    transformOrigin: "left center",
+    animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } as React.CSSProperties,
 
   splitBarShort: {
     width: "38.6%",
     background: UI.red,
+    transformOrigin: "left center",
+    animation: "fillX 1060ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } as React.CSSProperties,
 
   splitMeta: {
@@ -818,6 +941,7 @@ const styles = {
     background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.10) ${percent}% 100%)`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    animation: "ringAppear 700ms cubic-bezier(0.22, 1, 0.36, 1) both",
   }),
 
   ringTextSmall: {
@@ -857,6 +981,7 @@ const styles = {
     borderRadius: "50%",
     display: "inline-block",
     flexShrink: 0,
+    boxShadow: "0 0 12px rgba(255,255,255,0.06)",
   } as React.CSSProperties,
 
   legendText: {
@@ -881,6 +1006,7 @@ const styles = {
     )`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    animation: "ringAppear 760ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } as React.CSSProperties,
 
   ringCenterLabel: {
@@ -913,7 +1039,9 @@ const styles = {
     padding: 16,
     borderRadius: 20,
     border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.03)",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
+    animation: "softGlow 4.8s ease-in-out infinite",
   } as React.CSSProperties,
 
   blockButton: {
@@ -927,6 +1055,8 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     marginTop: 14,
+    transition: "transform 160ms ease, border-color 180ms ease, background 180ms ease",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   blockButtonBlue: {
@@ -940,6 +1070,9 @@ const styles = {
     fontWeight: 800,
     cursor: "pointer",
     marginTop: 14,
+    transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   statusPill: {
@@ -960,6 +1093,7 @@ const styles = {
     height: 6,
     borderRadius: "50%",
     background: UI.green,
+    animation: "pulseDot 1.9s ease-in-out infinite",
   } as React.CSSProperties,
 
   section: {
@@ -988,6 +1122,9 @@ const styles = {
     background: "transparent",
     color: UI.textMain,
     cursor: "pointer",
+    transition:
+      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
+    WebkitTapHighlightColor: "transparent",
   } as React.CSSProperties,
 
   quickCardTitle: {
@@ -1042,6 +1179,8 @@ const styles = {
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.8 : 1,
     flexShrink: 0,
+    transition: "transform 160ms ease, border-color 180ms ease",
+    WebkitTapHighlightColor: "transparent",
   }),
 
   debugMeta: {
