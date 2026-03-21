@@ -153,6 +153,39 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* SIGNALS */}
+        <section style={styles.block}>
+          <div style={styles.sectionHead}>
+            <div style={styles.sectionMainTitle}>Signals</div>
+            <span style={styles.outlineBadge}>Overview</span>
+          </div>
+
+          <div style={styles.signalGrid}>
+            <SignalCard
+              title="Fear & Greed"
+              value="23"
+              sub="Extreme Fear"
+              accent="#ff6262"
+              right={
+                <div style={styles.miniProgress}>
+                  <div
+                    style={{
+                      ...styles.miniProgressFill,
+                      width: "23%",
+                      background: "#ff6262",
+                    }}
+                  />
+                </div>
+              }
+            />
+          </div>
+
+          <div style={styles.twoCol}>
+            <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
+            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor="#ff6a6a" />
+          </div>
+        </section>
+
         {/* POSITIONING */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
@@ -204,39 +237,6 @@ export default function HomePage() {
               <span style={{ color: "#64d97b" }}>61.4% Longs</span>
               <span style={{ color: "#ff6a6a" }}>38.6% Shorts</span>
             </div>
-          </div>
-        </section>
-
-        {/* SIGNALS */}
-        <section style={styles.block}>
-          <div style={styles.sectionHead}>
-            <div style={styles.sectionMainTitle}>Signals</div>
-            <span style={styles.outlineBadge}>Overview</span>
-          </div>
-
-          <div style={styles.signalGrid}>
-            <SignalCard
-              title="Fear & Greed"
-              value="23"
-              sub="Extreme Fear"
-              accent="#ff6262"
-              right={
-                <div style={styles.miniProgress}>
-                  <div
-                    style={{
-                      ...styles.miniProgressFill,
-                      width: "23%",
-                      background: "#ff6262",
-                    }}
-                  />
-                </div>
-              }
-            />
-          </div>
-
-          <div style={styles.twoCol}>
-            <MiniMetric label="TOTAL OI" value="$25.58B" sub="Совокупно" />
-            <MiniMetric label="COINBASE" value="#359" sub="Exchange rank" valueColor="#ff6a6a" />
           </div>
         </section>
 
