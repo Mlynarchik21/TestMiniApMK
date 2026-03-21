@@ -27,7 +27,6 @@ const UI = {
   textFaint: "rgba(255,255,255,0.42)",
   green: "#64d97b",
   red: "#ff6a6a",
-  orange: "#f0a33e",
   blue: "#8eb2ff",
   brand: "#2979ff",
   yellow: "#f3d709",
@@ -419,39 +418,35 @@ export default function HomePage() {
               <StatusDot text="Активен" />
             </div>
 
-            <div style={styles.botLead}>
-              Алгоритм работает стабильно, сделки и активные процессы под контролем,
-              критических отклонений не обнаружено.
-            </div>
-
-            <div style={styles.botHighlightRow}>
-              <div style={styles.botHighlightCard}>
-                <div style={styles.botHighlightLabel}>Режим</div>
-                <div style={styles.botHighlightValue}>Автоторговля</div>
-                <div style={styles.botHighlightSub}>
-                  Система исполняет сценарии в штатном режиме
-                </div>
-              </div>
-
-              <div style={styles.botHighlightCard}>
-                <div style={styles.botHighlightLabel}>Контроль риска</div>
-                <div style={styles.botHighlightValue}>Нормальный</div>
-                <div style={styles.botHighlightSub}>
-                  Ограничения и фильтры активны
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.compactGrid}>
-              <MetricBox label="Статус" value="Активен" sub="Runtime ok" />
-              <MetricBox label="Позиции" value="3" sub="Открыто" />
+            <div style={styles.botMetricsGrid}>
+              <MetricBox
+                label="Статус"
+                value="Активен"
+                sub="Runtime ok"
+                valueColor={UI.green}
+                glowColor="rgba(100,217,123,0.18)"
+              />
+              <MetricBox
+                label="Позиции"
+                value="3"
+                sub="Открыто"
+                valueColor={UI.textMain}
+                glowColor="rgba(255,255,255,0.10)"
+              />
               <MetricBox
                 label="PnL today"
                 value="+12.3"
                 sub="USDT"
                 valueColor={UI.green}
+                glowColor="rgba(100,217,123,0.18)"
               />
-              <MetricBox label="В работе" value="45" sub="USDT" />
+              <MetricBox
+                label="В работе"
+                value="45"
+                sub="USDT"
+                valueColor={UI.blue}
+                glowColor="rgba(41,121,255,0.18)"
+              />
             </div>
 
             <button
@@ -550,14 +545,20 @@ function MetricBox(props: {
   value: string;
   sub?: string;
   valueColor?: string;
+  glowColor?: string;
 }) {
   return (
-    <div style={styles.metricItem}>
+    <div
+      style={{
+        ...styles.metricItem,
+        boxShadow: props.glowColor ? `0 0 0 1px ${props.glowColor} inset` : undefined,
+      }}
+    >
       <div style={styles.metricItemLabel}>{props.label}</div>
-      <div style={{ ...styles.metricItemValue, color: props.valueColor || UI.textMain }}>
+      <div style={{ ...styles.metricItemValueLarge, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
-      {props.sub ? <div style={styles.metricItemSub}>{props.sub}</div> : null}
+      {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
     </div>
   );
 }
@@ -851,11 +852,11 @@ const styles = {
   } satisfies CSSProperties,
 
   metricItem: {
-    background: "transparent",
+    background: "rgba(255,255,255,0.03)",
     border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 108,
+    borderRadius: 18,
+    padding: 14,
+    minHeight: 118,
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
@@ -867,7 +868,9 @@ const styles = {
   metricItemLabel: {
     fontSize: 11,
     color: UI.textMuted,
-    marginBottom: 6,
+    marginBottom: 8,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
   } satisfies CSSProperties,
 
   metricItemValue: {
@@ -881,6 +884,21 @@ const styles = {
     fontSize: 11,
     color: UI.textMuted,
     lineHeight: 1.35,
+  } satisfies CSSProperties,
+
+  metricItemValueLarge: {
+    fontSize: 24,
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "-0.04em",
+  } satisfies CSSProperties,
+
+  metricItemSubStrong: {
+    marginTop: 8,
+    fontSize: 12,
+    color: UI.textSoft,
+    lineHeight: 1.35,
+    fontWeight: 600,
   } satisfies CSSProperties,
 
   bodyText: {
@@ -1097,7 +1115,7 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 14,
   } satisfies CSSProperties,
 
   botEyebrow: {
@@ -1110,58 +1128,16 @@ const styles = {
   } satisfies CSSProperties,
 
   botTitle: {
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: 800,
     letterSpacing: "-0.03em",
     color: UI.textMain,
   } satisfies CSSProperties,
 
-  botLead: {
-    fontSize: 12,
-    lineHeight: 1.6,
-    color: UI.textSoft,
-    marginBottom: 14,
-    maxWidth: "92%",
-  } satisfies CSSProperties,
-
-  botHighlightRow: {
+  botMetricsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  botHighlightCard: {
-    border: "1px solid rgba(255,255,255,0.09)",
-    background: "rgba(255,255,255,0.025)",
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 104,
-    transition:
-      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
-  } satisfies CSSProperties,
-
-  botHighlightLabel: {
-    fontSize: 10,
-    letterSpacing: "0.10em",
-    textTransform: "uppercase",
-    color: UI.textFaint,
-    fontWeight: 700,
-    marginBottom: 8,
-  } satisfies CSSProperties,
-
-  botHighlightValue: {
-    fontSize: 17,
-    lineHeight: 1.1,
-    fontWeight: 800,
-    color: UI.textMain,
-    marginBottom: 8,
-  } satisfies CSSProperties,
-
-  botHighlightSub: {
-    fontSize: 11,
-    lineHeight: 1.45,
-    color: UI.textMuted,
   } satisfies CSSProperties,
 
   blockButton: {
