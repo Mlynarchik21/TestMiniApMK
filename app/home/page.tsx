@@ -62,745 +62,913 @@ export default function HomePage() {
       const tg = (window as any)?.Telegram?.WebApp;
       tg?.ready?.();
       tg?.expand?.();
+      tg?.setHeaderColor?.("#000000");
+      tg?.setBackgroundColor?.("#000000");
     } catch {}
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main style={s.page}>
-      <div style={s.container}>
-        <TopBar
-          onClose={() => router.replace("/profile")}
-          onChevron={() => router.replace("/bot")}
-          onMore={() => router.replace("/settings")}
-        />
-
-        <div style={s.headerTitle}>Trader&apos;s Map</div>
-
-        <section style={s.marketSection}>
-          <div style={s.marketLabel}>Рын. капитализация</div>
-
-          <div style={s.marketRow}>
-            <div style={s.marketValueWrap}>
-              <span style={s.marketValue}>2.49</span>
-              <span style={s.marketUnit}>T USDT</span>
-            </div>
-
-            <div style={s.topIcons}>
-              <CircleIconButton label="🎁" onClick={() => router.replace("/profile")} />
-              <CircleIconButton label="🤖" onClick={() => router.replace("/bot")} />
-              <CircleIconButton label="☾" onClick={() => router.replace("/settings")} />
-            </div>
+    <main style={styles.page}>
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <div>
+            <div style={styles.eyebrow}>Market overview</div>
+            <h1 style={styles.title}>Dashboard</h1>
           </div>
 
-          <div style={s.dayChangeRow}>
-            <span style={s.dayChangeText}>Изменение за день</span>
-            <span style={s.dayChangeNegative}>-0.09%</span>
-          </div>
-
-          <div style={s.fearRow}>
-            <span style={s.fearLabel}>Жадность и страх</span>
-            <span style={s.fearValue}>11%</span>
-          </div>
-
-          <div style={s.fearTrack}>
-            <div style={s.fearFill(11)} />
-          </div>
-
-          <div style={s.profileRow}>
-            <div />
-            <button type="button" style={s.profileButton} onClick={() => router.replace("/profile")}>
-              Мой профиль
-            </button>
-          </div>
-        </section>
-
-        <section style={s.searchFilterRow}>
-          <button type="button" style={{ ...s.searchBox, flex: 1 }}>
-            <span style={s.searchIcon}>⌕</span>
-            <span style={s.searchPlaceholder}>Поиск по активам и курсам</span>
+          <button
+            type="button"
+            style={styles.iconButton}
+            onClick={() => router.replace("/settings")}
+            aria-label="Settings"
+          >
+            ⚙
           </button>
+        </header>
 
-          <button type="button" style={s.filterButton}>
-            <span>Фильтры</span>
-            <span style={s.newBadge}>NEW</span>
-          </button>
-        </section>
+        <section style={styles.heroCard}>
+          <div style={styles.heroTop}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={styles.metricLabel}>Рын. капитализация</div>
 
-        <section style={s.quickSection}>
-          <div style={s.quickGrid}>
-            <QuickIconCard title="RSI Crypto" icon="↗" onClick={() => router.replace("/rsi")} />
-            <QuickIconCard
-              title="Карта ликвидаций"
-              icon="◉"
-              onClick={() => router.replace("/liquidation-map")}
-            />
-            <QuickIconCard
-              title="Crypto Bubbles"
-              icon="8"
-              onClick={() => router.replace("/bubbles")}
-            />
-            <QuickIconCard
-              title="Crypto ETF"
-              icon="◔"
-              onClick={() => router.replace("/etf")}
-            />
-            <QuickIconCard title="AI" icon="⚙" onClick={() => router.replace("/ai")} />
-            <QuickIconCard title="Bot" icon="▣" onClick={() => router.replace("/bot")} />
-            <QuickIconCard
-              title="Центр знаний"
-              icon="⇱"
-              onClick={() => router.replace("/knowledge")}
-            />
-            <QuickIconCard title="Ещё" icon="•••" onClick={() => router.replace("/more")} />
-          </div>
-        </section>
-
-        <section style={s.coursesSection}>
-          <div style={s.sectionTopRow}>
-            <div style={s.sectionTitle}>Курсы</div>
-            <button type="button" style={s.outlinePill} onClick={() => router.replace("/courses")}>
-              Смотреть все
-            </button>
-          </div>
-
-          <div style={s.courseCard}>
-            <div style={s.courseArt}>
-              <div style={s.courseGlowA} />
-              <div style={s.courseGlowB} />
-              <div style={s.rocket}>🚀</div>
-              <div style={s.coinA}>◌</div>
-              <div style={s.coinB}>◌</div>
-              <div style={s.lineA} />
-              <div style={s.lineB} />
-            </div>
-
-            <div style={s.courseBottom}>
-              <div>
-                <div style={s.courseTitle}>Basic course</div>
-                <div style={s.courseSub}>То, с чего стоит начать</div>
+              <div style={styles.metricValueRow}>
+                <span style={styles.metricValue}>2.48</span>
+                <span style={styles.metricUnit}>T USDT</span>
               </div>
 
-              <button
-                type="button"
-                style={s.openButton}
-                onClick={() => router.replace("/courses/basic")}
-              >
-                Открыть
-              </button>
+              <div style={styles.deltaRow}>
+                <span style={styles.deltaLabel}>Изменение за день</span>
+                <span style={styles.deltaNegative}>-0.76%</span>
+              </div>
             </div>
+
+            <div style={styles.heroSideActions}>
+              <TopAction icon="AI" label="AI" onClick={() => router.replace("/ai")} />
+              <TopAction icon="BOT" label="Bot" onClick={() => router.replace("/bot")} />
+              <TopAction icon="☾" label="Mode" onClick={() => router.replace("/settings")} />
+            </div>
+          </div>
+
+          <div style={styles.heroDivider} />
+
+          <div style={styles.sentimentWrap}>
+            <div style={styles.sentimentHeader}>
+              <div>
+                <div style={styles.sentimentTitle}>Жадность и страх</div>
+                <div style={styles.sentimentSub}>Рыночное настроение</div>
+              </div>
+              <div style={styles.sentimentBadgeDanger}>11%</div>
+            </div>
+
+            <div style={styles.fearTrack}>
+              <div style={styles.fearFill(11)} />
+            </div>
+          </div>
+
+          <div style={styles.heroButtons}>
+            <button
+              type="button"
+              style={styles.primaryPill}
+              onClick={() => router.replace("/profile")}
+            >
+              Профиль
+            </button>
+
+            <button
+              type="button"
+              style={styles.secondaryPill}
+              onClick={() => router.replace("/ai")}
+            >
+              AI
+            </button>
+
+            <button
+              type="button"
+              style={styles.secondaryPill}
+              onClick={() => router.replace("/bot")}
+            >
+              Bot
+            </button>
           </div>
         </section>
 
-        <section style={s.debugSection}>
-          <div style={s.debugHeader}>
-            <div>
-              <div style={s.debugTitle}>Технический статус</div>
-              <div style={s.debugSub}>Служебный блок</div>
+        <section style={styles.grid}>
+          <StatCard
+            label="Fear & Greed"
+            value="23"
+            subtitle="Extreme Fear"
+            accent="#ff6262"
+            rightSlot={
+              <div style={styles.miniProgress}>
+                <div style={{ ...styles.miniProgressFill, width: "23%", background: "#ff6262" }} />
+              </div>
+            }
+          />
+
+          <StatCard
+            label="BTC Dominance"
+            value="56.5%"
+            subtitle="Лидерство BTC на рынке"
+            accent="#f0a33e"
+            rightSlot={
+              <div style={styles.ringWrap}>
+                <div style={styles.ring(56.5, "#f0a33e")} />
+                <div style={styles.ringTextSmall}>56.5%</div>
+              </div>
+            }
+          />
+
+          <WideCard title="BTC Long / Short Ratio" extra={<span style={styles.tag}>Live</span>}>
+            <div style={styles.splitBar}>
+              <div style={styles.splitBarLong} />
+              <div style={styles.splitBarShort} />
             </div>
 
-            <button type="button" onClick={checkMe} disabled={loading} style={s.debugBtn(loading)}>
-              {loading ? "..." : "Проверить"}
+            <div style={styles.splitMeta}>
+              <span style={{ color: "#64d97b" }}>61.4% Longs</span>
+              <span style={{ color: "#ff6a6a" }}>38.6% Shorts</span>
+            </div>
+          </WideCard>
+
+          <div style={styles.twoCol}>
+            <MiniInfoCard label="TOTAL OI" value="$25.58B" />
+            <MiniInfoCard label="COINBASE" value="#359" valueColor="#ff6a6a" />
+          </div>
+
+          <WideCard title="AI Insight" extra={<span style={styles.aiBadge}>AI</span>}>
+            <div style={styles.bodyText}>
+              Рынок в фазе страха. Возможна локальная аккумуляция. Риск по слабым альтам
+              остаётся повышенным.
+            </div>
+
+            <button
+              type="button"
+              style={styles.blockButton}
+              onClick={() => router.replace("/ai")}
+            >
+              Открыть AI
+            </button>
+          </WideCard>
+
+          <WideCard title="Снимок бота" extra={<StatusDot text="Активен" />}>
+            <div style={styles.botGrid}>
+              <MetricItem label="Статус" value="Активен" />
+              <MetricItem label="Позиции" value="3" />
+              <MetricItem label="PnL сегодня" value="+12.3" valueColor="#64d97b" />
+              <MetricItem label="В работе" value="45 USDT" />
+            </div>
+
+            <button
+              type="button"
+              style={styles.blockButton}
+              onClick={() => router.replace("/bot")}
+            >
+              Открыть бот
+            </button>
+          </WideCard>
+        </section>
+
+        <section style={styles.section}>
+          <div style={styles.sectionTitle}>Переходы</div>
+
+          <div style={styles.quickGrid}>
+            <QuickNavCard title="Bot" subtitle="Сделки и контроль" onClick={() => router.replace("/bot")} />
+            <QuickNavCard title="AI" subtitle="Аналитика рынка" onClick={() => router.replace("/ai")} />
+            <QuickNavCard
+              title="Profile"
+              subtitle="Статус и аккаунт"
+              onClick={() => router.replace("/profile")}
+            />
+            <QuickNavCard
+              title="Settings"
+              subtitle="Параметры"
+              onClick={() => router.replace("/settings")}
+            />
+          </div>
+        </section>
+
+        <section style={styles.debugCard}>
+          <div style={styles.debugHeader}>
+            <div>
+              <div style={styles.debugTitle}>Технический статус</div>
+              <div style={styles.debugSub}>Сервисная информация</div>
+            </div>
+
+            <button onClick={checkMe} disabled={loading} style={styles.debugAction(loading)}>
+              {loading ? "..." : "Проверить /api/me"}
             </button>
           </div>
 
-          <div style={s.debugInfo}>
+          <div style={styles.debugMeta}>
             <div>
-              <div style={s.debugLabel}>sessionToken</div>
-              <div style={s.debugValue}>{tokenPreview}</div>
+              <span style={styles.debugMetaLabel}>sessionToken</span>
+              <div style={styles.debugMetaValue}>{tokenPreview}</div>
             </div>
+
             <div>
-              <div style={s.debugLabel}>HTTP статус</div>
-              <div style={s.debugValue}>{status ?? "—"}</div>
+              <span style={styles.debugMetaLabel}>HTTP статус</span>
+              <div style={styles.debugMetaValue}>{status ?? "—"}</div>
             </div>
           </div>
 
-          <div style={s.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
+          <div style={styles.debugBox}>{result ? JSON.stringify(result, null, 2) : "—"}</div>
         </section>
       </div>
     </main>
   );
 }
 
-function TopBar(props: {
-  onClose: () => void;
-  onChevron: () => void;
-  onMore: () => void;
+function TopAction(props: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button type="button" style={styles.topAction} onClick={props.onClick}>
+      <span style={styles.topActionIcon}>{props.icon}</span>
+      <span style={styles.topActionLabel}>{props.label}</span>
+    </button>
+  );
+}
+
+function StatCard(props: {
+  label: string;
+  value: string;
+  subtitle: string;
+  accent?: string;
+  rightSlot?: React.ReactNode;
 }) {
   return (
-    <div style={s.topBar}>
-      <button type="button" style={s.closeBtn} onClick={props.onClose}>
-        <span style={s.closeX}>×</span>
-        <span>Закрыть</span>
-      </button>
+    <section style={styles.statCard}>
+      <div style={styles.cardLabel}>{props.label}</div>
 
-      <div style={s.topBarRight}>
-        <button type="button" style={s.smallTopBtn} onClick={props.onChevron}>
-          ˅
-        </button>
-        <button type="button" style={s.smallTopBtn} onClick={props.onMore}>
-          •••
-        </button>
+      <div style={styles.statCardRow}>
+        <div>
+          <div style={{ ...styles.statBigValue, color: props.accent || "#fff" }}>{props.value}</div>
+          <div style={styles.statSubtitle}>{props.subtitle}</div>
+        </div>
+
+        {props.rightSlot}
+      </div>
+    </section>
+  );
+}
+
+function WideCard(props: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section style={styles.wideCard}>
+      <div style={styles.wideCardHeader}>
+        <div style={styles.wideCardTitle}>{props.title}</div>
+        {props.extra}
+      </div>
+      <div style={{ marginTop: 14 }}>{props.children}</div>
+    </section>
+  );
+}
+
+function MiniInfoCard(props: { label: string; value: string; valueColor?: string }) {
+  return (
+    <section style={styles.miniCard}>
+      <div style={styles.cardLabel}>{props.label}</div>
+      <div style={{ ...styles.miniCardValue, color: props.valueColor || "#f3f3f3" }}>
+        {props.value}
+      </div>
+    </section>
+  );
+}
+
+function MetricItem(props: { label: string; value: string; valueColor?: string }) {
+  return (
+    <div style={styles.metricItem}>
+      <div style={styles.metricItemLabel}>{props.label}</div>
+      <div style={{ ...styles.metricItemValue, color: props.valueColor || "#f3f3f3" }}>
+        {props.value}
       </div>
     </div>
   );
 }
 
-function CircleIconButton(props: { label: string; onClick: () => void }) {
+function StatusDot(props: { text: string }) {
   return (
-    <button type="button" style={s.circleIconBtn} onClick={props.onClick}>
-      <span>{props.label}</span>
+    <div style={styles.statusPill}>
+      <span style={styles.statusDot} />
+      <span>{props.text}</span>
+    </div>
+  );
+}
+
+function QuickNavCard(props: { title: string; subtitle: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={props.onClick} style={styles.quickCard}>
+      <div style={styles.quickCardTitle}>{props.title}</div>
+      <div style={styles.quickCardSub}>{props.subtitle}</div>
     </button>
   );
 }
 
-function QuickIconCard(props: { title: string; icon: string; onClick: () => void }) {
-  return (
-    <button type="button" style={s.quickItem} onClick={props.onClick}>
-      <div style={s.quickCircle}>{props.icon}</div>
-      <div style={s.quickTitle}>{props.title}</div>
-    </button>
-  );
-}
-
-const s = {
+const styles = {
   page: {
     minHeight: "100vh",
     background: "#000",
-    color: "#fff",
+    color: "#f3f3f3",
     fontFamily:
-      'system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)",
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
+      'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 72px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 26px)",
   } as React.CSSProperties,
 
   container: {
     width: "100%",
-    maxWidth: 520,
+    maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
   } as React.CSSProperties,
 
-  topBar: {
+  header: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
     marginBottom: 18,
   } as React.CSSProperties,
 
-  closeBtn: {
-    height: 56,
-    padding: "0 18px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "#151515",
-    color: "#fff",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 12,
-    fontSize: 18,
+  eyebrow: {
+    fontSize: 11,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.34)",
     fontWeight: 700,
-    cursor: "pointer",
+    marginBottom: 6,
   } as React.CSSProperties,
 
-  closeX: {
+  title: {
+    margin: 0,
     fontSize: 28,
     lineHeight: 1,
-    marginTop: -2,
-  } as React.CSSProperties,
-
-  topBarRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  } as React.CSSProperties,
-
-  smallTopBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "#151515",
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: 700,
-    cursor: "pointer",
-  } as React.CSSProperties,
-
-  headerTitle: {
-    textAlign: "center",
-    fontSize: 28,
-    lineHeight: 1.1,
     fontWeight: 800,
-    marginBottom: 26,
-    letterSpacing: "-0.03em",
+    letterSpacing: "-0.04em",
   } as React.CSSProperties,
 
-  marketSection: {
-    marginBottom: 26,
+  iconButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "#111111",
+    color: "#f4f4f4",
+    cursor: "pointer",
+    fontSize: 18,
   } as React.CSSProperties,
 
-  marketLabel: {
-    fontSize: 19,
-    color: "rgba(255,255,255,0.74)",
-    marginBottom: 12,
-    fontWeight: 500,
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    background: "#070707",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 28,
+    padding: 18,
+    boxShadow: "none",
+    marginBottom: 16,
   } as React.CSSProperties,
 
-  marketRow: {
+  heroTop: {
+    position: "relative",
+    zIndex: 1,
     display: "flex",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 16,
   } as React.CSSProperties,
 
-  marketValueWrap: {
+  metricLabel: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.62)",
+    marginBottom: 8,
+    fontWeight: 500,
+  } as React.CSSProperties,
+
+  metricValueRow: {
     display: "flex",
     alignItems: "baseline",
-    gap: 6,
+    gap: 8,
     flexWrap: "wrap",
-    minWidth: 0,
   } as React.CSSProperties,
 
-  marketValue: {
-    fontSize: 84,
-    lineHeight: 0.92,
+  metricValue: {
+    fontSize: 46,
+    lineHeight: 0.95,
     fontWeight: 800,
-    letterSpacing: "-0.07em",
+    letterSpacing: "-0.065em",
   } as React.CSSProperties,
 
-  marketUnit: {
-    fontSize: 34,
-    lineHeight: 1,
-    fontWeight: 500,
-    color: "rgba(255,255,255,0.92)",
+  metricUnit: {
+    fontSize: 20,
+    color: "rgba(255,255,255,0.86)",
+    fontWeight: 600,
     letterSpacing: "-0.03em",
   } as React.CSSProperties,
 
-  topIcons: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    paddingTop: 8,
-    flexShrink: 0,
-  } as React.CSSProperties,
-
-  circleIconBtn: {
-    width: 74,
-    height: 74,
-    borderRadius: "50%",
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "#000",
-    color: "#fff",
-    position: "relative",
+  deltaRow: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    fontSize: 28,
-    cursor: "pointer",
-  } as React.CSSProperties,
-
-  dayChangeRow: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 6,
-    marginTop: 20,
-    marginBottom: 18,
+    gap: 8,
+    marginTop: 14,
     flexWrap: "wrap",
   } as React.CSSProperties,
 
-  dayChangeText: {
-    fontSize: 22,
-    color: "rgba(255,255,255,0.84)",
+  deltaLabel: {
+    fontSize: 16,
+    color: "rgba(255,255,255,0.64)",
     fontWeight: 500,
   } as React.CSSProperties,
 
-  dayChangeNegative: {
-    fontSize: 22,
-    color: "#ff5757",
-    fontWeight: 800,
+  deltaNegative: {
+    fontSize: 17,
+    color: "#ff5f5f",
+    fontWeight: 700,
   } as React.CSSProperties,
 
-  fearRow: {
+  heroSideActions: {
+    display: "grid",
+    gap: 10,
+    width: 84,
+    flexShrink: 0,
+  } as React.CSSProperties,
+
+  topAction: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    height: 64,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "#0d0d0d",
+    color: "#f2f2f2",
+    cursor: "pointer",
+  } as React.CSSProperties,
+
+  topActionIcon: {
+    fontSize: 16,
+    lineHeight: 1,
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  topActionLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.62)",
+    fontWeight: 600,
+  } as React.CSSProperties,
+
+  heroDivider: {
+    height: 1,
+    background: "rgba(255,255,255,0.06)",
+    margin: "18px 0 16px",
+  } as React.CSSProperties,
+
+  sentimentWrap: {
+    position: "relative",
+    zIndex: 1,
+  } as React.CSSProperties,
+
+  sentimentHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 12,
     marginBottom: 10,
   } as React.CSSProperties,
 
-  fearLabel: {
-    fontSize: 20,
-    color: "#f5cc00",
-    fontWeight: 500,
+  sentimentTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#f3f3f3",
   } as React.CSSProperties,
 
-  fearValue: {
-    fontSize: 18,
-    color: "rgba(255,255,255,0.68)",
-    fontWeight: 500,
+  sentimentSub: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.48)",
+    marginTop: 2,
+  } as React.CSSProperties,
+
+  sentimentBadgeDanger: {
+    minWidth: 54,
+    height: 34,
+    borderRadius: 999,
+    padding: "0 12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(255,95,95,0.10)",
+    border: "1px solid rgba(255,95,95,0.22)",
+    color: "#ff6a6a",
+    fontWeight: 700,
+    fontSize: 14,
   } as React.CSSProperties,
 
   fearTrack: {
     width: "100%",
-    height: 14,
+    height: 10,
     borderRadius: 999,
-    overflow: "hidden",
     background:
-      "linear-gradient(90deg, rgba(110,20,20,0.55) 0%, rgba(88,57,9,0.48) 38%, rgba(17,58,34,0.5) 100%)",
+      "linear-gradient(90deg, rgba(99,27,27,0.45) 0%, rgba(91,71,20,0.38) 46%, rgba(13,58,35,0.38) 100%)",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   fearFill: (percent: number): React.CSSProperties => ({
     width: `${percent}%`,
     height: "100%",
     borderRadius: 999,
-    background: "#ff4f4f",
+    background: "#ff5a5a",
+    boxShadow: "none",
   }),
 
-  profileRow: {
-    marginTop: 16,
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    alignItems: "center",
+  heroButtons: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 18,
   } as React.CSSProperties,
 
-  profileButton: {
-    height: 74,
-    padding: "0 34px",
+  primaryPill: {
+    flex: "1 1 180px",
+    height: 48,
     borderRadius: 999,
     border: "none",
     background: "#377cff",
     color: "#fff",
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: 700,
     cursor: "pointer",
+    boxShadow: "none",
   } as React.CSSProperties,
 
-  searchFilterRow: {
-    display: "flex",
-    gap: 14,
-    alignItems: "center",
-    marginBottom: 26,
-  } as React.CSSProperties,
-
-  searchBox: {
-    height: 72,
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.16)",
-    background: "#050505",
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    padding: "0 24px",
-    color: "#fff",
-    cursor: "pointer",
-  } as React.CSSProperties,
-
-  searchIcon: {
-    fontSize: 28,
-    lineHeight: 1,
-    opacity: 0.92,
-  } as React.CSSProperties,
-
-  searchPlaceholder: {
-    fontSize: 18,
-    color: "rgba(255,255,255,0.52)",
-    fontWeight: 500,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  } as React.CSSProperties,
-
-  filterButton: {
-    height: 60,
+  secondaryPill: {
+    flex: "0 0 auto",
+    height: 48,
     padding: "0 18px",
     borderRadius: 999,
-    border: "none",
-    background: "#111",
-    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "#101010",
+    color: "#f5f5f5",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+  } as React.CSSProperties,
+
+  grid: {
+    display: "grid",
+    gap: 12,
+  } as React.CSSProperties,
+
+  statCard: {
+    background: "#080808",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 24,
+    padding: 18,
+  } as React.CSSProperties,
+
+  cardLabel: {
+    fontSize: 12,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.30)",
+    fontWeight: 700,
+    marginBottom: 14,
+  } as React.CSSProperties,
+
+  statCardRow: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    fontSize: 18,
-    fontWeight: 700,
-    cursor: "pointer",
+    justifyContent: "space-between",
+    gap: 14,
+  } as React.CSSProperties,
+
+  statBigValue: {
+    fontSize: 36,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.05em",
+  } as React.CSSProperties,
+
+  statSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.58)",
+    fontWeight: 500,
+  } as React.CSSProperties,
+
+  miniProgress: {
+    width: 104,
+    height: 10,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+  } as React.CSSProperties,
+
+  miniProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  } as React.CSSProperties,
+
+  ringWrap: {
+    width: 74,
+    height: 74,
+    position: "relative",
     flexShrink: 0,
   } as React.CSSProperties,
 
-  newBadge: {
-    minWidth: 56,
-    height: 36,
-    borderRadius: 999,
-    background: "#f4d000",
-    color: "#111",
+  ring: (percent: number, color: string): React.CSSProperties => ({
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    background: `conic-gradient(${color} 0 ${percent}%, rgba(255,255,255,0.08) ${percent}% 100%)`,
+    WebkitMask: "radial-gradient(circle at center, transparent 56%, #000 57%)",
+    mask: "radial-gradient(circle at center, transparent 56%, #000 57%)",
+  }),
+
+  ringTextSmall: {
+    position: "absolute",
+    inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: 800,
-    padding: "0 12px",
+    color: "#f2f2f2",
   } as React.CSSProperties,
 
-  quickSection: {
-    marginBottom: 34,
+  wideCard: {
+    background: "#080808",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 24,
+    padding: 18,
+  } as React.CSSProperties,
+
+  wideCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  } as React.CSSProperties,
+
+  wideCardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+  } as React.CSSProperties,
+
+  tag: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 700,
+    color: "rgba(255,255,255,0.70)",
+    background: "#101010",
+    border: "1px solid rgba(255,255,255,0.08)",
+  } as React.CSSProperties,
+
+  aiBadge: {
+    minWidth: 38,
+    height: 38,
+    borderRadius: 12,
+    background: "rgba(55,124,255,0.10)",
+    border: "1px solid rgba(55,124,255,0.20)",
+    color: "#8eb2ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    fontWeight: 800,
+  } as React.CSSProperties,
+
+  splitBar: {
+    width: "100%",
+    height: 16,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+    display: "flex",
+  } as React.CSSProperties,
+
+  splitBarLong: {
+    width: "61.4%",
+    background: "#64d97b",
+  } as React.CSSProperties,
+
+  splitBarShort: {
+    width: "38.6%",
+    background: "#ff6a6a",
+  } as React.CSSProperties,
+
+  splitMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  twoCol: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  } as React.CSSProperties,
+
+  miniCard: {
+    background: "#080808",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 22,
+    padding: 18,
+    minHeight: 118,
+  } as React.CSSProperties,
+
+  miniCardValue: {
+    marginTop: 18,
+    fontSize: 24,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.04em",
+  } as React.CSSProperties,
+
+  bodyText: {
+    fontSize: 14,
+    lineHeight: 1.55,
+    color: "rgba(255,255,255,0.66)",
+  } as React.CSSProperties,
+
+  blockButton: {
+    width: "100%",
+    height: 48,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "#101010",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    marginTop: 16,
+  } as React.CSSProperties,
+
+  botGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  } as React.CSSProperties,
+
+  metricItem: {
+    background: "#0d0d0d",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 18,
+    padding: 14,
+  } as React.CSSProperties,
+
+  metricItemLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.44)",
+    marginBottom: 8,
+  } as React.CSSProperties,
+
+  metricItemValue: {
+    fontSize: 18,
+    fontWeight: 800,
+    lineHeight: 1.1,
+  } as React.CSSProperties,
+
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 999,
+    background: "rgba(100,217,123,0.10)",
+    border: "1px solid rgba(100,217,123,0.18)",
+    color: "#77de8c",
+    fontSize: 12,
+    fontWeight: 700,
+  } as React.CSSProperties,
+
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "#64d97b",
+  } as React.CSSProperties,
+
+  section: {
+    marginTop: 16,
+  } as React.CSSProperties,
+
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "rgba(255,255,255,0.56)",
+    margin: "0 2px 10px",
   } as React.CSSProperties,
 
   quickGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: 22,
-  } as React.CSSProperties,
-
-  quickItem: {
-    background: "transparent",
-    border: "none",
-    color: "#fff",
-    padding: 0,
-    cursor: "pointer",
-    textAlign: "center",
-  } as React.CSSProperties,
-
-  quickCircle: {
-    width: "100%",
-    aspectRatio: "1 / 1",
-    borderRadius: "50%",
-    border: "1px solid rgba(255,255,255,0.14)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 34,
-    fontWeight: 700,
-    marginBottom: 12,
-  } as React.CSSProperties,
-
-  quickTitle: {
-    fontSize: 16,
-    lineHeight: 1.2,
-    color: "rgba(255,255,255,0.9)",
-    fontWeight: 500,
-  } as React.CSSProperties,
-
-  coursesSection: {
-    marginBottom: 30,
-  } as React.CSSProperties,
-
-  sectionTopRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-    marginBottom: 18,
   } as React.CSSProperties,
 
-  sectionTitle: {
-    fontSize: 28,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-  } as React.CSSProperties,
-
-  outlinePill: {
-    height: 54,
-    padding: "0 24px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "#000",
+  quickCard: {
+    textAlign: "left",
+    minHeight: 102,
+    borderRadius: 22,
+    padding: 16,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "#080808",
     color: "#fff",
-    fontSize: 18,
-    fontWeight: 700,
     cursor: "pointer",
   } as React.CSSProperties,
 
-  courseCard: {
-    overflow: "hidden",
-    borderRadius: 30,
-    background: "#050505",
-    border: "1px solid rgba(255,255,255,0.06)",
-  } as React.CSSProperties,
-
-  courseArt: {
-    position: "relative",
-    height: 290,
-    background:
-      "radial-gradient(circle at 60% 38%, rgba(0,183,255,0.18) 0%, rgba(0,0,0,0) 34%), #020202",
-    overflow: "hidden",
-  } as React.CSSProperties,
-
-  courseGlowA: {
-    position: "absolute",
-    left: 40,
-    top: 130,
-    width: 180,
-    height: 90,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(0,255,163,0.18), rgba(0,0,0,0))",
-    filter: "blur(18px)",
-  } as React.CSSProperties,
-
-  courseGlowB: {
-    position: "absolute",
-    right: 70,
-    top: 70,
-    width: 140,
-    height: 140,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(0,170,255,0.22), rgba(0,0,0,0))",
-    filter: "blur(10px)",
-  } as React.CSSProperties,
-
-  rocket: {
-    position: "absolute",
-    left: "50%",
-    top: "52%",
-    transform: "translate(-50%, -50%) rotate(-18deg)",
-    fontSize: 110,
-    filter: "drop-shadow(0 0 22px rgba(0,170,255,0.28))",
-  } as React.CSSProperties,
-
-  coinA: {
-    position: "absolute",
-    left: 54,
-    bottom: 46,
-    fontSize: 74,
-    color: "#25d0ff",
-    opacity: 0.55,
-  } as React.CSSProperties,
-
-  coinB: {
-    position: "absolute",
-    right: 58,
-    top: 54,
-    fontSize: 58,
-    color: "#18b7ff",
-    opacity: 0.72,
-  } as React.CSSProperties,
-
-  lineA: {
-    position: "absolute",
-    left: 24,
-    bottom: 70,
-    width: 180,
-    height: 2,
-    background:
-      "linear-gradient(90deg, rgba(40,255,175,0), rgba(40,255,175,0.9), rgba(40,255,175,0))",
-    transform: "rotate(-10deg)",
-  } as React.CSSProperties,
-
-  lineB: {
-    position: "absolute",
-    right: 10,
-    bottom: 96,
-    width: 140,
-    height: 2,
-    background:
-      "linear-gradient(90deg, rgba(0,194,255,0), rgba(0,194,255,0.9), rgba(0,194,255,0))",
-    transform: "rotate(14deg)",
-  } as React.CSSProperties,
-
-  courseBottom: {
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: 16,
-    padding: "0 0 0 0",
-  } as React.CSSProperties,
-
-  courseTitle: {
-    fontSize: 24,
+  quickCardTitle: {
+    fontSize: 16,
     fontWeight: 800,
-    margin: "0 0 8px 0",
-    padding: "0 18px",
+    marginBottom: 6,
   } as React.CSSProperties,
 
-  courseSub: {
-    fontSize: 17,
-    color: "rgba(255,255,255,0.62)",
-    padding: "0 18px 18px",
+  quickCardSub: {
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: "rgba(255,255,255,0.50)",
   } as React.CSSProperties,
 
-  openButton: {
-    marginRight: 18,
-    marginBottom: 16,
-    height: 58,
-    padding: "0 28px",
-    borderRadius: 999,
-    border: "none",
-    background: "#377cff",
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: 700,
-    cursor: "pointer",
-    flexShrink: 0,
-  } as React.CSSProperties,
-
-  debugSection: {
-    marginTop: 10,
-    paddingTop: 18,
-    borderTop: "1px solid rgba(255,255,255,0.08)",
+  debugCard: {
+    marginTop: 18,
+    background: "#070707",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 22,
+    padding: 16,
   } as React.CSSProperties,
 
   debugHeader: {
     display: "flex",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 12,
     marginBottom: 14,
   } as React.CSSProperties,
 
   debugTitle: {
-    fontSize: 18,
-    fontWeight: 700,
+    fontSize: 16,
+    fontWeight: 800,
   } as React.CSSProperties,
 
   debugSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.42)",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.44)",
     marginTop: 4,
   } as React.CSSProperties,
 
-  debugBtn: (disabled: boolean): React.CSSProperties => ({
-    height: 42,
-    padding: "0 16px",
+  debugAction: (disabled: boolean): React.CSSProperties => ({
+    height: 40,
+    padding: "0 14px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.18)",
+    border: "1px solid rgba(255,255,255,0.12)",
     background: "#fff",
     color: "#000",
+    fontSize: 13,
     fontWeight: 800,
-    fontSize: 14,
     cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.85 : 1,
+    opacity: disabled ? 0.8 : 1,
+    flexShrink: 0,
   }),
 
-  debugInfo: {
+  debugMeta: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
     marginBottom: 12,
   } as React.CSSProperties,
 
-  debugLabel: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.44)",
+  debugMetaLabel: {
+    display: "block",
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "rgba(255,255,255,0.36)",
     marginBottom: 6,
   } as React.CSSProperties,
 
-  debugValue: {
+  debugMetaValue: {
     fontSize: 13,
-    color: "rgba(255,255,255,0.86)",
+    color: "rgba(255,255,255,0.82)",
+    fontWeight: 600,
     wordBreak: "break-word",
   } as React.CSSProperties,
 
   debugBox: {
     whiteSpace: "pre-wrap",
-    background: "#0b0b0b",
+    background: "#0c0c0c",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 12,
-    minHeight: 110,
+    minHeight: 120,
     fontSize: 12,
     lineHeight: 1.45,
     overflowX: "auto",
-    color: "rgba(255,255,255,0.76)",
+    color: "rgba(255,255,255,0.72)",
   } as React.CSSProperties,
 };
