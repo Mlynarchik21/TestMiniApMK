@@ -4,14 +4,14 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const UI = {
-  border: "rgba(255,255,255,0.12)",
-  borderSoft: "rgba(255,255,255,0.09)",
-  borderHard: "rgba(255,255,255,0.16)",
+  border: "rgba(255,255,255,0.14)",
+  borderSoft: "rgba(255,255,255,0.10)",
+  borderHard: "rgba(255,255,255,0.18)",
   text: "#f3f3f3",
-  textMain: "rgba(255,255,255,0.96)",
-  textSoft: "rgba(255,255,255,0.78)",
-  textMuted: "rgba(255,255,255,0.60)",
-  textFaint: "rgba(255,255,255,0.42)",
+  textMain: "rgba(255,255,255,0.98)",
+  textSoft: "rgba(255,255,255,0.82)",
+  textMuted: "rgba(255,255,255,0.66)",
+  textFaint: "rgba(255,255,255,0.46)",
   green: "#64d97b",
   red: "#ff6a6a",
   orange: "#f0a33e",
@@ -46,6 +46,11 @@ export default function HomePage() {
           <div style={styles.deltaRow}>
             <span style={styles.deltaLabel}>Изменение за день</span>
             <span style={styles.deltaNegative}>-0.76%</span>
+          </div>
+
+          <div style={styles.pulseRow}>
+            <span style={styles.pulseLabel}>Market pulse</span>
+            <span style={styles.pulseValue}>Weak recovery</span>
           </div>
 
           <div style={styles.heroDivider} />
@@ -83,40 +88,18 @@ export default function HomePage() {
             <span style={styles.outlineBadge}>Now</span>
           </div>
 
-          <div style={styles.regimeCard}>
-            <div style={styles.regimeTop}>
-              <div>
-                <div style={styles.regimeStatus}>BTC leads market</div>
-                <div style={styles.regimeSub}>
-                  Капитал концентрируется в крупных активах. По альтам структура остаётся избирательной.
-                </div>
-              </div>
+          <div style={styles.regimeSummary}>BTC leads • Neutral • Medium risk</div>
 
-              <div style={styles.regimePill}>Neutral / Risk-off</div>
-            </div>
+          <div style={styles.regimeSub}>
+            Капитал концентрируется в крупных активах. Альты выглядят слабее и требуют
+            избирательного подхода.
+          </div>
 
-            <div style={styles.compactGrid}>
-              <InfoTile
-                title="Trend"
-                value="Neutral Bullish"
-                sub="Короткий горизонт"
-              />
-              <InfoTile
-                title="Risk level"
-                value="Medium"
-                sub="Альты слабее BTC"
-              />
-              <InfoTile
-                title="Leadership"
-                value="BTC / ETH"
-                sub="Фокус капитала"
-              />
-              <InfoTile
-                title="Momentum"
-                value="Selective"
-                sub="Не весь рынок"
-              />
-            </div>
+          <div style={styles.compactGrid}>
+            <InfoTile title="Trend" value="Neutral Bullish" sub="Короткий горизонт" />
+            <InfoTile title="Leadership" value="BTC / ETH" sub="Фокус капитала" />
+            <InfoTile title="Momentum" value="Selective" sub="Не весь рынок" />
+            <InfoTile title="Risk" value="Medium" sub="Альты слабее BTC" />
           </div>
         </section>
 
@@ -128,14 +111,15 @@ export default function HomePage() {
           </div>
 
           <div style={styles.compactGrid}>
-            <InfoTile title="Funding" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
-            <InfoTile title="OI 24h" value="+4.8%" sub="Рост интереса" valueColor={UI.blue} />
-            <InfoTile title="Long / Short" value="61 / 39" sub="Лонги выше" />
-            <InfoTile title="Spot vs Perp" value="68 / 32" sub="Spot-led" valueColor={UI.green} />
+            <InfoTile title="Funding ↑" value="+0.012%" sub="Нейтрально" valueColor={UI.green} />
+            <InfoTile title="OI 24h" value="+4.8%" sub="Интерес растёт" valueColor={UI.blue} />
+            <InfoTile title="Long bias" value="61 / 39" sub="Лонги выше" />
+            <InfoTile title="Spot &gt; Perp" value="68 / 32" sub="Движение подтверждено" valueColor={UI.green} />
           </div>
 
           <div style={styles.noteBox}>
-            Движение выглядит более подтверждённым спотом, чем перегретыми фьючерсами.
+            Пока funding не перегрет, а рост OI поддержан спотом, локальный апсайд остаётся
+            здоровым.
           </div>
         </section>
 
@@ -148,7 +132,7 @@ export default function HomePage() {
 
           <div style={styles.subBlock}>
             <div style={styles.subBlockTitleRow}>
-              <div style={styles.subBlockTitle}>Spot vs Perp pressure</div>
+              <div style={styles.subBlockTitle}>Spot &gt; Perp</div>
               <span style={styles.outlineBadge}>Spot-led</span>
             </div>
 
@@ -173,7 +157,7 @@ export default function HomePage() {
 
           <div style={styles.subBlock}>
             <div style={styles.subBlockTitleRow}>
-              <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
+              <div style={styles.subBlockTitle}>Long bias</div>
               <span style={styles.outlineBadge}>Live</span>
             </div>
 
@@ -189,7 +173,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* KEY LEVELS */}
+        {/* BTC LEVELS */}
         <section style={styles.block}>
           <div style={styles.sectionHead}>
             <div style={styles.sectionMainTitle}>BTC key levels</div>
@@ -200,25 +184,26 @@ export default function HomePage() {
             <LevelItem
               label="Resistance"
               value="69 200"
-              sub="Зона продавца"
+              sub="Sell zone"
               color={UI.red}
             />
             <LevelItem
               label="Pivot"
               value="67 850"
-              sub="Ключевая середина"
+              sub="Decision"
               color={UI.orange}
             />
             <LevelItem
               label="Support"
               value="66 400"
-              sub="Удержание тренда"
+              sub="Hold = bullish"
               color={UI.green}
             />
           </div>
 
           <div style={styles.noteBox}>
-            Пока BTC выше поддержки, сценарий локальной аккумуляции остаётся в силе.
+            Пока BTC выше 66 400, базовый сценарий остаётся конструктивным. Потеря этой зоны ослабит
+            бычий контекст.
           </div>
         </section>
 
@@ -229,10 +214,23 @@ export default function HomePage() {
             <span style={styles.outlineBadgeBlue}>AI</span>
           </div>
 
+          <div style={styles.aiList}>
+            <div style={styles.aiRow}>
+              <span style={styles.aiKey}>Bias</span>
+              <span style={styles.aiVal}>BTC priority</span>
+            </div>
+            <div style={styles.aiRow}>
+              <span style={styles.aiKey}>Action</span>
+              <span style={styles.aiVal}>Wait for pullbacks</span>
+            </div>
+            <div style={styles.aiRow}>
+              <span style={styles.aiKey}>Risk</span>
+              <span style={styles.aiVal}>Weak alts</span>
+            </div>
+          </div>
+
           <div style={styles.bodyText}>
-            Рынок находится в фазе осторожного восстановления внутри режима страха. Приоритет — BTC,
-            ETH и сильные альты с подтверждённым спросом. Входы по слабым альтам лучше ограничивать
-            или сокращать по риску.
+            Лучшие входы сейчас в сильные активы после локальных откатов, а не в догонку импульса.
           </div>
 
           <button
@@ -435,80 +433,30 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
+  pulseRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    flexWrap: "wrap",
+  } as React.CSSProperties,
+
+  pulseLabel: {
+    fontSize: 12,
+    color: UI.textFaint,
+    fontWeight: 600,
+  } as React.CSSProperties,
+
+  pulseValue: {
+    fontSize: 12,
+    color: UI.textMain,
+    fontWeight: 700,
+  } as React.CSSProperties,
+
   heroDivider: {
     height: 1,
     background: UI.borderSoft,
     margin: "16px 0 16px",
-  } as React.CSSProperties,
-
-  sentimentHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 8,
-  } as React.CSSProperties,
-
-  sentimentTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: UI.textMain,
-  } as React.CSSProperties,
-
-  sentimentSub: {
-    fontSize: 11,
-    color: UI.textFaint,
-    marginTop: 2,
-  } as React.CSSProperties,
-
-  sentimentBadgeDanger: {
-    minWidth: 52,
-    height: 32,
-    borderRadius: 999,
-    padding: "0 12px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "transparent",
-    border: `1px solid ${UI.borderHard}`,
-    color: UI.red,
-    fontWeight: 700,
-    fontSize: 13,
-  } as React.CSSProperties,
-
-  fearTrack: {
-    width: "100%",
-    height: 9,
-    borderRadius: 999,
-    background:
-      "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
-    overflow: "hidden",
-  } as React.CSSProperties,
-
-  fearFill: (percent: number): React.CSSProperties => ({
-    width: `${percent}%`,
-    height: "100%",
-    borderRadius: 999,
-    background: UI.red,
-  }),
-
-  heroButtons: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    marginTop: 16,
-  } as React.CSSProperties,
-
-  primaryPill: {
-    flex: "1 1 180px",
-    height: 46,
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
   } as React.CSSProperties,
 
   heroOverviewGrid: {
@@ -544,6 +492,25 @@ const styles = {
     fontSize: 11,
     color: UI.textMuted,
     marginTop: 6,
+  } as React.CSSProperties,
+
+  heroButtons: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 16,
+  } as React.CSSProperties,
+
+  primaryPill: {
+    flex: "1 1 180px",
+    height: 46,
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
   } as React.CSSProperties,
 
   block: {
@@ -585,41 +552,20 @@ const styles = {
     fontWeight: 700,
   } as React.CSSProperties,
 
-  regimeCard: {
-    display: "grid",
-    gap: 12,
-  } as React.CSSProperties,
-
-  regimeTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  } as React.CSSProperties,
-
-  regimeStatus: {
+  regimeSummary: {
     fontSize: 18,
     fontWeight: 800,
     color: UI.textMain,
-    lineHeight: 1.1,
-    marginBottom: 6,
+    lineHeight: 1.15,
+    marginBottom: 8,
   } as React.CSSProperties,
 
   regimeSub: {
     fontSize: 12,
     lineHeight: 1.55,
     color: UI.textSoft,
-    maxWidth: 420,
-  } as React.CSSProperties,
-
-  regimePill: {
-    flexShrink: 0,
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    color: UI.textSoft,
-    fontSize: 11,
-    fontWeight: 700,
+    marginBottom: 12,
+    maxWidth: 460,
   } as React.CSSProperties,
 
   compactGrid: {
@@ -798,6 +744,33 @@ const styles = {
     fontSize: 12,
     lineHeight: 1.55,
     color: UI.textSoft,
+  } as React.CSSProperties,
+
+  aiList: {
+    display: "grid",
+    gap: 8,
+    marginBottom: 12,
+  } as React.CSSProperties,
+
+  aiRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    borderBottom: `1px solid ${UI.borderSoft}`,
+    paddingBottom: 8,
+  } as React.CSSProperties,
+
+  aiKey: {
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } as React.CSSProperties,
+
+  aiVal: {
+    fontSize: 12,
+    color: UI.textMain,
+    fontWeight: 700,
   } as React.CSSProperties,
 
   bodyText: {
