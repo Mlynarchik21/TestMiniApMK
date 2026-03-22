@@ -229,7 +229,9 @@ function hasWord(label: string | null | undefined, word: string) {
   return new RegExp(word, "i").test(label || "");
 }
 
-function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label"> | null | undefined) {
+function isBybitDemoKey(
+  key: Pick<KeyRow, "exchange" | "label"> | null | undefined
+) {
   if (!key) return false;
   return key.exchange === "BYBIT" && hasWord(key.label, "demo");
 }
@@ -238,7 +240,11 @@ function balanceSum(rows: BalanceRow[]) {
   return rows.reduce((sum, row) => {
     const free = Number(row.free || 0);
     const locked = Number(row.locked || 0);
-    return sum + (Number.isFinite(free) ? free : 0) + (Number.isFinite(locked) ? locked : 0);
+    return (
+      sum +
+      (Number.isFinite(free) ? free : 0) +
+      (Number.isFinite(locked) ? locked : 0)
+    );
   }, 0);
 }
 
@@ -274,6 +280,7 @@ export default function BotPage() {
   const [mounted, setMounted] = useState(false);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
+  const [showPnlInfo, setShowPnlInfo] = useState(false);
 
   const [pagePaddingTop, setPagePaddingTop] = useState(
     "calc(env(safe-area-inset-top, 0px) + 15px)"
@@ -432,7 +439,9 @@ export default function BotPage() {
         setErr(humanizeError(botRes.json));
       }
 
-      const loadedKeys = keysRes.json.ok ? (((keysRes.json as any).keys ?? []) as KeyRow[]) : [];
+      const loadedKeys = keysRes.json.ok
+        ? (((keysRes.json as any).keys ?? []) as KeyRow[])
+        : [];
       const loadedConfig = botRes.json.ok ? (botRes.json as any).config ?? null : null;
       const loadedKeyId = loadedConfig?.keyId ?? "";
 
@@ -640,12 +649,9 @@ export default function BotPage() {
   const raw = (balanceData as any)?.raw ?? {};
   const balances = (((balanceData as any)?.balances ?? []) as BalanceRow[]) || [];
   const isBybit = activeKey?.exchange === "BYBIT";
-  const bybitDemo = isBybitDemoKey(activeKey);
-
   const totalEquity = Number(raw.totalEquity ?? raw.totalWalletBalance ?? 0);
   const totalWalletBalance = Number(raw.totalWalletBalance ?? raw.totalEquity ?? 0);
   const totalAvailableBalance = Number(raw.totalAvailableBalance ?? 0);
-
   const spotAssetSum = balanceSum(balances);
 
   const exchangeBalance = isBybit
@@ -874,6 +880,14 @@ export default function BotPage() {
                     netPnlValue >= 0 ? UI.green : UI.red
                   )}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPnlInfo(true)}
+                  style={styles.infoBtn}
+                  aria-label="Что значит PnL %"
+                >
+                  i
+                </button>
                 <div style={styles.ringCenterLabel}>
                   <div style={styles.ringCenterValueLarge}>
                     {Math.round(netPnlCirclePercent)}%
@@ -911,7 +925,12 @@ export default function BotPage() {
                 <div style={styles.statsUnifiedMini}>
                   <span style={styles.statsUnifiedLabel}>max balance</span>
                   <span style={{ ...styles.statsUnifiedValue, color: UI.purple }}>
-                    {formatUsd(stats?.maxBalanceSeen ?? 0)}
+                    {formatUsd(
+                      stats?.maxBalanceSeen ??
+                        stats?.maxBalance ??
+                        stats?.equityPeak ??
+                        0
+                    )}
                   </span>
                 </div>
               </div>
@@ -986,46 +1005,36 @@ export default function BotPage() {
                 </div>
               </div>
 
-              <div style={styles.extremeStrip}>
-                <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Экстремумы</div>
-                  <div style={styles.extremeValuesCol}>
-                    <span style={{ color: UI.green }}>
-                      max profit {formatUsd(stats?.bestTradePnl ?? 0)}
-                    </span>
-                    <span style={{ color: UI.red }}>
-                      max loss {formatUsd(Math.abs(Number(stats?.worstTradePnl ?? 0)))}
-                    </span>
+              <div style={styles.unifiedDeepBlock}>
+                <div style={styles.unifiedDeepRow}>
+                  <div>
+                    <div style={styles.extremeTitle}>Время сделки</div>
+                    <div style={styles.extremeValuesCol}>
+                      <span style={{ color: UI.blue }}>
+                        min {formatDuration(Number(stats?.minDurationMs ?? 0))}
+                      </span>
+                      <span style={{ color: UI.blue }}>
+                        avg {formatDuration(Number(stats?.avgDurationMs ?? 0))}
+                      </span>
+                      <span style={{ color: UI.blue }}>
+                        max {formatDuration(Number(stats?.maxDurationMs ?? 0))}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Время сделки</div>
-                  <div style={styles.extremeValuesCol}>
-                    <span style={{ color: UI.blue }}>
-                      min {formatDuration(Number(stats?.minDurationMs ?? 0))}
-                    </span>
-                    <span style={{ color: UI.blue }}>
-                      avg {formatDuration(Number(stats?.avgDurationMs ?? 0))}
-                    </span>
-                    <span style={{ color: UI.blue }}>
-                      max {formatDuration(Number(stats?.maxDurationMs ?? 0))}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Дополнительно</div>
-                  <div style={styles.extremeValuesCol}>
-                    <span style={{ color: UI.textSoft }}>
-                      Плюсовых: {Number(stats?.profitableTrades ?? 0)}
-                    </span>
-                    <span style={{ color: UI.textSoft }}>
-                      Минусовых: {Number(stats?.losingTrades ?? 0)}
-                    </span>
-                    <span style={{ color: UI.textSoft }}>
-                      Avg PnL: {formatUsd(stats?.avgTradePnl ?? 0)}
-                    </span>
+                  <div>
+                    <div style={styles.extremeTitle}>Дополнительно</div>
+                    <div style={styles.extremeValuesCol}>
+                      <span style={{ color: UI.textSoft }}>
+                        Плюсовых: {Number(stats?.profitableTrades ?? 0)}
+                      </span>
+                      <span style={{ color: UI.textSoft }}>
+                        Минусовых: {Number(stats?.losingTrades ?? 0)}
+                      </span>
+                      <span style={{ color: UI.textSoft }}>
+                        Avg PnL: {formatUsd(stats?.avgTradePnl ?? 0)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1054,7 +1063,6 @@ export default function BotPage() {
                 </div>
 
                 <div style={styles.accountSubMeta}>
-                  <span>{isBybit ? (bybitDemo ? "BYBIT DEMO" : "BYBIT") : activeKey?.exchange || "—"}</span>
                   <span>available {formatUsd(totalAvailableBalance)}</span>
                 </div>
               </div>
@@ -1173,6 +1181,10 @@ export default function BotPage() {
           </section>
 
           <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
+            </div>
+
             <div style={styles.formGrid}>
               <Field label="Биржа">
                 <select
@@ -1272,6 +1284,31 @@ export default function BotPage() {
           ) : null}
         </div>
       </main>
+
+      {showPnlInfo ? (
+        <div style={styles.modalOverlay} onClick={() => setShowPnlInfo(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalTitle}>Что означает PnL %</div>
+            <div style={styles.modalText}>
+              Это относительная эффективность стратегии.
+              <br />
+              <br />
+              Показывает долю чистой прибыли относительно общего оборота
+              прибыли и убытков.
+              <br />
+              <br />
+              Чем выше это значение, тем лучше соотношение результата к риску.
+            </div>
+            <button
+              type="button"
+              style={styles.modalBtn}
+              onClick={() => setShowPnlInfo(false)}
+            >
+              Понял
+            </button>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -1761,18 +1798,6 @@ const styles = {
     textAlign: "right",
   } satisfies CSSProperties,
 
-  extremeStrip: {
-    display: "grid",
-    gap: 10,
-  } satisfies CSSProperties,
-
-  extremeStripCard: {
-    border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 12,
-    background: "rgba(255,255,255,0.02)",
-  } satisfies CSSProperties,
-
   extremeTitle: {
     fontSize: 11,
     textTransform: "uppercase",
@@ -1787,6 +1812,19 @@ const styles = {
     gap: 6,
     fontSize: 13,
     fontWeight: 800,
+  } satisfies CSSProperties,
+
+  unifiedDeepBlock: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 18,
+    padding: 14,
+    background: "rgba(255,255,255,0.025)",
+  } satisfies CSSProperties,
+
+  unifiedDeepRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 14,
   } satisfies CSSProperties,
 
   inlineActionGhost: {
@@ -2020,5 +2058,66 @@ const styles = {
     padding: 14,
     fontSize: 13,
     color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  infoBtn: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.2)",
+    background: "rgba(0,0,0,0.6)",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+    zIndex: 2,
+  } satisfies CSSProperties,
+
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+    padding: 16,
+  } satisfies CSSProperties,
+
+  modalCard: {
+    width: "100%",
+    maxWidth: 320,
+    background: "#0c0c0c",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 18,
+    padding: 16,
+  } satisfies CSSProperties,
+
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    marginBottom: 10,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  modalText: {
+    fontSize: 12,
+    color: UI.textMuted,
+    lineHeight: 1.6,
+  } satisfies CSSProperties,
+
+  modalBtn: {
+    marginTop: 14,
+    width: "100%",
+    height: 40,
+    borderRadius: 12,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontWeight: 700,
+    cursor: "pointer",
   } satisfies CSSProperties,
 };
