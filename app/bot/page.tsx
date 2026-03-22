@@ -14,6 +14,8 @@ type KeyRow = {
   label: string | null;
 };
 
+type StatsRangePreset = "1D" | "1W" | "1M" | "CUSTOM";
+
 function getToken() {
   try {
     return localStorage.getItem("sessionToken") || "";
@@ -58,10 +60,44 @@ function humanizeError(r: AnyResp): string {
   return `${code}${msg}`;
 }
 
+const UI = {
+  border: "rgba(255,255,255,0.12)",
+  borderSoft: "rgba(255,255,255,0.09)",
+  borderHard: "rgba(255,255,255,0.16)",
+  text: "#f3f3f3",
+  textMain: "rgba(255,255,255,0.96)",
+  textSoft: "rgba(255,255,255,0.78)",
+  textMuted: "rgba(255,255,255,0.60)",
+  textFaint: "rgba(255,255,255,0.42)",
+  green: "#64d97b",
+  red: "#ff6a6a",
+  blue: "#8eb2ff",
+  brand: "#2979ff",
+  yellow: "#f3d709",
+  purple: "#9b8cff",
+};
+
+function reveal(index: number, mounted: boolean): CSSProperties {
+  return mounted
+    ? {
+        opacity: 1,
+        animationName: "fadeUp",
+        animationDuration: "560ms",
+        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+        animationFillMode: "both",
+        animationDelay: `${index * 60}ms`,
+        willChange: "transform, opacity",
+      }
+    : {
+        opacity: 0,
+        transform: "translate3d(0, 14px, 0)",
+      };
+}
+
 function formatNum(v: unknown, digits = 2) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString(undefined, {
+  return n.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });
@@ -70,7 +106,7 @@ function formatNum(v: unknown, digits = 2) {
 function formatUsd(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0";
-  return `$${n.toLocaleString(undefined, {
+  return `$${n.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
@@ -79,7 +115,7 @@ function formatUsd(v: unknown) {
 function formatPct(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0%";
-  return `${n.toLocaleString(undefined, {
+  return `${n.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}%`;
@@ -105,67 +141,163 @@ function formatDateTime(value: unknown) {
   });
 }
 
-function reveal(index: number, mounted: boolean): CSSProperties {
-  return mounted
-    ? {
-        opacity: 1,
-        animationName: "fadeUp",
-        animationDuration: "560ms",
-        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
-        animationFillMode: "both",
-        animationDelay: `${index * 60}ms`,
-        willChange: "transform, opacity",
-      }
-    : {
-        opacity: 0,
-        transform: "translate3d(0, 14px, 0)",
-      };
+function formatTime(value: unknown) {
+  if (!value) return "—";
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-const UI = {
-  border: "rgba(255,255,255,0.12)",
-  borderSoft: "rgba(255,255,255,0.09)",
-  borderHard: "rgba(255,255,255,0.16)",
-  text: "#f3f3f3",
-  textMain: "rgba(255,255,255,0.96)",
-  textSoft: "rgba(255,255,255,0.78)",
-  textMuted: "rgba(255,255,255,0.60)",
-  textFaint: "rgba(255,255,255,0.42)",
-  green: "#64d97b",
-  red: "#ff6a6a",
-  blue: "#8eb2ff",
-  brand: "#2979ff",
-  yellow: "#f3d709",
-  purple: "#9b8cff",
-};
+function safeDate(value: unknown) {
+  if (!value) return null;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
 
-function BellIcon() {
+function getGmtPlus3DayKey(dateLike: unknown) {
+  const d = safeDate(dateLike);
+  if (!d) return "";
+  const shifted = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function isTodayGmtPlus3(dateLike: unknown) {
+  const current = getGmtPlus3DayKey(new Date().toISOString());
+  return getGmtPlus3DayKey(dateLike) === current;
+}
+
+function getRangeDates(
+  preset: StatsRangePreset,
+  customFrom: string,
+  customTo: string
+) {
+  const now = new Date();
+
+  if (preset === "CUSTOM") {
+    const from = customFrom ? new Date(`${customFrom}T00:00:00`) : null;
+    const to = customTo ? new Date(`${customTo}T23:59:59.999`) : null;
+    return { from, to };
+  }
+
+  const to = now;
+  const from = new Date(now);
+
+  if (preset === "1D") {
+    from.setDate(now.getDate() - 1);
+  } else if (preset === "1W") {
+    from.setDate(now.getDate() - 7);
+  } else {
+    from.setMonth(now.getMonth() - 1);
+  }
+
+  return { from, to };
+}
+
+function inRange(dateLike: unknown, from: Date | null, to: Date | null) {
+  const d = safeDate(dateLike);
+  if (!d) return false;
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+function getCloseReasonLabel(reason: unknown) {
+  const value = String(reason || "").toUpperCase();
+
+  if (!value) return "—";
+  if (value === "MANUAL") return "Ручное закрытие";
+  if (value === "TP") return "По таргету";
+  if (value === "TARGET") return "По таргету";
+  if (value === "STRATEGY") return "По стратегии";
+
+  return String(reason);
+}
+
+function getPositionDisplayTime(p: any) {
+  const openedAt = p?.openedAt;
+  const updatedAt = p?.updatedAt;
+  const addsCount = Number(p?.addsCount ?? 0);
+
+  if (addsCount > 0 && updatedAt) {
+    return {
+      label: "Изменена",
+      value: formatTime(updatedAt),
+      openedAt: formatTime(openedAt),
+      updatedAt: formatTime(updatedAt),
+    };
+  }
+
+  return {
+    label: "Открыта",
+    value: formatTime(openedAt),
+    openedAt: formatTime(openedAt),
+    updatedAt: updatedAt ? formatTime(updatedAt) : "—",
+  };
+}
+
+function sumCapitalInWork(rows: any[]) {
+  return rows.reduce((sum, p) => {
+    const v = Number(p?.investedQuote ?? 0);
+    return sum + (Number.isFinite(v) ? v : 0);
+  }, 0);
+}
+
+function countOpenedToday(rows: any[]) {
+  return rows.filter((p) => isTodayGmtPlus3(p?.openedAt)).length;
+}
+
+function deriveStatsFromTrades(trades: any[]) {
+  const closedTrades = trades.length;
+  const pnlList = trades.map((t) => Number(t?.pnl ?? 0)).filter(Number.isFinite);
+  const wins = pnlList.filter((n) => n > 0);
+  const losses = pnlList.filter((n) => n < 0);
+
+  const totalPnl = pnlList.reduce((a, b) => a + b, 0);
+  const winRate = closedTrades ? (wins.length / closedTrades) * 100 : 0;
+  const avgTradePnl = closedTrades ? totalPnl / closedTrades : 0;
+  const bestTradePnl = pnlList.length ? Math.max(...pnlList) : 0;
+  const worstTradePnl = pnlList.length ? Math.min(...pnlList) : 0;
+  const grossProfit = wins.reduce((a, b) => a + b, 0);
+  const grossLossAbs = Math.abs(losses.reduce((a, b) => a + b, 0));
+  const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
+  const avgWin = wins.length ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length ? Math.abs(losses.reduce((a, b) => a + b, 0)) / losses.length : 0;
+
+  let totalVolume = 0;
+  for (const t of trades) {
+    const entryValue = Number(t?.entryValue ?? 0);
+    const exitValue = Number(t?.exitValue ?? 0);
+    if (Number.isFinite(entryValue)) totalVolume += entryValue;
+    if (Number.isFinite(exitValue)) totalVolume += exitValue;
+  }
+
+  return {
+    closedTrades,
+    totalPnl,
+    winRate,
+    avgTradePnl,
+    bestTradePnl,
+    worstTradePnl,
+    grossProfit,
+    grossLossAbs,
+    profitFactor,
+    avgWin,
+    avgLoss,
+    totalVolume,
+    wins: wins.length,
+    losses: losses.length,
+  };
+}
+
+function BotIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
       <path
-        d="M12 4a4 4 0 0 0-4 4v2.1c0 .7-.2 1.4-.6 2L6 14.5c-.4.7.1 1.5.9 1.5h10.2c.8 0 1.3-.8.9-1.5l-1.4-2.4c-.4-.6-.6-1.3-.6-2V8a4 4 0 0 0-4-4Zm0 16a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 20Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function HomeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M12 4.2 4.5 10v8.1c0 .8.6 1.4 1.4 1.4h4.2v-5.1c0-.8.6-1.4 1.4-1.4h1c.8 0 1.4.6 1.4 1.4v5.1H18a1.4 1.4 0 0 0 1.4-1.4V10L12 4.2Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function HistoryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M12 5a7 7 0 1 1-6.7 9h2.1A5 5 0 1 0 12 7c-1.4 0-2.7.6-3.6 1.5L10 10H4V4l2.9 2.9A7 7 0 0 1 12 5Zm-.8 3.5h1.6V12l2.7 1.6-.8 1.3-3.5-2.1V8.5Z"
+        d="M9 2h6v2h2.5A2.5 2.5 0 0 1 20 6.5v9A3.5 3.5 0 0 1 16.5 19h-9A3.5 3.5 0 0 1 4 15.5v-9A2.5 2.5 0 0 1 6.5 4H9V2Zm-1 7a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 8 9Zm8 0a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 16 9Zm-8.5 5h9a2.5 2.5 0 0 1-9 0Z"
         fill="currentColor"
       />
     </svg>
@@ -200,7 +332,13 @@ export default function BotPage() {
   const [budgetPerSymbol, setBudgetPerSymbol] = useState("50");
   const [maxTotalBudget, setMaxTotalBudget] = useState("");
   const [syncIntervalMin, setSyncIntervalMin] = useState("5");
-  const [testSymbol, setTestSymbol] = useState("BTCUSDT");
+
+  const [statsPreset, setStatsPreset] = useState<StatsRangePreset>("1W");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const [expandedOpenId, setExpandedOpenId] = useState<string | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const filteredKeys = useMemo(
     () => keys.filter((k) => k.exchange === exchange),
@@ -238,9 +376,7 @@ export default function BotPage() {
       setKeyId(c.keyId ?? "");
       setMaxActiveSymbols(String(c.maxActiveSymbols ?? 10));
       setBudgetPerSymbol(String(c.budgetPerSymbol ?? "50"));
-      setMaxTotalBudget(
-        c.maxTotalBudget != null ? String(c.maxTotalBudget) : ""
-      );
+      setMaxTotalBudget(c.maxTotalBudget != null ? String(c.maxTotalBudget) : "");
       setSyncIntervalMin(String(c.syncIntervalMin ?? 5));
     }
 
@@ -304,9 +440,7 @@ export default function BotPage() {
         syncIntervalMin: Number(syncIntervalMin),
       };
 
-      body.maxTotalBudget = maxTotalBudget.trim()
-        ? maxTotalBudget.trim()
-        : null;
+      body.maxTotalBudget = maxTotalBudget.trim() ? maxTotalBudget.trim() : null;
 
       const r = await api("/api/bot", {
         method: "PATCH",
@@ -319,130 +453,6 @@ export default function BotPage() {
       if (!r.json.ok) {
         setErr(humanizeError(r.json));
         return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function startBot() {
-    setLoading(true);
-    setErr("");
-
-    try {
-      const r = await api("/api/bot/start", { method: "POST" });
-      setResp(r.json);
-      setStatusCode(r.status);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function stopBot() {
-    setLoading(true);
-    setErr("");
-
-    try {
-      const r = await api("/api/bot/stop", { method: "POST" });
-      setResp(r.json);
-      setStatusCode(r.status);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function openTestTrade() {
-    const symbol = testSymbol.trim().toUpperCase();
-
-    if (!symbol || !symbol.endsWith("USDT")) {
-      setErr("Укажи символ в формате BTCUSDT");
-      return;
-    }
-
-    setLoading(true);
-    setErr("");
-
-    try {
-      const r = await api(
-        `/api/engine/test-open?symbol=${encodeURIComponent(symbol)}`,
-        {
-          method: "POST",
-        }
-      );
-
-      setResp(r.json);
-      setStatusCode(r.status);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function closeAllDeals() {
-    setLoading(true);
-    setErr("");
-
-    try {
-      const r = await api("/api/engine/test-close-all", {
-        method: "POST",
-      });
-
-      setResp(r.json);
-      setStatusCode(r.status);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function purgeHistory() {
-    setLoading(true);
-    setErr("");
-
-    try {
-      const r = await api("/api/engine/test-close-all?purge=1", {
-        method: "POST",
-      });
-
-      setResp(r.json);
-      setStatusCode(r.status);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      const purgeOk = (r.json as any)?.purge?.ok;
-      if (purgeOk === false) {
-        setErr(humanizeError((r.json as any).purge));
       }
 
       await reloadAll();
@@ -516,17 +526,37 @@ export default function BotPage() {
     }
   }, [exchange, filteredKeys, keyId]);
 
-  const botEnabled = !!config?.enabled;
-  const runStatus = state?.status ?? "IDLE";
-  const isRunning =
-    runStatus === "RUNNING" || runStatus === "ACTIVE" || botEnabled;
+  const liveOpenPositions = statsOpenPositions.length ? statsOpenPositions : positions;
+  const openPositionsCount = liveOpenPositions.length;
+  const openedToday = countOpenedToday(liveOpenPositions);
+  const capitalInWork = sumCapitalInWork(liveOpenPositions);
+  const pnlToday = Number(stats?.pnlToday ?? 0);
+
+  const range = getRangeDates(statsPreset, customFrom, customTo);
+  const filteredTradeHistory = recentTrades.filter((t) =>
+    inRange(t?.closedAt ?? t?.openedAt, range.from, range.to)
+  );
+  const derived = deriveStatsFromTrades(filteredTradeHistory);
+
+  const shortOpenList = liveOpenPositions
+    .slice()
+    .sort((a, b) => {
+      const ad = safeDate(a?.updatedAt ?? a?.openedAt)?.getTime() ?? 0;
+      const bd = safeDate(b?.updatedAt ?? b?.openedAt)?.getTime() ?? 0;
+      return bd - ad;
+    })
+    .slice(0, 3);
+
+  const shortHistoryList = recentTrades
+    .slice()
+    .sort((a, b) => {
+      const ad = safeDate(a?.closedAt ?? a?.openedAt)?.getTime() ?? 0;
+      const bd = safeDate(b?.closedAt ?? b?.openedAt)?.getTime() ?? 0;
+      return bd - ad;
+    })
+    .slice(0, 3);
 
   const canSave = !loading && !!keyId;
-  const activePositionsCount = positions.length;
-  const capitalInWork = stats?.capitalInWork ?? 0;
-  const pnlToday = stats?.pnlToday ?? 0;
-  const winRate = stats?.winRate ?? 0;
-  const lastSyncAt = formatDateTime(state?.lastSyncAt);
 
   return (
     <>
@@ -564,197 +594,402 @@ export default function BotPage() {
 
       <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
         <div style={styles.container}>
-          <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
-            <div style={styles.heroHeaderRow}>
-              <div style={styles.metricLabel}>Trading system</div>
-
-              <div style={styles.heroRightColumn}>
-                <div style={styles.updatedAt}>Last sync: {lastSyncAt}</div>
-
-                <div style={styles.topActions}>
-                  <button
-                    type="button"
-                    aria-label="Home"
-                    style={styles.iconButton}
-                    onClick={() => router.replace("/")}
-                  >
-                    <HomeIcon />
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-label="History"
-                    style={styles.iconButton}
-                    onClick={() => router.replace("/history")}
-                  >
-                    <HistoryIcon />
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-label="Notifications"
-                    style={styles.iconButton}
-                    onClick={() => router.replace("/notifications")}
-                  >
-                    <BellIcon />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.heroRowMiddle}>
-              <div style={styles.metricValueRow}>
-                <span style={styles.metricValue}>
-                  {isRunning ? "ACTIVE" : "IDLE"}
-                </span>
-              </div>
-            </div>
-
-            <div style={styles.deltaRowInline}>
-              <span style={styles.deltaLabel}>Состояние движка</span>
-              <span
-                style={{
-                  ...styles.deltaNegative,
-                  color: isRunning ? UI.green : UI.textMuted,
-                }}
-              >
-                {runStatus}
+          <section style={{ ...styles.topCtaWrap, ...reveal(0, mounted) }}>
+            <button
+              type="button"
+              style={styles.topCtaButton}
+              onClick={() => router.replace("/keys")}
+            >
+              <span style={styles.topCtaIcon}>
+                <BotIcon />
               </span>
-            </div>
+              <span>Подключить API биржи</span>
+            </button>
           </section>
 
           <section style={{ ...styles.botHero, ...reveal(1, mounted) }}>
             <div style={styles.botTopRow}>
               <div>
                 <div style={styles.botEyebrow}>BOT CONTROL</div>
-                <div style={styles.botTitle}>Состояние бота</div>
+                <div style={styles.botTitle}>Управление ботом</div>
               </div>
-              <StatusDot text={isRunning ? "Активен" : "Остановлен"} />
+              <div style={styles.lastSyncChip}>
+                Sync: {formatDateTime(state?.lastSyncAt)}
+              </div>
             </div>
 
             <div style={styles.botMetricsGrid}>
               <MetricBox
-                label="Статус"
-                value={isRunning ? "Активен" : "Стоп"}
-                sub={botEnabled ? "Config enabled" : "Config disabled"}
-                valueColor={isRunning ? UI.green : UI.textMain}
-                glowColor={
-                  isRunning
-                    ? "rgba(100,217,123,0.18)"
-                    : "rgba(255,255,255,0.10)"
-                }
-              />
-              <MetricBox
-                label="Позиции"
-                value={String(activePositionsCount)}
-                sub="Открыто сейчас"
+                label="Открытые позиции"
+                value={String(openPositionsCount)}
+                sub="Сейчас в рынке"
                 valueColor={UI.textMain}
                 glowColor="rgba(255,255,255,0.10)"
               />
               <MetricBox
-                label="PnL today"
-                value={formatUsd(pnlToday)}
-                sub="За сегодня"
-                valueColor={pnlColor(pnlToday)}
-                glowColor="rgba(41,121,255,0.16)"
+                label="Открыто сегодня"
+                value={String(openedToday)}
+                sub="Считаем по GMT+3"
+                valueColor={UI.yellow}
+                glowColor="rgba(243,215,9,0.14)"
               />
               <MetricBox
-                label="В работе"
+                label="Используется маржи"
                 value={formatUsd(capitalInWork)}
-                sub="Capital in work"
+                sub="Сумма в открытых позициях"
                 valueColor={UI.blue}
                 glowColor="rgba(41,121,255,0.18)"
               />
-            </div>
-
-            <div style={styles.heroButtons}>
-              <button
-                type="button"
-                style={styles.primaryPill}
-                disabled={loading}
-                onClick={startBot}
-              >
-                {loading ? "..." : "Запустить бота"}
-              </button>
-
-              <button
-                type="button"
-                style={styles.secondaryPillDanger}
-                disabled={loading}
-                onClick={stopBot}
-              >
-                Остановить
-              </button>
+              <MetricBox
+                label="PnL за день"
+                value={formatUsd(pnlToday)}
+                sub="Текущий день GMT+3"
+                valueColor={pnlColor(pnlToday)}
+                glowColor={
+                  pnlToday >= 0
+                    ? "rgba(100,217,123,0.18)"
+                    : "rgba(255,106,106,0.18)"
+                }
+              />
             </div>
           </section>
 
           <section style={{ ...styles.block, ...reveal(2, mounted) }}>
             <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Статистика</div>
+              <div>
+                <div style={styles.sectionMainTitle}>Статистика</div>
+                <div style={styles.sectionSubTitle}>
+                  Гибкая аналитика по выбранному диапазону
+                </div>
+              </div>
             </div>
 
-            <div style={styles.statsGrid}>
+            <div style={styles.rangeBar}>
+              {(["1D", "1W", "1M", "CUSTOM"] as StatsRangePreset[]).map((preset) => {
+                const active = statsPreset === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    style={{
+                      ...styles.rangeChip,
+                      ...(active ? styles.rangeChipActive : null),
+                    }}
+                    onClick={() => setStatsPreset(preset)}
+                  >
+                    {preset === "CUSTOM" ? "Свободный" : preset}
+                  </button>
+                );
+              })}
+            </div>
+
+            {statsPreset === "CUSTOM" ? (
+              <div style={styles.customRangeGrid}>
+                <Field label="Дата начала">
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    style={styles.input}
+                  />
+                </Field>
+
+                <Field label="Дата конца">
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    style={styles.input}
+                  />
+                </Field>
+              </div>
+            ) : null}
+
+            <div style={styles.statsHero}>
+              <div style={styles.statsHeroLeft}>
+                <div style={styles.statsHeroLabel}>Net PnL</div>
+                <div
+                  style={{
+                    ...styles.statsHeroValue,
+                    color: pnlColor(derived.totalPnl),
+                  }}
+                >
+                  {formatUsd(derived.totalPnl)}
+                </div>
+                <div style={styles.statsHeroSub}>
+                  Сделок: {derived.closedTrades} · Win rate: {formatPct(derived.winRate)}
+                </div>
+              </div>
+
+              <div style={styles.winLossCard}>
+                <div style={styles.winLossTop}>
+                  <span style={{ color: UI.green }}>{derived.wins} Win</span>
+                  <span style={{ color: UI.red }}>{derived.losses} Loss</span>
+                </div>
+                <div style={styles.winLossTrack}>
+                  <div
+                    style={{
+                      ...styles.winLossPositive,
+                      width: `${derived.closedTrades ? (derived.wins / derived.closedTrades) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+                <div style={styles.winLossBottom}>
+                  Profit factor {Number(derived.profitFactor).toLocaleString("ru-RU", {
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.statsGridEnhanced}>
               <StatMini
-                label="Total PnL"
-                value={formatUsd(stats?.totalPnl ?? 0)}
-                color={pnlColor(stats?.totalPnl)}
-              />
-              <StatMini
-                label="PnL Today"
-                value={formatUsd(stats?.pnlToday ?? 0)}
-                color={pnlColor(stats?.pnlToday)}
-              />
-              <StatMini
-                label="PnL 7d"
-                value={formatUsd(stats?.pnl7d ?? 0)}
-                color={pnlColor(stats?.pnl7d)}
-              />
-              <StatMini
-                label="PnL 30d"
-                value={formatUsd(stats?.pnl30d ?? 0)}
-                color={pnlColor(stats?.pnl30d)}
-              />
-              <StatMini
-                label="Win rate"
-                value={formatPct(winRate)}
+                label="Win Rate"
+                value={formatPct(derived.winRate)}
                 color={UI.textMain}
               />
               <StatMini
-                label="Closed trades"
-                value={formatNum(stats?.closedTrades ?? 0, 0)}
+                label="Closed Trades"
+                value={formatNum(derived.closedTrades, 0)}
                 color={UI.textMain}
               />
               <StatMini
-                label="Open positions"
-                value={formatNum(stats?.openPositions ?? 0, 0)}
-                color={UI.textMain}
+                label="Avg Trade"
+                value={formatUsd(derived.avgTradePnl)}
+                color={pnlColor(derived.avgTradePnl)}
               />
               <StatMini
-                label="Capital in work"
-                value={formatUsd(stats?.capitalInWork ?? 0)}
+                label="Best Trade"
+                value={formatUsd(derived.bestTradePnl)}
+                color={pnlColor(derived.bestTradePnl)}
+              />
+              <StatMini
+                label="Worst Trade"
+                value={formatUsd(derived.worstTradePnl)}
+                color={pnlColor(derived.worstTradePnl)}
+              />
+              <StatMini
+                label="Profit Factor"
+                value={Number(derived.profitFactor).toLocaleString("ru-RU", {
+                  maximumFractionDigits: 2,
+                })}
+                color={UI.yellow}
+              />
+              <StatMini
+                label="Avg Win"
+                value={formatUsd(derived.avgWin)}
+                color={UI.green}
+              />
+              <StatMini
+                label="Avg Loss"
+                value={formatUsd(derived.avgLoss)}
+                color={UI.red}
+              />
+              <StatMini
+                label="Gross Profit"
+                value={formatUsd(derived.grossProfit)}
+                color={UI.green}
+              />
+              <StatMini
+                label="Gross Loss"
+                value={formatUsd(derived.grossLossAbs)}
+                color={UI.red}
+              />
+              <StatMini
+                label="Volume"
+                value={formatUsd(derived.totalVolume)}
                 color={UI.blue}
-              />
-              <StatMini
-                label="Avg trade PnL"
-                value={formatUsd(stats?.avgTradePnl ?? 0)}
-                color={pnlColor(stats?.avgTradePnl)}
-              />
-              <StatMini
-                label="Best trade"
-                value={formatUsd(stats?.bestTradePnl ?? 0)}
-                color={pnlColor(stats?.bestTradePnl)}
-              />
-              <StatMini
-                label="Worst trade"
-                value={formatUsd(stats?.worstTradePnl ?? 0)}
-                color={pnlColor(stats?.worstTradePnl)}
               />
             </div>
           </section>
 
           <section style={{ ...styles.block, ...reveal(3, mounted) }}>
             <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
+              <div>
+                <div style={styles.sectionMainTitle}>Открытые позиции</div>
+                <div style={styles.sectionSubTitle}>
+                  Короткий список: 3 последние открытые
+                </div>
+              </div>
+
+              <button
+                type="button"
+                style={styles.inlineAction}
+                onClick={() => router.replace("/bot/open-positions")}
+              >
+                Весь список
+              </button>
+            </div>
+
+            {!shortOpenList.length ? (
+              <div style={styles.emptyText}>Нет открытых позиций.</div>
+            ) : (
+              <div style={styles.listGrid}>
+                {shortOpenList.map((p) => {
+                  const t = getPositionDisplayTime(p);
+                  const isOpen = expandedOpenId === p.id;
+
+                  return (
+                    <div key={p.id} style={styles.listCard}>
+                      <button
+                        type="button"
+                        style={styles.expandButton}
+                        onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
+                      >
+                        <div style={styles.listCardTop}>
+                          <div>
+                            <div style={styles.listCardTitle}>{p.symbol}</div>
+                            <div style={styles.listCardMiniSub}>
+                              {t.label}: {t.value}
+                            </div>
+                          </div>
+
+                          <div style={styles.expandRight}>
+                            <div style={styles.statusTag}>#{String(p.orderId ?? p.id).slice(0, 8)}</div>
+                            <div style={styles.chevron}>{isOpen ? "−" : "+"}</div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {isOpen ? (
+                        <div style={styles.expandBody}>
+                          <div style={styles.rowMeta}>
+                            <span>Актив: {p.symbol ?? "—"}</span>
+                            <span>Биржа: {p.exchange ?? "—"}</span>
+                          </div>
+
+                          <div style={styles.rowMeta}>
+                            <span>Средняя цена: {p.avgPrice ?? "—"}</span>
+                            <span>TP: {p.tpPrice ?? "—"}</span>
+                          </div>
+
+                          <div style={styles.rowMeta}>
+                            <span>
+                              Объем: {p.qty ?? "—"} {String(p.symbol || "").replace("USDT", "") || ""}
+                            </span>
+                            <span>({formatUsd(p.investedQuote ?? 0)})</span>
+                          </div>
+
+                          <div style={styles.rowMetaMuted}>
+                            <span>Открыта: {formatDateTime(p.openedAt)}</span>
+                            <span>Изменена: {formatDateTime(p.updatedAt ?? p.openedAt)}</span>
+                          </div>
+
+                          <div style={styles.rowMetaMuted}>
+                            <span>addsCount: {p.addsCount ?? 0}</span>
+                            <span>Order: {String(p.orderId ?? p.id)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div>
+                <div style={styles.sectionMainTitle}>История</div>
+                <div style={styles.sectionSubTitle}>
+                  Короткий список: 3 последние закрытые сделки
+                </div>
+              </div>
+
+              <button
+                type="button"
+                style={styles.inlineAction}
+                onClick={() => router.replace("/bot/history")}
+              >
+                Вся история
+              </button>
+            </div>
+
+            {!shortHistoryList.length ? (
+              <div style={styles.emptyText}>Закрытых сделок пока нет.</div>
+            ) : (
+              <div style={styles.listGrid}>
+                {shortHistoryList.map((t) => {
+                  const isOpen = expandedHistoryId === t.id;
+
+                  return (
+                    <div key={t.id} style={styles.listCard}>
+                      <button
+                        type="button"
+                        style={styles.expandButton}
+                        onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
+                      >
+                        <div style={styles.listCardTop}>
+                          <div>
+                            <div style={styles.listCardTitle}>{t.symbol}</div>
+                            <div style={styles.listCardMiniSub}>
+                              Закрыта: {formatTime(t.closedAt)}
+                            </div>
+                          </div>
+
+                          <div style={styles.expandRight}>
+                            <div
+                              style={{
+                                ...styles.tradePnl,
+                                color: pnlColor(t.pnl),
+                              }}
+                            >
+                              {formatUsd(t.pnl)}
+                            </div>
+                            <div style={styles.chevron}>{isOpen ? "−" : "+"}</div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {isOpen ? (
+                        <div style={styles.expandBody}>
+                          <div style={styles.rowMeta}>
+                            <span>Актив: {t.symbol ?? "—"}</span>
+                            <span>Order: {String(t.orderId ?? t.id)}</span>
+                          </div>
+
+                          <div style={styles.rowMeta}>
+                            <span>Средняя цена входа: {t.avgEntryPrice ?? "—"}</span>
+                            <span>Цена выхода: {t.exitPrice ?? "—"}</span>
+                          </div>
+
+                          <div style={styles.rowMeta}>
+                            <span>Объем: {t.qty ?? "—"}</span>
+                            <span>Вход: {formatUsd(t.entryValue ?? 0)}</span>
+                          </div>
+
+                          <div style={styles.rowMeta}>
+                            <span>Выход: {formatUsd(t.exitValue ?? 0)}</span>
+                            <span>Прибыль: {formatUsd(t.pnl ?? 0)} · {formatPct(t.pnlPercent ?? 0)}</span>
+                          </div>
+
+                          <div style={styles.rowMetaMuted}>
+                            <span>Открыта: {formatDateTime(t.openedAt)}</span>
+                            <span>Закрыта: {formatDateTime(t.closedAt)}</span>
+                          </div>
+
+                          <div style={styles.rowMetaMuted}>
+                            <span>addsCount: {t.addsCount ?? 0}</span>
+                            <span>{getCloseReasonLabel(t.closeReason)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div>
+                <div style={styles.sectionMainTitle}>Конфигурация бота</div>
+                <div style={styles.sectionSubTitle}>
+                  Сервисный блок настройки
+                </div>
+              </div>
             </div>
 
             <div style={styles.formGrid}>
@@ -787,8 +1022,7 @@ export default function BotPage() {
 
               {!filteredKeys.length ? (
                 <div style={styles.inlineHint}>
-                  Для биржи {exchange} пока нет ключей. Сначала добавь ключ на
-                  странице Keys.
+                  Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
                 </div>
               ) : null}
 
@@ -843,108 +1077,14 @@ export default function BotPage() {
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Тестовые действия</div>
-            </div>
-
-            <div style={styles.formGrid}>
-              <Field label="Тестовый символ">
-                <input
-                  value={testSymbol}
-                  onChange={(e) => setTestSymbol(e.target.value.toUpperCase())}
-                  placeholder="BTCUSDT"
-                  style={styles.input}
-                />
-              </Field>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={openTestTrade}
-                style={styles.blockButtonBlue}
-              >
-                {loading ? "..." : "Open test trade"}
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={closeAllDeals}
-                style={styles.blockButton}
-              >
-                Close all deals
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={purgeHistory}
-                style={styles.blockButtonDanger}
-              >
-                Close all + clear history
-              </button>
-            </div>
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Активные позиции</div>
-            </div>
-
-            {!positions.length ? (
-              <div style={styles.emptyText}>
-                Пока пусто. Trading Engine ещё не подключён.
-              </div>
-            ) : (
-              <div style={styles.listGrid}>
-                {positions.map((p) => (
-                  <PositionCard key={p.id} p={p} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(6, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Open positions snapshot</div>
-            </div>
-
-            {!statsOpenPositions.length ? (
-              <div style={styles.emptyText}>Нет открытых позиций.</div>
-            ) : (
-              <div style={styles.listGrid}>
-                {statsOpenPositions.map((p) => (
-                  <SnapshotCard key={p.id} p={p} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(7, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Recent closed trades</div>
-            </div>
-
-            {!recentTrades.length ? (
-              <div style={styles.emptyText}>Закрытых сделок пока нет.</div>
-            ) : (
-              <div style={styles.listGrid}>
-                {recentTrades.map((t) => (
-                  <TradeCard key={t.id} t={t} />
-                ))}
-              </div>
-            )}
-          </section>
-
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(8, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(6, mounted) }}>
               <div style={styles.sectionMainTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
-          <section style={{ ...styles.debugCard, ...reveal(9, mounted) }}>
+          <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
             <div style={styles.debugHeader}>
               <div>
                 <div style={styles.debugTitle}>Технический статус</div>
@@ -969,23 +1109,9 @@ export default function BotPage() {
               </div>
 
               <div>
-                <span style={styles.debugMetaLabel}>Run status</span>
-                <div style={styles.debugMetaValue}>{runStatus}</div>
-              </div>
-            </div>
-
-            <div style={styles.debugMeta}>
-              <div>
                 <span style={styles.debugMetaLabel}>Last sync</span>
                 <div style={styles.debugMetaValue}>
                   {state?.lastSyncAt ?? "—"}
-                </div>
-              </div>
-
-              <div>
-                <span style={styles.debugMetaLabel}>Last error</span>
-                <div style={styles.debugMetaValue}>
-                  {state?.lastError ?? "—"}
                 </div>
               </div>
             </div>
@@ -994,6 +1120,12 @@ export default function BotPage() {
               {resp ? JSON.stringify(resp, null, 2) : "—"}
             </div>
           </section>
+
+          {pageLoading ? (
+            <section style={{ ...styles.loadingCard, ...reveal(8, mounted) }}>
+              Загрузка bot dashboard...
+            </section>
+          ) : null}
         </div>
       </main>
     </>
@@ -1006,32 +1138,6 @@ function Field(props: { label: string; children: React.ReactNode }) {
       <span style={styles.fieldLabel}>{props.label}</span>
       {props.children}
     </label>
-  );
-}
-
-function StatusDot(props: { text: string }) {
-  const active = props.text.toLowerCase().includes("актив");
-  return (
-    <div
-      style={{
-        ...styles.statusPill,
-        color: active ? UI.green : UI.textMuted,
-        border: active
-          ? "1px solid rgba(100,217,123,0.22)"
-          : `1px solid ${UI.border}`,
-        background: active
-          ? "rgba(100,217,123,0.08)"
-          : "rgba(255,255,255,0.05)",
-      }}
-    >
-      <span
-        style={{
-          ...styles.statusDot,
-          background: active ? UI.green : UI.textMuted,
-        }}
-      />
-      <span>{props.text}</span>
-    </div>
   );
 }
 
@@ -1071,110 +1177,15 @@ function StatMini(props: { label: string; value: string; color?: string }) {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
-      <div style={{ ...styles.miniCardValue, color: props.color || UI.textMain }}>
+      <div
+        style={{
+          ...styles.miniCardValue,
+          color: props.color || UI.textMain,
+        }}
+      >
         {props.value}
       </div>
     </section>
-  );
-}
-
-function PositionCard({ p }: { p: any }) {
-  return (
-    <div style={styles.listCard}>
-      <div style={styles.listCardTop}>
-        <div style={styles.listCardTitle}>
-          {p.exchange} · {p.symbol}
-        </div>
-        <div
-          style={{
-            ...styles.statusTag,
-            color: p.status === "OPEN" ? UI.green : UI.textSoft,
-          }}
-        >
-          {p.status}
-        </div>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>avgPrice: {p.avgPrice ?? "—"}</span>
-        <span>qty: {p.qty ?? "—"}</span>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>tpPrice: {p.tpPrice ?? "—"}</span>
-        <span>investedQuote: {p.investedQuote ?? "0"}</span>
-      </div>
-
-      <div style={styles.rowMetaMuted}>
-        <span>addsCount: {p.addsCount ?? 0}</span>
-        <span>openedAt: {formatDateTime(p.openedAt)}</span>
-      </div>
-    </div>
-  );
-}
-
-function SnapshotCard({ p }: { p: any }) {
-  return (
-    <div style={styles.listCard}>
-      <div style={styles.listCardTop}>
-        <div style={styles.listCardTitle}>{p.symbol}</div>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>avgPrice: {p.avgPrice ?? "—"}</span>
-        <span>qty: {p.qty ?? "—"}</span>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>tpPrice: {p.tpPrice ?? "—"}</span>
-        <span>investedQuote: {p.investedQuote ?? "—"}</span>
-      </div>
-
-      <div style={styles.rowMetaMuted}>
-        <span>addsCount: {p.addsCount ?? 0}</span>
-        <span>openedAt: {formatDateTime(p.openedAt)}</span>
-      </div>
-    </div>
-  );
-}
-
-function TradeCard({ t }: { t: any }) {
-  return (
-    <div style={styles.listCard}>
-      <div style={styles.listCardTop}>
-        <div style={styles.listCardTitle}>
-          {t.exchange} · {t.symbol}
-        </div>
-        <div
-          style={{
-            ...styles.tradePnl,
-            color: pnlColor(t.pnl),
-          }}
-        >
-          {formatUsd(t.pnl)} · {formatPct(t.pnlPercent)}
-        </div>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>entryValue: {t.entryValue ?? "—"}</span>
-        <span>exitValue: {t.exitValue ?? "—"}</span>
-      </div>
-
-      <div style={styles.rowMeta}>
-        <span>avgEntry: {t.avgEntryPrice ?? "—"}</span>
-        <span>exitPrice: {t.exitPrice ?? "—"}</span>
-      </div>
-
-      <div style={styles.rowMetaMuted}>
-        <span>qty: {t.qty ?? "—"}</span>
-        <span>addsCount: {t.addsCount ?? 0}</span>
-      </div>
-
-      <div style={styles.rowMetaMuted}>
-        <span>reason: {t.closeReason ?? "—"}</span>
-        <span>closedAt: {formatDateTime(t.closedAt)}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1197,121 +1208,43 @@ const styles = {
     overflowX: "hidden",
   } satisfies CSSProperties,
 
-  heroTop: {
-    position: "relative",
+  topCtaWrap: {
     marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 18,
   } satisfies CSSProperties,
 
-  heroHeaderRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    marginBottom: -8,
-    position: "relative",
-    top: 14,
-    zIndex: 10,
-  } satisfies CSSProperties,
-
-  heroRowMiddle: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    marginBottom: 4,
-  } satisfies CSSProperties,
-
-  heroRightColumn: {
-    width: 170,
-    flexShrink: 0,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-  } satisfies CSSProperties,
-
-  metricLabel: {
-    fontSize: 13,
-    color: UI.textMuted,
-    fontWeight: 500,
-    lineHeight: 1.2,
-    margin: 0,
-  } satisfies CSSProperties,
-
-  updatedAt: {
-    fontSize: 11,
-    color: UI.textFaint,
-    lineHeight: 1.2,
-    textAlign: "right",
-    margin: 0,
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  topActions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 10,
+  topCtaButton: {
     width: "100%",
-    marginTop: 6,
-  } satisfies CSSProperties,
-
-  iconButton: {
-    width: 34,
-    height: 34,
+    height: 48,
     borderRadius: 999,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.04)",
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
     color: UI.textMain,
-    cursor: "pointer",
-    flexShrink: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    gap: 10,
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
     WebkitTapHighlightColor: "transparent",
   } satisfies CSSProperties,
 
-  metricValueRow: {
+  topCtaIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    border: `1px solid ${UI.border}`,
     display: "flex",
-    alignItems: "baseline",
-    gap: 0,
-    flexWrap: "wrap",
-    marginBottom: 0,
-  } satisfies CSSProperties,
-
-  metricValue: {
-    fontSize: 40,
-    lineHeight: 0.95,
-    fontWeight: 800,
-    letterSpacing: "-0.06em",
-    color: "#ffffff",
-  } satisfies CSSProperties,
-
-  deltaRowInline: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 10,
-    flexWrap: "wrap",
-    marginTop: 0,
-    marginBottom: 0,
-  } satisfies CSSProperties,
-
-  deltaLabel: {
-    fontSize: 14,
-    color: UI.textMuted,
-    fontWeight: 500,
-    lineHeight: 1.2,
-  } satisfies CSSProperties,
-
-  deltaNegative: {
-    fontSize: 15,
-    fontWeight: 700,
-    lineHeight: 1.15,
-    margin: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(41,121,255,0.10)",
+    color: UI.blue,
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   botHero: {
-    marginTop: 8,
+    marginTop: 6,
     marginBottom: 20,
     padding: 16,
     borderRadius: 22,
@@ -1344,58 +1277,21 @@ const styles = {
     color: UI.textMain,
   } satisfies CSSProperties,
 
-  statusPill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
+  lastSyncChip: {
+    padding: "7px 10px",
     borderRadius: 999,
+    border: `1px solid ${UI.border}`,
+    background: "rgba(255,255,255,0.04)",
+    color: UI.textMuted,
     fontSize: 11,
     fontWeight: 700,
-  } satisfies CSSProperties,
-
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
+    whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
   botMetricsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-  } satisfies CSSProperties,
-
-  heroButtons: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 10,
-    marginTop: 14,
-  } satisfies CSSProperties,
-
-  primaryPill: {
-    width: "100%",
-    height: 46,
-    borderRadius: 999,
-    border: "none",
-    background: UI.brand,
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 800,
-    cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
-  } satisfies CSSProperties,
-
-  secondaryPillDanger: {
-    width: "100%",
-    height: 44,
-    borderRadius: 999,
-    border: "1px solid rgba(255,106,106,0.28)",
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
   } satisfies CSSProperties,
 
   block: {
@@ -1407,7 +1303,7 @@ const styles = {
   sectionHead: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
     marginBottom: 12,
   } satisfies CSSProperties,
@@ -1417,6 +1313,13 @@ const styles = {
     fontWeight: 800,
     letterSpacing: "-0.01em",
     color: UI.textMain,
+  } satisfies CSSProperties,
+
+  sectionSubTitle: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: UI.textMuted,
   } satisfies CSSProperties,
 
   metricItem: {
@@ -1456,7 +1359,121 @@ const styles = {
     wordBreak: "break-word",
   } satisfies CSSProperties,
 
-  statsGrid: {
+  rangeBar: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  rangeChip: {
+    height: 34,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${UI.border}`,
+    background: "transparent",
+    color: UI.textMuted,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  rangeChipActive: {
+    background: "rgba(41,121,255,0.16)",
+    border: "1px solid rgba(41,121,255,0.30)",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  customRangeGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+    marginBottom: 14,
+  } satisfies CSSProperties,
+
+  statsHero: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 20,
+    padding: 16,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,0,0,0.03) 100%)",
+    display: "grid",
+    gridTemplateColumns: "1.1fr 0.9fr",
+    gap: 12,
+    marginBottom: 14,
+  } satisfies CSSProperties,
+
+  statsHeroLeft: {
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  statsHeroLabel: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 8,
+  } satisfies CSSProperties,
+
+  statsHeroValue: {
+    fontSize: 34,
+    lineHeight: 0.95,
+    fontWeight: 800,
+    letterSpacing: "-0.05em",
+  } satisfies CSSProperties,
+
+  statsHeroSub: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  winLossCard: {
+    borderRadius: 16,
+    border: `1px solid ${UI.border}`,
+    padding: 12,
+    background: "rgba(255,255,255,0.02)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  } satisfies CSSProperties,
+
+  winLossTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    fontSize: 12,
+    fontWeight: 800,
+  } satisfies CSSProperties,
+
+  winLossTrack: {
+    marginTop: 10,
+    marginBottom: 10,
+    width: "100%",
+    height: 12,
+    borderRadius: 999,
+    overflow: "hidden",
+    background:
+      "linear-gradient(90deg, rgba(100,217,123,0.25) 0%, rgba(255,106,106,0.16) 100%)",
+    position: "relative",
+  } satisfies CSSProperties,
+
+  winLossPositive: {
+    height: "100%",
+    background: UI.green,
+    borderRadius: 999,
+  } satisfies CSSProperties,
+
+  winLossBottom: {
+    fontSize: 12,
+    lineHeight: 1.4,
+    color: UI.textMuted,
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  statsGridEnhanced: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
@@ -1467,7 +1484,7 @@ const styles = {
     border: `1px solid ${UI.border}`,
     borderRadius: 16,
     padding: 12,
-    minHeight: 88,
+    minHeight: 90,
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
@@ -1489,6 +1506,132 @@ const styles = {
     fontWeight: 800,
     letterSpacing: "-0.03em",
     wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  inlineAction: {
+    height: 34,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  listGrid: {
+    display: "grid",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  listCard: {
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 14,
+  } satisfies CSSProperties,
+
+  expandButton: {
+    width: "100%",
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+    textAlign: "left",
+  } satisfies CSSProperties,
+
+  listCardTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  listCardTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: UI.textMain,
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  listCardMiniSub: {
+    marginTop: 5,
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  expandRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  chevron: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: `1px solid ${UI.border}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 16,
+    color: UI.textSoft,
+  } satisfies CSSProperties,
+
+  expandBody: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: `1px solid ${UI.borderSoft}`,
+  } satisfies CSSProperties,
+
+  statusTag: {
+    fontSize: 11,
+    fontWeight: 800,
+    border: `1px solid ${UI.border}`,
+    borderRadius: 999,
+    padding: "5px 9px",
+    whiteSpace: "nowrap",
+    color: UI.textSoft,
+  } satisfies CSSProperties,
+
+  tradePnl: {
+    fontSize: 13,
+    fontWeight: 800,
+    textAlign: "right",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+
+  rowMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
+    fontSize: 12,
+    color: UI.textSoft,
+    lineHeight: 1.5,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  rowMetaMuted: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
+    fontSize: 11,
+    color: UI.textMuted,
+    lineHeight: 1.5,
+    marginTop: 2,
+  } satisfies CSSProperties,
+
+  emptyText: {
+    fontSize: 12,
+    color: UI.textMuted,
+    lineHeight: 1.55,
   } satisfies CSSProperties,
 
   formGrid: {
@@ -1527,19 +1670,6 @@ const styles = {
     padding: "2px 2px 0",
   } satisfies CSSProperties,
 
-  blockButton: {
-    width: "100%",
-    height: 42,
-    borderRadius: 14,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-    marginTop: 2,
-  } satisfies CSSProperties,
-
   blockButtonBlue: {
     width: "100%",
     height: 42,
@@ -1552,90 +1682,6 @@ const styles = {
     cursor: "pointer",
     marginTop: 2,
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
-  } satisfies CSSProperties,
-
-  blockButtonDanger: {
-    width: "100%",
-    height: 42,
-    borderRadius: 14,
-    border: "1px solid rgba(255,106,106,0.26)",
-    background: "transparent",
-    color: UI.red,
-    fontSize: 13,
-    fontWeight: 800,
-    cursor: "pointer",
-    marginTop: 2,
-  } satisfies CSSProperties,
-
-  listGrid: {
-    display: "grid",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  listCard: {
-    background: "rgba(255,255,255,0.03)",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 14,
-  } satisfies CSSProperties,
-
-  listCardTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: 10,
-  } satisfies CSSProperties,
-
-  listCardTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: UI.textMain,
-    wordBreak: "break-word",
-  } satisfies CSSProperties,
-
-  statusTag: {
-    fontSize: 11,
-    fontWeight: 800,
-    border: `1px solid ${UI.border}`,
-    borderRadius: 999,
-    padding: "5px 9px",
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  tradePnl: {
-    fontSize: 13,
-    fontWeight: 800,
-    textAlign: "right",
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  rowMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-    fontSize: 12,
-    color: UI.textSoft,
-    lineHeight: 1.5,
-    marginBottom: 6,
-  } satisfies CSSProperties,
-
-  rowMetaMuted: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.5,
-    marginTop: 2,
-  } satisfies CSSProperties,
-
-  emptyText: {
-    fontSize: 12,
-    color: UI.textMuted,
-    lineHeight: 1.55,
   } satisfies CSSProperties,
 
   errorCard: {
@@ -1737,6 +1783,15 @@ const styles = {
     fontSize: 11,
     lineHeight: 1.4,
     overflowX: "auto",
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  loadingCard: {
+    marginTop: 16,
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 14,
+    fontSize: 13,
     color: UI.textMuted,
   } satisfies CSSProperties,
 };
