@@ -456,44 +456,6 @@ export default function BotPage() {
     }
   }
 
-  async function saveConfig() {
-    if (!keyId) {
-      setErr("Сначала выбери API key");
-      return;
-    }
-
-    setLoading(true);
-    setErr("");
-
-    try {
-      const body: any = {
-        exchange,
-        keyId,
-        maxActiveSymbols: Number(maxActiveSymbols),
-        budgetPerSymbol,
-        syncIntervalMin: Number(syncIntervalMin),
-      };
-
-      body.maxTotalBudget = maxTotalBudget.trim() ? maxTotalBudget.trim() : null;
-
-      const r = await api("/api/bot", {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-
-      setResp(r.json);
-
-      if (!r.json.ok) {
-        setErr(humanizeError(r.json));
-        return;
-      }
-
-      await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function startBot() {
     setLoading(true);
     setErr("");
@@ -625,8 +587,6 @@ export default function BotPage() {
     })
     .slice(0, 3);
 
-  const canSave = !loading && !!keyId;
-
   const botActive =
     !!config?.enabled &&
     String(state?.status ?? "").toUpperCase() !== "STOPPED" &&
@@ -662,6 +622,17 @@ export default function BotPage() {
     exchangeBalance > 0
       ? Math.min(100, Math.max(0, (capitalInWork / exchangeBalance) * 100))
       : 0;
+
+  const avgDurationMs = Number(stats?.avgDurationMs ?? 0);
+  const profitableTrades = Number(stats?.profitableTrades ?? 0);
+  const losingTrades = Number(stats?.losingTrades ?? 0);
+  const totalTrades = profitableTrades + losingTrades;
+  const profitablePct =
+    totalTrades > 0 ? Math.min(100, Math.round((profitableTrades / totalTrades) * 100)) : 0;
+  const losingPct =
+    totalTrades > 0 ? Math.min(100, Math.round((losingTrades / totalTrades) * 100)) : 0;
+  const durationHours = avgDurationMs > 0 ? avgDurationMs / (1000 * 60 * 60) : 0;
+  const durationPct = Math.min(100, Math.max(8, Math.round(durationHours * 12)));
 
   return (
     <>
@@ -723,7 +694,7 @@ export default function BotPage() {
 
           <section style={{ ...styles.botHero, ...reveal(1, mounted) }}>
             <div style={styles.botTopRow}>
-              <div />
+              <div style={styles.botStateLabel}>Состояние бота</div>
               <div
                 style={{
                   ...styles.statusPill,
@@ -836,27 +807,38 @@ export default function BotPage() {
 
             {statsPreset === "CUSTOM" ? (
               <div style={styles.customRangeGrid}>
-                <Field label="Дата начала">
+                <label style={styles.fieldWrap}>
+                  <span style={styles.fieldLabel}>Дата начала</span>
                   <input
                     type="date"
                     value={customFrom}
                     onChange={(e) => setCustomFrom(e.target.value)}
                     style={styles.input}
                   />
-                </Field>
+                </label>
 
-                <Field label="Дата конца">
+                <label style={styles.fieldWrap}>
+                  <span style={styles.fieldLabel}>Дата конца</span>
                   <input
                     type="date"
                     value={customTo}
                     onChange={(e) => setCustomTo(e.target.value)}
                     style={styles.input}
                   />
-                </Field>
+                </label>
               </div>
             ) : null}
 
             <div style={styles.statsHero}>
+              <button
+                type="button"
+                onClick={() => setShowPnlInfo(true)}
+                style={styles.infoBtnCorner}
+                aria-label="Что значит PnL %"
+              >
+                i
+              </button>
+
               <div style={styles.statsHeroLeft}>
                 <div style={styles.statsHeroLabel}>Net PnL</div>
                 <div
@@ -880,14 +862,6 @@ export default function BotPage() {
                     netPnlValue >= 0 ? UI.green : UI.red
                   )}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPnlInfo(true)}
-                  style={styles.infoBtn}
-                  aria-label="Что значит PnL %"
-                >
-                  i
-                </button>
                 <div style={styles.ringCenterLabel}>
                   <div style={styles.ringCenterValueLarge}>
                     {Math.round(netPnlCirclePercent)}%
@@ -1005,35 +979,49 @@ export default function BotPage() {
                 </div>
               </div>
 
-              <div style={styles.unifiedDeepBlock}>
-                <div style={styles.unifiedDeepRow}>
-                  <div>
-                    <div style={styles.extremeTitle}>Время сделки</div>
-                    <div style={styles.extremeValuesCol}>
-                      <span style={{ color: UI.blue }}>
-                        min {formatDuration(Number(stats?.minDurationMs ?? 0))}
-                      </span>
-                      <span style={{ color: UI.blue }}>
-                        avg {formatDuration(Number(stats?.avgDurationMs ?? 0))}
-                      </span>
-                      <span style={{ color: UI.blue }}>
-                        max {formatDuration(Number(stats?.maxDurationMs ?? 0))}
-                      </span>
+              <div style={styles.analyticsCircleBlock}>
+                <div style={styles.analyticsCircleGrid}>
+                  <div style={styles.analyticsCircleCard}>
+                    <div style={styles.analyticsCircleTitle}>Avg время</div>
+                    <div style={styles.circleWrap}>
+                      <div style={ringStyle(durationPct, UI.blue)} />
+                      <div style={styles.circleCenterText}>
+                        {formatDuration(avgDurationMs)}
+                      </div>
+                    </div>
+                    <div style={styles.circleFootText}>
+                      Мин {formatDuration(Number(stats?.minDurationMs ?? 0))}
+                    </div>
+                    <div style={styles.circleFootText}>
+                      Макс {formatDuration(Number(stats?.maxDurationMs ?? 0))}
                     </div>
                   </div>
 
-                  <div>
-                    <div style={styles.extremeTitle}>Дополнительно</div>
-                    <div style={styles.extremeValuesCol}>
-                      <span style={{ color: UI.textSoft }}>
-                        Плюсовых: {Number(stats?.profitableTrades ?? 0)}
-                      </span>
-                      <span style={{ color: UI.textSoft }}>
-                        Минусовых: {Number(stats?.losingTrades ?? 0)}
-                      </span>
-                      <span style={{ color: UI.textSoft }}>
-                        Avg PnL: {formatUsd(stats?.avgTradePnl ?? 0)}
-                      </span>
+                  <div style={styles.analyticsCircleCard}>
+                    <div style={styles.analyticsCircleTitle}>Плюсовые</div>
+                    <div style={styles.circleWrap}>
+                      <div style={ringStyle(profitablePct, UI.green)} />
+                      <div style={styles.circleCenterText}>
+                        {profitableTrades}
+                      </div>
+                    </div>
+                    <div style={styles.circleFootText}>{profitablePct}% от всех</div>
+                    <div style={styles.circleFootText}>
+                      Avg PnL {formatUsd(stats?.avgTradePnl ?? 0)}
+                    </div>
+                  </div>
+
+                  <div style={styles.analyticsCircleCard}>
+                    <div style={styles.analyticsCircleTitle}>Минусовые</div>
+                    <div style={styles.circleWrap}>
+                      <div style={ringStyle(losingPct, UI.red)} />
+                      <div style={styles.circleCenterText}>
+                        {losingTrades}
+                      </div>
+                    </div>
+                    <div style={styles.circleFootText}>{losingPct}% от всех</div>
+                    <div style={styles.circleFootText}>
+                      Сделок {Number(stats?.closedTrades ?? 0)}
                     </div>
                   </div>
                 </div>
@@ -1042,10 +1030,6 @@ export default function BotPage() {
           </section>
 
           <section style={{ ...styles.accountBlock, ...reveal(3, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Состояние счета</div>
-            </div>
-
             <div style={styles.accountInner}>
               <div style={styles.accountLeft}>
                 <div style={styles.accountMetric}>
@@ -1180,105 +1164,15 @@ export default function BotPage() {
             )}
           </section>
 
-          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
-            </div>
-
-            <div style={styles.formGrid}>
-              <Field label="Биржа">
-                <select
-                  value={exchange}
-                  onChange={(e) => setExchange(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="BINANCE">BINANCE</option>
-                  <option value="BYBIT">BYBIT</option>
-                  <option value="OKX">OKX</option>
-                </select>
-              </Field>
-
-              <Field label="API key">
-                <select
-                  value={keyId}
-                  onChange={(e) => setKeyId(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="">Select API key</option>
-                  {filteredKeys.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              {!filteredKeys.length ? (
-                <div style={styles.inlineHint}>
-                  Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
-                </div>
-              ) : null}
-
-              <Field label="maxActiveSymbols">
-                <input
-                  value={maxActiveSymbols}
-                  onChange={(e) => setMaxActiveSymbols(e.target.value)}
-                  placeholder="1..10"
-                  style={styles.input}
-                />
-              </Field>
-
-              <Field label="budgetPerSymbol">
-                <input
-                  value={budgetPerSymbol}
-                  onChange={(e) => setBudgetPerSymbol(e.target.value)}
-                  placeholder="50"
-                  style={styles.input}
-                />
-              </Field>
-
-              <Field label="maxTotalBudget">
-                <input
-                  value={maxTotalBudget}
-                  onChange={(e) => setMaxTotalBudget(e.target.value)}
-                  placeholder="optional"
-                  style={styles.input}
-                />
-              </Field>
-
-              <Field label="syncIntervalMin">
-                <input
-                  value={syncIntervalMin}
-                  onChange={(e) => setSyncIntervalMin(e.target.value)}
-                  placeholder="1..60"
-                  style={styles.input}
-                />
-              </Field>
-
-              <button
-                type="button"
-                disabled={!canSave}
-                onClick={saveConfig}
-                style={{
-                  ...styles.wideAction,
-                  opacity: canSave ? 1 : 0.7,
-                  cursor: canSave ? "pointer" : "not-allowed",
-                }}
-              >
-                {loading ? "..." : "Сохранить"}
-              </button>
-            </div>
-          </section>
-
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(6, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(5, mounted) }}>
               <div style={styles.sectionMainTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
           {pageLoading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(7, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(6, mounted) }}>
               Загрузка bot dashboard...
             </section>
           ) : null}
@@ -1293,11 +1187,10 @@ export default function BotPage() {
               Это относительная эффективность стратегии.
               <br />
               <br />
-              Показывает долю чистой прибыли относительно общего оборота
-              прибыли и убытков.
+              Показывает долю чистой прибыли относительно общего объема прибыли и убытков.
               <br />
               <br />
-              Чем выше это значение, тем лучше соотношение результата к риску.
+              Чем выше значение, тем лучше соотношение результата к риску.
             </div>
             <button
               type="button"
@@ -1310,15 +1203,6 @@ export default function BotPage() {
         </div>
       ) : null}
     </>
-  );
-}
-
-function Field(props: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={styles.fieldWrap}>
-      <span style={styles.fieldLabel}>{props.label}</span>
-      {props.children}
-    </label>
   );
 }
 
@@ -1455,10 +1339,17 @@ const styles = {
 
   botTopRow: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     marginBottom: 14,
+  } satisfies CSSProperties,
+
+  botStateLabel: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: UI.textMain,
+    letterSpacing: "-0.01em",
   } satisfies CSSProperties,
 
   statusPill: {
@@ -1636,7 +1527,32 @@ const styles = {
     marginBottom: 14,
   } satisfies CSSProperties,
 
+  fieldWrap: {
+    display: "grid",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  fieldLabel: {
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  input: {
+    width: "100%",
+    height: 46,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    outline: "none",
+    padding: "0 14px",
+    WebkitAppearance: "none",
+    appearance: "none",
+  } satisfies CSSProperties,
+
   statsHero: {
+    position: "relative",
     border: `1px solid ${UI.border}`,
     borderRadius: 20,
     padding: 16,
@@ -1705,6 +1621,22 @@ const styles = {
     marginTop: 5,
     fontSize: 11,
     fontWeight: 700,
+  } satisfies CSSProperties,
+
+  infoBtnCorner: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.2)",
+    background: "rgba(0,0,0,0.45)",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+    zIndex: 3,
   } satisfies CSSProperties,
 
   statsUnifiedBlock: {
@@ -1798,33 +1730,59 @@ const styles = {
     textAlign: "right",
   } satisfies CSSProperties,
 
-  extremeTitle: {
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: UI.textFaint,
-    fontWeight: 700,
-    marginBottom: 8,
-  } satisfies CSSProperties,
-
-  extremeValuesCol: {
-    display: "grid",
-    gap: 6,
-    fontSize: 13,
-    fontWeight: 800,
-  } satisfies CSSProperties,
-
-  unifiedDeepBlock: {
+  analyticsCircleBlock: {
     border: `1px solid ${UI.border}`,
     borderRadius: 18,
     padding: 14,
     background: "rgba(255,255,255,0.025)",
   } satisfies CSSProperties,
 
-  unifiedDeepRow: {
+  analyticsCircleGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 14,
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  analyticsCircleCard: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  analyticsCircleTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: UI.textSoft,
+    textAlign: "center",
+  } satisfies CSSProperties,
+
+  circleWrap: {
+    width: 76,
+    height: 76,
+    position: "relative",
+  } satisfies CSSProperties,
+
+  circleCenterText: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: 800,
+    color: UI.textMain,
+    padding: 8,
+    lineHeight: 1.1,
+  } satisfies CSSProperties,
+
+  circleFootText: {
+    fontSize: 11,
+    color: UI.textMuted,
+    textAlign: "center",
+    lineHeight: 1.35,
   } satisfies CSSProperties,
 
   inlineActionGhost: {
@@ -1998,42 +1956,6 @@ const styles = {
     lineHeight: 1.55,
   } satisfies CSSProperties,
 
-  formGrid: {
-    display: "grid",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  fieldWrap: {
-    display: "grid",
-    gap: 8,
-  } satisfies CSSProperties,
-
-  fieldLabel: {
-    fontSize: 12,
-    color: UI.textMuted,
-    fontWeight: 600,
-  } satisfies CSSProperties,
-
-  input: {
-    width: "100%",
-    height: 46,
-    borderRadius: 14,
-    border: `1px solid ${UI.borderHard}`,
-    background: "rgba(255,255,255,0.03)",
-    color: UI.textMain,
-    outline: "none",
-    padding: "0 14px",
-    WebkitAppearance: "none",
-    appearance: "none",
-  } satisfies CSSProperties,
-
-  inlineHint: {
-    fontSize: 12,
-    lineHeight: 1.5,
-    color: UI.textMuted,
-    padding: "2px 2px 0",
-  } satisfies CSSProperties,
-
   errorCard: {
     marginBottom: 20,
     padding: 14,
@@ -2058,22 +1980,6 @@ const styles = {
     padding: 14,
     fontSize: 13,
     color: UI.textMuted,
-  } satisfies CSSProperties,
-
-  infoBtn: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: "50%",
-    border: "1px solid rgba(255,255,255,0.2)",
-    background: "rgba(0,0,0,0.6)",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: 800,
-    cursor: "pointer",
-    zIndex: 2,
   } satisfies CSSProperties,
 
   modalOverlay: {
