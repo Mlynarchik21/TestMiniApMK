@@ -802,7 +802,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 58px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -826,7 +826,8 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 0,
+    paddingTop: 18,
+    marginBottom: -8,
   } satisfies CSSProperties,
 
   heroRightColumn: {
@@ -843,7 +844,6 @@ const styles = {
     fontWeight: 500,
     lineHeight: 1.2,
     margin: 0,
-    paddingTop: 8,
   } satisfies CSSProperties,
 
   updatedAt: {
@@ -878,19 +878,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  heroRowMiddle: {
-    display: "block",
-    marginTop: -2,
-    marginBottom: 0,
-  } satisfies CSSProperties,
-
-  heroCard: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    marginBottom: 26,
   } satisfies CSSProperties,
 
   metricValueRow: {
@@ -946,6 +933,13 @@ const styles = {
     fontWeight: 700,
     lineHeight: 1.15,
     margin: 0,
+  } satisfies CSSProperties,
+
+  heroCard: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    marginBottom: 26,
   } satisfies CSSProperties,
 
   sentimentHeader: {
