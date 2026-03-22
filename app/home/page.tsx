@@ -326,9 +326,20 @@ export default function HomePage() {
           <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
             <div style={styles.heroHeaderRow}>
               <div style={styles.metricLabel}>Рын. капитализация</div>
+
               <div style={styles.heroRightColumn}>
                 <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
+              </div>
+            </div>
 
+            <div style={styles.heroRowMiddle}>
+              <div style={styles.metricValueRow}>
+                <span style={styles.metricValue}>{marketCapT}</span>
+                <span style={styles.metricTinyUnit}>T</span>
+                <span style={styles.metricUnit}>USDT</span>
+              </div>
+
+              <div style={styles.heroRightColumn}>
                 <div style={styles.topActions}>
                   <button
                     type="button"
@@ -360,13 +371,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div style={styles.metricValueRow}>
-              <span style={styles.metricValue}>{marketCapT}</span>
-              <span style={styles.metricTinyUnit}>T</span>
-              <span style={styles.metricUnit}>USDT</span>
-            </div>
-
-            <div style={styles.deltaRow}>
+            <div style={styles.deltaRowInline}>
               <span style={styles.deltaLabel}>Изменение за день</span>
               <span
                 style={{
@@ -816,16 +821,24 @@ const styles = {
 
   heroTop: {
     position: "relative",
-    marginTop: 6,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 16,
   } satisfies CSSProperties,
 
   heroHeaderRow: {
     display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  heroRowMiddle: {
+    display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 8,
+    marginBottom: 10,
   } satisfies CSSProperties,
 
   heroRightColumn: {
@@ -833,8 +846,7 @@ const styles = {
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-end",
-    gap: 10,
+    alignItems: "center",
   } satisfies CSSProperties,
 
   metricLabel: {
@@ -843,14 +855,13 @@ const styles = {
     fontWeight: 500,
     lineHeight: 1.2,
     margin: 0,
-    paddingTop: 2,
   } satisfies CSSProperties,
 
   updatedAt: {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
-    textAlign: "right",
+    textAlign: "center",
     margin: 0,
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
@@ -858,7 +869,7 @@ const styles = {
   topActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "center",
     gap: 10,
     width: "100%",
   } satisfies CSSProperties,
@@ -891,7 +902,7 @@ const styles = {
     alignItems: "baseline",
     gap: 0,
     flexWrap: "wrap",
-    marginBottom: 8,
+    marginBottom: 0,
   } satisfies CSSProperties,
 
   metricValue: {
@@ -918,13 +929,13 @@ const styles = {
     letterSpacing: "-0.02em",
   } satisfies CSSProperties,
 
-  deltaRow: {
+  deltaRowInline: {
     display: "flex",
     alignItems: "baseline",
-    gap: 8,
+    gap: 10,
+    flexWrap: "wrap",
     marginTop: 0,
     marginBottom: 0,
-    flexWrap: "wrap",
   } satisfies CSSProperties,
 
   deltaLabel: {
@@ -936,11 +947,9 @@ const styles = {
 
   deltaNegative: {
     fontSize: 15,
-    color: "#ff5f5f",
     fontWeight: 700,
     lineHeight: 1.15,
-    marginTop: 0,
-    marginBottom: 0,
+    margin: 0,
   } satisfies CSSProperties,
 
   sentimentHeader: {
