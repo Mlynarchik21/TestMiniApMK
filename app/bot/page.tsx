@@ -76,6 +76,7 @@ const UI = {
   yellow: "#f3d709",
   purple: "#9b8cff",
   orange: "#ffb258",
+  cyan: "#6fdcff",
 };
 
 function reveal(index: number, mounted: boolean): CSSProperties {
@@ -136,19 +137,6 @@ function formatDate(value: unknown) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  });
-}
-
-function formatDateTime(value: unknown) {
-  if (!value) return "—";
-  const d = safeDate(value);
-  if (!d) return String(value);
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -289,12 +277,8 @@ function deriveStatsFromTrades(trades: any[]) {
 
   let totalVolume = 0;
   let maxBalanceSeen = 0;
-  let maxProfitDay = 0;
-  let maxProfitWeek = 0;
-  let maxProfitMonth = 0;
-  let maxLossDay = 0;
-  let maxLossWeek = 0;
-  let maxLossMonth = 0;
+  let maxProfitSeries = 0;
+  let maxLossSeries = 0;
 
   for (const t of trades) {
     const entryValue = Number(t?.entryValue ?? 0);
@@ -305,14 +289,9 @@ function deriveStatsFromTrades(trades: any[]) {
     if (Number.isFinite(entryValue)) totalVolume += entryValue;
     if (Number.isFinite(exitValue)) totalVolume += exitValue;
     if (Number.isFinite(balance) && balance > maxBalanceSeen) maxBalanceSeen = balance;
-
     if (Number.isFinite(pnl)) {
-      if (pnl > maxProfitDay) maxProfitDay = pnl;
-      if (pnl > maxProfitWeek) maxProfitWeek = pnl;
-      if (pnl > maxProfitMonth) maxProfitMonth = pnl;
-      if (pnl < maxLossDay) maxLossDay = pnl;
-      if (pnl < maxLossWeek) maxLossWeek = pnl;
-      if (pnl < maxLossMonth) maxLossMonth = pnl;
+      if (pnl > maxProfitSeries) maxProfitSeries = pnl;
+      if (pnl < maxLossSeries) maxLossSeries = pnl;
     }
   }
 
@@ -336,13 +315,9 @@ function deriveStatsFromTrades(trades: any[]) {
     avgDuration,
     minDuration,
     maxDuration,
-    maxProfitDay,
-    maxProfitWeek,
-    maxProfitMonth,
-    maxLossDay,
-    maxLossWeek,
-    maxLossMonth,
     maxBalanceSeen,
+    maxProfitSeries,
+    maxLossSeries,
     wins: wins.length,
     losses: losses.length,
   };
@@ -947,95 +922,138 @@ export default function BotPage() {
               </div>
             </div>
 
-            <div style={styles.analyticsGrid2}>
-              <AnalyticsCard
-                accent={UI.green}
-                items={[
-                  ["Макс прибыль", formatUsd(derived.maxProfitTrade)],
-                  ["Мин прибыль", formatUsd(derived.minProfitTrade)],
-                  ["Средняя прибыль", formatUsd(derived.avgProfitTrade)],
-                ]}
-              />
-              <AnalyticsCard
-                accent={UI.red}
-                items={[
-                  ["Макс убыток", formatUsd(Math.abs(derived.maxLossTrade))],
-                  ["Мин убыток", formatUsd(Math.abs(derived.minLossTrade))],
-                  ["Средний убыток", formatUsd(derived.avgLossTrade)],
-                ]}
-              />
-            </div>
+            <div style={styles.statsUnifiedBlock}>
+              <div style={styles.statsUnifiedTop}>
+                <div style={styles.statsUnifiedMini}>
+                  <span style={styles.statsUnifiedLabel}>Win Rate</span>
+                  <span style={{ ...styles.statsUnifiedValue, color: UI.yellow }}>
+                    {formatPct(derived.winRate)}
+                  </span>
+                </div>
 
-            <div style={styles.analyticsGrid2SingleGap}>
-              <AnalyticsCard
-                accent={UI.blue}
-                items={[
-                  ["Макс время", formatDuration(derived.maxDuration)],
-                  ["Мин время", formatDuration(derived.minDuration)],
-                  ["Среднее время", formatDuration(derived.avgDuration)],
-                ]}
-              />
-              <AnalyticsCard
-                accent={UI.yellow}
-                items={[
-                  ["Win Rate", formatPct(derived.winRate)],
-                  [
-                    "Profit factor",
-                    Number(derived.profitFactor).toLocaleString("ru-RU", {
+                <div style={styles.statsUnifiedMini}>
+                  <span style={styles.statsUnifiedLabel}>Profit Factor</span>
+                  <span style={{ ...styles.statsUnifiedValue, color: UI.blue }}>
+                    {Number(derived.profitFactor).toLocaleString("ru-RU", {
                       maximumFractionDigits: 2,
-                    }),
-                  ],
-                  ["Объём", formatUsd(derived.totalVolume)],
-                ]}
-              />
-            </div>
+                    })}
+                  </span>
+                </div>
 
-            <div style={styles.circleStatsWrap}>
-              <CircleStat
-                value={formatUsd(derived.maxProfitDay)}
-                accent={UI.green}
-                label="Макс прибыль / день"
-              />
-              <CircleStat
-                value={formatUsd(derived.maxProfitWeek)}
-                accent={UI.green}
-                label="Макс прибыль / неделя"
-              />
-              <CircleStat
-                value={formatUsd(derived.maxProfitMonth)}
-                accent={UI.green}
-                label="Макс прибыль / месяц"
-              />
-              <CircleStat
-                value={formatUsd(Math.abs(derived.maxLossDay))}
-                accent={UI.red}
-                label="Макс убыток / день"
-              />
-              <CircleStat
-                value={formatUsd(Math.abs(derived.maxLossWeek))}
-                accent={UI.red}
-                label="Макс убыток / неделя"
-              />
-              <CircleStat
-                value={formatUsd(Math.abs(derived.maxLossMonth))}
-                accent={UI.red}
-                label="Макс убыток / месяц"
-              />
-              <CircleStat
-                value={formatUsd(derived.maxBalanceSeen)}
-                accent={UI.purple}
-                label="Макс баланс"
-              />
-              <CircleStat
-                value={formatUsd(derived.bestTradePnl)}
-                accent={UI.green}
-                label="Лучший трейд"
-              />
-              <CircleStat
-                value={formatUsd(Math.abs(derived.worstTradePnl))}
-                accent={UI.red}
-                label="Худший трейд"
-              />
+                <div style={styles.statsUnifiedMini}>
+                  <span style={styles.statsUnifiedLabel}>Макс баланс</span>
+                  <span style={{ ...styles.statsUnifiedValue, color: UI.purple }}>
+                    {formatUsd(derived.maxBalanceSeen)}
+                  </span>
+                </div>
+              </div>
+
+              <div style={styles.statsUnifiedMiddle}>
+                <div style={styles.dualAnalyticsCard}>
+                  <div style={styles.dualAnalyticsHeader}>
+                    <span
+                      style={{
+                        ...styles.analyticsAccent,
+                        background: UI.green,
+                        boxShadow: `0 0 18px ${UI.green}55`,
+                      }}
+                    />
+                    <span style={styles.dualAnalyticsTitle}>Прибыль</span>
+                  </div>
+
+                  <div style={styles.analyticsCompactRows}>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={styles.analyticsCompactLabel}>Макс</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
+                        {formatUsd(derived.maxProfitTrade)}
+                      </span>
+                    </div>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={styles.analyticsCompactLabel}>Мин</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
+                        {formatUsd(derived.minProfitTrade)}
+                      </span>
+                    </div>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={styles.analyticsCompactLabel}>Средняя</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
+                        {formatUsd(derived.avgProfitTrade)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.dualAnalyticsCard}>
+                  <div style={styles.dualAnalyticsHeader}>
+                    <span
+                      style={{
+                        ...styles.analyticsAccent,
+                        background: UI.red,
+                        boxShadow: `0 0 18px ${UI.red}55`,
+                      }}
+                    />
+                    <span style={styles.dualAnalyticsTitle}>Убыток</span>
+                  </div>
+
+                  <div style={styles.analyticsCompactRows}>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={styles.analyticsCompactLabel}>Макс</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.red }}>
+                        {formatUsd(Math.abs(derived.maxLossTrade))}
+                      </span>
+                    </div>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={styles.analyticsCompactLabel}>Мин</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.red }}>
+                        {formatUsd(Math.abs(derived.minLossTrade))}
+                      </span>
+                    </div>
+                    <div style={styles.analyticsCompactRow}>
+                      <span style={{ ...styles.analyticsCompactLabel, color: UI.cyan }}>
+                        Время
+                      </span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.cyan }}>
+                        {formatDuration(derived.avgDuration)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.extremeStrip}>
+                <div style={styles.extremeStripCard}>
+                  <div style={styles.extremeTitle}>Макс прибыль</div>
+                  <div style={styles.extremeValuesRow}>
+                    <span style={{ color: UI.green }}>{formatUsd(derived.maxProfitSeries)}</span>
+                    <span style={styles.extremeDivider}>•</span>
+                    <span style={{ color: UI.textSoft }}>
+                      Лучший трейд {formatUsd(derived.bestTradePnl)}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={styles.extremeStripCard}>
+                  <div style={styles.extremeTitle}>Макс убыток</div>
+                  <div style={styles.extremeValuesRow}>
+                    <span style={{ color: UI.red }}>
+                      {formatUsd(Math.abs(derived.maxLossSeries))}
+                    </span>
+                    <span style={styles.extremeDivider}>•</span>
+                    <span style={{ color: UI.textSoft }}>
+                      Худший трейд {formatUsd(Math.abs(derived.worstTradePnl))}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={styles.extremeStripCard}>
+                  <div style={styles.extremeTitle}>Диапазон времени сделки</div>
+                  <div style={styles.extremeValuesRow}>
+                    <span style={{ color: UI.blue }}>{formatDuration(derived.minDuration)}</span>
+                    <span style={styles.extremeDivider}>—</span>
+                    <span style={{ color: UI.blue }}>{formatDuration(derived.maxDuration)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1055,7 +1073,7 @@ export default function BotPage() {
             {!shortOpenList.length ? (
               <div style={styles.emptyText}>Нет открытых позиций.</div>
             ) : (
-              <div style={styles.listGrid}>
+              <div style={styles.listGridTight}>
                 {shortOpenList.map((p) => {
                   const isOpen = expandedOpenId === p.id;
                   const assetName = assetCodeFromSymbol(p.symbol) || p.symbol || "—";
@@ -1063,47 +1081,30 @@ export default function BotPage() {
                   return (
                     <div
                       key={p.id}
-                      style={styles.tradeCardCompact}
+                      style={styles.tradeCardCompactDense}
                       onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
                     >
-                      <div style={styles.tradeCardTitleLarge}>{assetName}</div>
-                      <div style={styles.tradeCardSecondLine}>
-                        Ордер #{String(p.orderId ?? p.id).slice(0, 10)}
+                      <div style={styles.tradeDenseHead}>
+                        <div style={styles.tradeDenseAsset}>{assetName}</div>
+                        <div style={styles.tradeDenseQty}>
+                          {compactNumber(p.qty, 3)} {assetName}
+                        </div>
                       </div>
-                      <div style={styles.tradeCardThirdLine}>
-                        {formatDate(p.openedAt)}
-                      </div>
-                      <div style={styles.tradeCardFourthLine}>
-                        {compactNumber(p.qty, 3)} {assetName}
+
+                      <div style={styles.tradeDenseMetaLine}>
+                        <span style={styles.tradeDenseOrder}>#{String(p.orderId ?? p.id).slice(0, 10)}</span>
+                        <span style={styles.tradeDenseDate}>{formatDate(p.openedAt)}</span>
                       </div>
 
                       {isOpen ? (
-                        <div style={styles.tradeExpandedCompact}>
-                          <div style={styles.detailsGridCompact}>
-                            <DetailItemCompact
-                              label="Цена открытия"
-                              value={compactNumber(p.avgPrice, 3)}
-                            />
-                            <DetailItemCompact
-                              label="Таргет"
-                              value={compactNumber(p.tpPrice, 3)}
-                            />
-                            <DetailItemCompact
-                              label="В USDT"
-                              value={formatUsd(p.investedQuote ?? 0)}
-                            />
-                            <DetailItemCompact
-                              label="Дата изменения"
-                              value={formatDate(p.updatedAt ?? p.openedAt)}
-                            />
-                            <DetailItemCompact
-                              label="Усреднений"
-                              value={String(p.addsCount ?? 0)}
-                            />
-                            <DetailItemCompact
-                              label="Биржа"
-                              value={String(p.exchange ?? "—")}
-                            />
+                        <div style={styles.tradeExpandedDense}>
+                          <div style={styles.detailsGridDense}>
+                            <DetailChip label="Цена" value={compactNumber(p.avgPrice, 3)} color={UI.blue} />
+                            <DetailChip label="TP" value={compactNumber(p.tpPrice, 3)} color={UI.green} />
+                            <DetailChip label="USDT" value={formatUsd(p.investedQuote ?? 0)} color={UI.yellow} />
+                            <DetailChip label="Изменена" value={formatDate(p.updatedAt ?? p.openedAt)} color={UI.textSoft} />
+                            <DetailChip label="Усреднений" value={String(p.addsCount ?? 0)} color={UI.purple} />
+                            <DetailChip label="Биржа" value={String(p.exchange ?? "—")} color={UI.cyan} />
                           </div>
                         </div>
                       ) : null}
@@ -1130,7 +1131,7 @@ export default function BotPage() {
             {!shortHistoryList.length ? (
               <div style={styles.emptyText}>Закрытых сделок пока нет.</div>
             ) : (
-              <div style={styles.listGrid}>
+              <div style={styles.listGridTight}>
                 {shortHistoryList.map((t) => {
                   const isOpen = expandedHistoryId === t.id;
                   const assetName = assetCodeFromSymbol(t.symbol) || t.symbol || "—";
@@ -1138,62 +1139,37 @@ export default function BotPage() {
                   return (
                     <div
                       key={t.id}
-                      style={styles.tradeCardCompact}
+                      style={styles.tradeCardCompactDense}
                       onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
                     >
-                      <div style={styles.tradeCardTitleLarge}>{assetName}</div>
-                      <div style={styles.tradeCardSecondLine}>
-                        Ордер #{String(t.orderId ?? t.id).slice(0, 10)}
+                      <div style={styles.tradeDenseHead}>
+                        <div style={styles.tradeDenseAsset}>{assetName}</div>
+                        <div
+                          style={{
+                            ...styles.tradeDenseQty,
+                            color: pnlColor(t.pnl),
+                          }}
+                        >
+                          {formatUsd(t.pnl)}
+                        </div>
                       </div>
-                      <div style={styles.tradeCardThirdLine}>
-                        {formatDate(t.closedAt)}
-                      </div>
-                      <div
-                        style={{
-                          ...styles.tradeCardFourthLine,
-                          color: pnlColor(t.pnl),
-                        }}
-                      >
-                        {formatUsd(t.pnl)}
+
+                      <div style={styles.tradeDenseMetaLine}>
+                        <span style={styles.tradeDenseOrder}>#{String(t.orderId ?? t.id).slice(0, 10)}</span>
+                        <span style={styles.tradeDenseDate}>{formatDate(t.closedAt)}</span>
                       </div>
 
                       {isOpen ? (
-                        <div style={styles.tradeExpandedCompact}>
-                          <div style={styles.detailsGridCompact}>
-                            <DetailItemCompact
-                              label="Цена входа"
-                              value={compactNumber(t.avgEntryPrice, 3)}
-                            />
-                            <DetailItemCompact
-                              label="Цена выхода"
-                              value={compactNumber(t.exitPrice, 3)}
-                            />
-                            <DetailItemCompact
-                              label="Вход в USDT"
-                              value={formatUsd(t.entryValue ?? 0)}
-                            />
-                            <DetailItemCompact
-                              label="Выход в USDT"
-                              value={formatUsd(t.exitValue ?? 0)}
-                            />
-                            <DetailItemCompact
-                              label="Прибыль"
-                              value={`${formatUsd(t.pnl ?? 0)} · ${formatPct(
-                                t.pnlPercent ?? 0
-                              )}`}
-                            />
-                            <DetailItemCompact
-                              label="Закрытие"
-                              value={getCloseReasonLabel(t.closeReason)}
-                            />
-                            <DetailItemCompact
-                              label="Дата открытия"
-                              value={formatDate(t.openedAt)}
-                            />
-                            <DetailItemCompact
-                              label="Дата закрытия"
-                              value={formatDate(t.closedAt)}
-                            />
+                        <div style={styles.tradeExpandedDense}>
+                          <div style={styles.detailsGridDense}>
+                            <DetailChip label="Вход" value={compactNumber(t.avgEntryPrice, 3)} color={UI.blue} />
+                            <DetailChip label="Выход" value={compactNumber(t.exitPrice, 3)} color={UI.orange} />
+                            <DetailChip label="P&L" value={`${formatUsd(t.pnl ?? 0)} · ${formatPct(t.pnlPercent ?? 0)}`} color={pnlColor(t.pnl)} />
+                            <DetailChip label="Закрытие" value={getCloseReasonLabel(t.closeReason)} color={UI.yellow} />
+                            <DetailChip label="Открыта" value={formatDate(t.openedAt)} color={UI.textSoft} />
+                            <DetailChip label="Закрыта" value={formatDate(t.closedAt)} color={UI.textSoft} />
+                            <DetailChip label="Вход USDT" value={formatUsd(t.entryValue ?? 0)} color={UI.purple} />
+                            <DetailChip label="Выход USDT" value={formatUsd(t.exitValue ?? 0)} color={UI.green} />
                           </div>
                         </div>
                       ) : null}
@@ -1390,56 +1366,19 @@ function MetricBox(props: {
   );
 }
 
-function AnalyticsCard(props: {
-  accent: string;
-  items: [string, string][];
-}) {
+function DetailChip(props: { label: string; value: string; color: string }) {
   return (
-    <div style={styles.analyticsCard}>
-      <div style={styles.analyticsRows}>
-        {props.items.map(([label, value]) => (
-          <div key={label} style={styles.analyticsRow}>
-            <span style={styles.analyticsRowLabel}>{label}</span>
-            <span style={{ ...styles.analyticsRowValue, color: props.accent }}>
-              {value}
-            </span>
-          </div>
-        ))}
+    <div
+      style={{
+        ...styles.detailChip,
+        borderColor: `${props.color}33`,
+        background: `${props.color}10`,
+      }}
+    >
+      <div style={styles.detailChipLabel}>{props.label}</div>
+      <div style={{ ...styles.detailChipValue, color: props.color }}>
+        {props.value}
       </div>
-    </div>
-  );
-}
-
-function CircleStat(props: {
-  label: string;
-  value: string;
-  accent: string;
-}) {
-  return (
-    <div style={styles.circleCard}>
-      <div style={styles.circleOuter}>
-        <div
-          style={{
-            ...styles.circleGlow,
-            borderColor: `${props.accent}66`,
-            boxShadow: `0 0 20px ${props.accent}22 inset`,
-          }}
-        >
-          <div style={{ ...styles.circleValue, color: props.accent }}>
-            {props.value}
-          </div>
-        </div>
-      </div>
-      <div style={styles.circleLabel}>{props.label}</div>
-    </div>
-  );
-}
-
-function DetailItemCompact(props: { label: string; value: string }) {
-  return (
-    <div style={styles.detailCompact}>
-      <div style={styles.detailCompactLabel}>{props.label}</div>
-      <div style={styles.detailCompactValue}>{props.value}</div>
     </div>
   );
 }
@@ -1707,7 +1646,7 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "1.05fr 0.95fr",
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 14,
     alignItems: "center",
   } satisfies CSSProperties,
 
@@ -1769,101 +1708,129 @@ const styles = {
     fontWeight: 700,
   } satisfies CSSProperties,
 
-  analyticsGrid2: {
+  statsUnifiedBlock: {
+    display: "grid",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  statsUnifiedTop: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  statsUnifiedMini: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 14,
+    padding: 12,
+    background: "rgba(255,255,255,0.03)",
+    display: "grid",
+    gap: 6,
+  } satisfies CSSProperties,
+
+  statsUnifiedLabel: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.textFaint,
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  statsUnifiedValue: {
+    fontSize: 15,
+    fontWeight: 800,
+    lineHeight: 1.2,
+  } satisfies CSSProperties,
+
+  statsUnifiedMiddle: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
-    marginBottom: 12,
   } satisfies CSSProperties,
 
-  analyticsGrid2SingleGap: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-    marginBottom: 14,
-  } satisfies CSSProperties,
-
-  analyticsCard: {
+  dualAnalyticsCard: {
     border: `1px solid ${UI.border}`,
     borderRadius: 18,
     padding: 14,
     background: "rgba(255,255,255,0.03)",
   } satisfies CSSProperties,
 
-  analyticsRows: {
-    display: "grid",
-    gap: 10,
+  dualAnalyticsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
   } satisfies CSSProperties,
 
-  analyticsRow: {
+  analyticsAccent: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  dualAnalyticsTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  analyticsCompactRows: {
+    display: "grid",
+    gap: 9,
+  } satisfies CSSProperties,
+
+  analyticsCompactRow: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
+    alignItems: "baseline",
   } satisfies CSSProperties,
 
-  analyticsRowLabel: {
+  analyticsCompactLabel: {
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 600,
   } satisfies CSSProperties,
 
-  analyticsRowValue: {
+  analyticsCompactValue: {
     fontSize: 12,
     fontWeight: 800,
     textAlign: "right",
   } satisfies CSSProperties,
 
-  circleStatsWrap: {
+  extremeStrip: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 12,
+    gap: 10,
   } satisfies CSSProperties,
 
-  circleCard: {
+  extremeStripCard: {
     border: `1px solid ${UI.border}`,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 12,
     background: "rgba(255,255,255,0.02)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 148,
-    justifyContent: "center",
-    textAlign: "center",
   } satisfies CSSProperties,
 
-  circleOuter: {
-    width: 78,
-    height: 78,
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  extremeTitle: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 8,
   } satisfies CSSProperties,
 
-  circleGlow: {
-    width: "100%",
-    height: "100%",
-    borderRadius: "50%",
-    border: "1px solid",
+  extremeValuesRow: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 8,
-  } satisfies CSSProperties,
-
-  circleValue: {
-    fontSize: 12,
-    lineHeight: 1.2,
+    gap: 8,
+    flexWrap: "wrap",
+    fontSize: 13,
     fontWeight: 800,
   } satisfies CSSProperties,
 
-  circleLabel: {
-    fontSize: 11,
-    lineHeight: 1.35,
-    color: UI.textSoft,
-    fontWeight: 600,
+  extremeDivider: {
+    color: UI.textFaint,
   } satisfies CSSProperties,
 
   inlineActionGhost: {
@@ -1878,82 +1845,94 @@ const styles = {
     cursor: "pointer",
   } satisfies CSSProperties,
 
-  listGrid: {
+  listGridTight: {
     display: "grid",
-    gap: 12,
+    gap: 8,
   } satisfies CSSProperties,
 
-  tradeCardCompact: {
+  tradeCardCompactDense: {
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
     border: `1px solid ${UI.border}`,
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 16,
+    padding: 12,
     cursor: "pointer",
   } satisfies CSSProperties,
 
-  tradeCardTitleLarge: {
-    fontSize: 22,
+  tradeDenseHead: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  tradeDenseAsset: {
+    fontSize: 20,
     fontWeight: 800,
     letterSpacing: "-0.04em",
     color: UI.textMain,
     lineHeight: 1,
   } satisfies CSSProperties,
 
-  tradeCardSecondLine: {
-    marginTop: 8,
+  tradeDenseQty: {
     fontSize: 12,
+    fontWeight: 700,
+    color: UI.blue,
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+
+  tradeDenseMetaLine: {
+    marginTop: 6,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
+  tradeDenseOrder: {
+    fontSize: 11,
     color: UI.textFaint,
     fontWeight: 700,
   } satisfies CSSProperties,
 
-  tradeCardThirdLine: {
-    marginTop: 6,
-    fontSize: 12,
+  tradeDenseDate: {
+    fontSize: 11,
     color: UI.textMuted,
     fontWeight: 600,
   } satisfies CSSProperties,
 
-  tradeCardFourthLine: {
-    marginTop: 8,
-    fontSize: 13,
-    color: UI.textSoft,
-    fontWeight: 700,
-  } satisfies CSSProperties,
-
-  tradeExpandedCompact: {
-    marginTop: 12,
-    paddingTop: 12,
+  tradeExpandedDense: {
+    marginTop: 10,
+    paddingTop: 10,
     borderTop: `1px solid ${UI.borderSoft}`,
   } satisfies CSSProperties,
 
-  detailsGridCompact: {
+  detailsGridDense: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 8,
+    gap: 6,
   } satisfies CSSProperties,
 
-  detailCompact: {
-    border: `1px solid ${UI.borderSoft}`,
+  detailChip: {
+    border: "1px solid",
     borderRadius: 12,
-    padding: 9,
-    background: "rgba(255,255,255,0.02)",
+    padding: "8px 9px",
   } satisfies CSSProperties,
 
-  detailCompactLabel: {
-    fontSize: 10,
+  detailChipLabel: {
+    fontSize: 9,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
     color: UI.textFaint,
     fontWeight: 700,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    marginBottom: 5,
+    marginBottom: 4,
   } satisfies CSSProperties,
 
-  detailCompactValue: {
-    fontSize: 12,
-    color: UI.textMain,
-    fontWeight: 700,
-    lineHeight: 1.35,
+  detailChipValue: {
+    fontSize: 11,
+    fontWeight: 800,
+    lineHeight: 1.25,
     wordBreak: "break-word",
   } satisfies CSSProperties,
 
