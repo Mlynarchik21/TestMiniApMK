@@ -814,7 +814,7 @@ const styles = {
     position: "relative",
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     gap: 16,
     marginTop: 28,
     marginBottom: 26,
@@ -824,7 +824,7 @@ const styles = {
   heroLeft: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 150,
+    paddingTop: 0,
   } satisfies CSSProperties,
 
   heroRight: {
@@ -833,8 +833,11 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
+    justifyContent: "flex-end",
     gap: 10,
-    paddingTop: 46,
+    minHeight: 150,
+    paddingTop: 0,
+    paddingBottom: 8,
   } satisfies CSSProperties,
 
   updatedAt: {
