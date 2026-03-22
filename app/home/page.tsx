@@ -90,17 +90,12 @@ function fearFill(percent: number): CSSProperties {
 }
 
 function ringStyle(percent: number, color: string): CSSProperties {
+  const safe = Math.max(0, Math.min(100, percent));
   return {
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${Math.max(
-      0,
-      Math.min(100, percent)
-    )}%, rgba(255,255,255,0.10) ${Math.max(
-      0,
-      Math.min(100, percent)
-    )}% 100%)`,
+    background: `conic-gradient(${color} 0 ${safe}%, rgba(255,255,255,0.10) ${safe}% 100%)`,
     WebkitMask:
       "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
@@ -275,8 +270,6 @@ export default function HomePage() {
 
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const marketCapT = marketData?.ok ? marketData.market.totalMarketCapT : "—";
@@ -324,12 +317,10 @@ export default function HomePage() {
       <main style={styles.page}>
         <div style={styles.container}>
           <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
-            <div style={styles.heroHeaderRow}>
+            <div style={styles.heroTopRow}>
               <div style={styles.metricLabel}>Рын. капитализация</div>
-
-              <div style={styles.heroRightColumn}>
+              <div style={styles.rightHeader}>
                 <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
-
                 <div style={styles.topActions}>
                   <button
                     type="button"
@@ -802,7 +793,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -816,26 +807,25 @@ const styles = {
   } satisfies CSSProperties,
 
   heroTop: {
-    position: "relative",
     marginTop: 0,
-    marginBottom: 16,
+    marginBottom: 18,
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 132px)",
   } satisfies CSSProperties,
 
-  heroHeaderRow: {
+  heroTopRow: {
     display: "flex",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
-    paddingTop: 18,
-    marginBottom: -8,
+    alignItems: "flex-start",
+    marginBottom: 6,
+    gap: 12,
   } satisfies CSSProperties,
 
-  heroRightColumn: {
-    width: 170,
-    flexShrink: 0,
+  rightHeader: {
+    minWidth: 180,
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
+    gap: 4,
   } satisfies CSSProperties,
 
   metricLabel: {
@@ -844,24 +834,21 @@ const styles = {
     fontWeight: 500,
     lineHeight: 1.2,
     margin: 0,
+    paddingTop: 2,
   } satisfies CSSProperties,
 
   updatedAt: {
     fontSize: 11,
     color: UI.textFaint,
+    whiteSpace: "nowrap",
     lineHeight: 1.2,
     textAlign: "right",
-    margin: 0,
-    whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
   topActions: {
     display: "flex",
-    alignItems: "center",
+    gap: 8,
     justifyContent: "flex-end",
-    gap: 10,
-    width: "100%",
-    marginTop: 4,
   } satisfies CSSProperties,
 
   iconButton: {
@@ -871,38 +858,37 @@ const styles = {
     border: `1px solid ${UI.border}`,
     background: "rgba(255,255,255,0.04)",
     color: UI.textMain,
-    fontSize: 15,
     cursor: "pointer",
-    flexShrink: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     WebkitTapHighlightColor: "transparent",
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
     gap: 0,
+    marginBottom: 2,
     flexWrap: "wrap",
-    marginBottom: 0,
   } satisfies CSSProperties,
 
   metricValue: {
-    fontSize: 40,
-    lineHeight: 0.95,
+    fontSize: 42,
+    lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.06em",
-    color: "#ffffff",
+    color: "#fff",
   } satisfies CSSProperties,
 
   metricTinyUnit: {
     fontSize: 15,
-    color: "#ffffff",
+    color: "#fff",
     fontWeight: 700,
-    letterSpacing: "-0.03em",
     marginLeft: 1,
     marginRight: 3,
+    letterSpacing: "-0.03em",
   } satisfies CSSProperties,
 
   metricUnit: {
@@ -914,11 +900,9 @@ const styles = {
 
   deltaRowInline: {
     display: "flex",
-    alignItems: "baseline",
     gap: 10,
+    alignItems: "baseline",
     flexWrap: "wrap",
-    marginTop: -2,
-    marginBottom: 0,
   } satisfies CSSProperties,
 
   deltaLabel: {
