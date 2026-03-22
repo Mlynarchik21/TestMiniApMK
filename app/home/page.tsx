@@ -329,17 +329,7 @@ export default function HomePage() {
 
               <div style={styles.heroRightColumn}>
                 <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
-              </div>
-            </div>
 
-            <div style={styles.heroRowMiddle}>
-              <div style={styles.metricValueRow}>
-                <span style={styles.metricValue}>{marketCapT}</span>
-                <span style={styles.metricTinyUnit}>T</span>
-                <span style={styles.metricUnit}>USDT</span>
-              </div>
-
-              <div style={styles.heroRightColumn}>
                 <div style={styles.topActions}>
                   <button
                     type="button"
@@ -368,6 +358,14 @@ export default function HomePage() {
                     <SettingsIcon />
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div style={styles.heroRowMiddle}>
+              <div style={styles.metricValueRow}>
+                <span style={styles.metricValue}>{marketCapT}</span>
+                <span style={styles.metricTinyUnit}>T</span>
+                <span style={styles.metricUnit}>USDT</span>
               </div>
             </div>
 
@@ -827,10 +825,10 @@ const styles = {
 
   heroHeaderRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 10,
+    marginBottom: 0,
   } satisfies CSSProperties,
 
   heroRowMiddle: {
@@ -838,7 +836,7 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: 10,
+    marginBottom: 4,
   } satisfies CSSProperties,
 
   heroRightColumn: {
@@ -846,7 +844,7 @@ const styles = {
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
+    alignItems: "flex-start",
   } satisfies CSSProperties,
 
   metricLabel: {
@@ -861,7 +859,7 @@ const styles = {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
-    textAlign: "center",
+    textAlign: "left",
     margin: 0,
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
@@ -869,9 +867,10 @@ const styles = {
   topActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: 10,
     width: "100%",
+    marginTop: 6,
   } satisfies CSSProperties,
 
   iconButton: {
