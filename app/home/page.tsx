@@ -97,8 +97,12 @@ function ringStyle(percent: number, color: string): CSSProperties {
     background: `conic-gradient(${color} 0 ${Math.max(
       0,
       Math.min(100, percent)
-    )}%, rgba(255,255,255,0.10) ${Math.max(0, Math.min(100, percent))}% 100%)`,
-    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    )}%, rgba(255,255,255,0.10) ${Math.max(
+      0,
+      Math.min(100, percent)
+    )}% 100%)`,
+    WebkitMask:
+      "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   };
 }
@@ -453,10 +457,12 @@ export default function HomePage() {
                         ? `conic-gradient(
                             ${UI.btc} 0 ${marketData.market.btcDominance}%,
                             ${UI.eth} ${marketData.market.btcDominance}% ${
-                            marketData.market.btcDominance + marketData.market.ethDominance
+                            marketData.market.btcDominance +
+                            marketData.market.ethDominance
                           }%,
                             ${UI.alt} ${
-                            marketData.market.btcDominance + marketData.market.ethDominance
+                            marketData.market.btcDominance +
+                            marketData.market.ethDominance
                           }% 100%
                           )`
                         : styles.multiRing.background,
@@ -484,7 +490,9 @@ export default function HomePage() {
                   <div style={{ ...styles.statBigValue, color: UI.blue }}>
                     {altseasonValue != null ? altseasonValue : "—"}
                   </div>
-                  <div style={styles.statSubtitle}>{getAltseasonLabel(altseasonValue)}</div>
+                  <div style={styles.statSubtitle}>
+                    {getAltseasonLabel(altseasonValue)}
+                  </div>
                 </div>
 
                 <div style={styles.ringWrap}>
@@ -509,7 +517,9 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(1)}%`
+                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(
+                        1
+                      )}%`
                     : "Нет данных"
                 }
                 valueColor={UI.btc}
@@ -526,7 +536,9 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `Alt dominance ${marketData.market.altDominance.toFixed(1)}%`
+                    ? `Alt dominance ${marketData.market.altDominance.toFixed(
+                        1
+                      )}%`
                     : "Нет данных"
                 }
                 valueColor={UI.alt}
@@ -541,7 +553,9 @@ export default function HomePage() {
 
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
-                <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
+                <div style={styles.subBlockTitle}>
+                  Spot Activity / Perp Activity
+                </div>
               </div>
 
               <div style={styles.splitBar}>
@@ -555,8 +569,8 @@ export default function HomePage() {
               </div>
 
               <div style={styles.bodyTextTight}>
-                Движение подтверждается в большей степени спотовым спросом, а не перегретым
-                деривативным потоком.
+                Движение подтверждается в большей степени спотовым спросом, а не
+                перегретым деривативным потоком.
               </div>
             </div>
 
@@ -583,8 +597,8 @@ export default function HomePage() {
             </div>
 
             <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и
-              сильные альты с подтверждённым спросом.
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет —
+              BTC, ETH и сильные альты с подтверждённым спросом.
             </div>
 
             <button
@@ -652,7 +666,14 @@ export default function HomePage() {
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
                 <button
                   onClick={loadHomeMarket}
                   disabled={marketLoading}
@@ -687,7 +708,9 @@ export default function HomePage() {
               <div>
                 <span style={styles.debugMetaLabel}>fear & greed</span>
                 <div style={styles.debugMetaValue}>
-                  {marketData?.ok ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}` : "—"}
+                  {marketData?.ok
+                    ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}`
+                    : "—"}
                 </div>
               </div>
 
@@ -718,7 +741,9 @@ function MiniMetric(props: {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
-      <div style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}>
+      <div
+        style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}
+      >
         {props.value}
       </div>
       {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
@@ -737,11 +762,18 @@ function MetricBox(props: {
     <div
       style={{
         ...styles.metricItem,
-        boxShadow: props.glowColor ? `0 0 0 1px ${props.glowColor} inset` : undefined,
+        boxShadow: props.glowColor
+          ? `0 0 0 1px ${props.glowColor} inset`
+          : undefined,
       }}
     >
       <div style={styles.metricItemLabel}>{props.label}</div>
-      <div style={{ ...styles.metricItemValueLarge, color: props.valueColor || UI.textMain }}>
+      <div
+        style={{
+          ...styles.metricItemValueLarge,
+          color: props.valueColor || UI.textMain,
+        }}
+      >
         {props.value}
       </div>
       {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
@@ -779,18 +811,20 @@ const styles = {
   } satisfies CSSProperties,
 
   heroTop: {
+    position: "relative",
     display: "flex",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 16,
-    marginTop: 34,
-    marginBottom: 18,
+    marginTop: 28,
+    marginBottom: 26,
+    minHeight: 220,
   } satisfies CSSProperties,
 
   heroLeft: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 110,
+    paddingTop: 150,
   } satisfies CSSProperties,
 
   heroRight: {
@@ -800,6 +834,7 @@ const styles = {
     flexDirection: "column",
     alignItems: "flex-end",
     gap: 10,
+    paddingTop: 46,
   } satisfies CSSProperties,
 
   updatedAt: {
@@ -1095,7 +1130,8 @@ const styles = {
       ${UI.eth} 56.6% 74.4%,
       ${UI.alt} 74.4% 100%
     )`,
-    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    WebkitMask:
+      "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   } satisfies CSSProperties,
 
