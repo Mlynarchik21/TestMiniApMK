@@ -75,6 +75,7 @@ const UI = {
   brand: "#2979ff",
   yellow: "#f3d709",
   purple: "#9b8cff",
+  orange: "#ffb258",
 };
 
 function reveal(index: number, mounted: boolean): CSSProperties {
@@ -129,33 +130,47 @@ function pnlColor(v: unknown) {
   return UI.textMain;
 }
 
-function formatDateTime(value: unknown) {
-  if (!value) return "—";
-  const d = new Date(String(value));
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatTime(value: unknown) {
-  if (!value) return "—";
-  const d = new Date(String(value));
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function safeDate(value: unknown) {
   if (!value) return null;
   const d = new Date(String(value));
   if (Number.isNaN(d.getTime())) return null;
   return d;
+}
+
+function formatDate(value: unknown) {
+  if (!value) return "—";
+  const d = safeDate(value);
+  if (!d) return String(value);
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatDateTime(value: unknown) {
+  if (!value) return "—";
+  const d = safeDate(value);
+  if (!d) return String(value);
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const totalMinutes = Math.floor(ms / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${minutes}м`;
+  return `${minutes}м`;
 }
 
 function getGmtPlus3DayKey(dateLike: unknown) {
@@ -210,33 +225,10 @@ function getCloseReasonLabel(reason: unknown) {
 
   if (!value) return "—";
   if (value === "MANUAL") return "Ручное закрытие";
-  if (value === "TP") return "По таргету";
-  if (value === "TARGET") return "По таргету";
+  if (value === "TP" || value === "TARGET") return "По таргету";
   if (value === "STRATEGY") return "По стратегии";
 
   return String(reason);
-}
-
-function getPositionDisplayTime(p: any) {
-  const openedAt = p?.openedAt;
-  const updatedAt = p?.updatedAt;
-  const addsCount = Number(p?.addsCount ?? 0);
-
-  if (addsCount > 0 && updatedAt) {
-    return {
-      label: "Изменена",
-      value: formatTime(updatedAt),
-      openedAt: formatTime(openedAt),
-      updatedAt: formatTime(updatedAt),
-    };
-  }
-
-  return {
-    label: "Открыта",
-    value: formatTime(openedAt),
-    openedAt: formatTime(openedAt),
-    updatedAt: updatedAt ? formatTime(updatedAt) : "—",
-  };
 }
 
 function sumCapitalInWork(rows: any[]) {
@@ -250,6 +242,13 @@ function countOpenedToday(rows: any[]) {
   return rows.filter((p) => isTodayGmtPlus3(p?.openedAt)).length;
 }
 
+function calcTradeDurationMs(t: any) {
+  const opened = safeDate(t?.openedAt);
+  const closed = safeDate(t?.closedAt);
+  if (!opened || !closed) return 0;
+  return closed.getTime() - opened.getTime();
+}
+
 function deriveStatsFromTrades(trades: any[]) {
   const closedTrades = trades.length;
   const pnlList = trades.map((t) => Number(t?.pnl ?? 0)).filter(Number.isFinite);
@@ -261,19 +260,83 @@ function deriveStatsFromTrades(trades: any[]) {
   const avgTradePnl = closedTrades ? totalPnl / closedTrades : 0;
   const bestTradePnl = pnlList.length ? Math.max(...pnlList) : 0;
   const worstTradePnl = pnlList.length ? Math.min(...pnlList) : 0;
+
   const grossProfit = wins.reduce((a, b) => a + b, 0);
   const grossLossAbs = Math.abs(losses.reduce((a, b) => a + b, 0));
   const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
+
   const avgWin = wins.length ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length ? Math.abs(losses.reduce((a, b) => a + b, 0)) / losses.length : 0;
+  const avgLoss = losses.length
+    ? Math.abs(losses.reduce((a, b) => a + b, 0)) / losses.length
+    : 0;
 
   let totalVolume = 0;
+  let maxBalanceSeen = 0;
+  let maxProfitDay = 0;
+  let maxProfitWeek = 0;
+  let maxProfitMonth = 0;
+  let maxLossDay = 0;
+  let maxLossWeek = 0;
+  let maxLossMonth = 0;
+
   for (const t of trades) {
     const entryValue = Number(t?.entryValue ?? 0);
     const exitValue = Number(t?.exitValue ?? 0);
+    const pnl = Number(t?.pnl ?? 0);
+    const balance = Number(
+      t?.maxBalance ?? t?.balanceAfter ?? t?.equityAfter ?? 0
+    );
+
     if (Number.isFinite(entryValue)) totalVolume += entryValue;
     if (Number.isFinite(exitValue)) totalVolume += exitValue;
+    if (Number.isFinite(balance) && balance > maxBalanceSeen) {
+      maxBalanceSeen = balance;
+    }
+
+    if (Number.isFinite(pnl)) {
+      if (pnl > maxProfitDay) maxProfitDay = pnl;
+      if (pnl > maxProfitWeek) maxProfitWeek = pnl;
+      if (pnl > maxProfitMonth) maxProfitMonth = pnl;
+      if (pnl < maxLossDay) maxLossDay = pnl;
+      if (pnl < maxLossWeek) maxLossWeek = pnl;
+      if (pnl < maxLossMonth) maxLossMonth = pnl;
+    }
   }
+
+  const winningTrades = trades.filter((t) => Number(t?.pnl ?? 0) > 0);
+  const losingTrades = trades.filter((t) => Number(t?.pnl ?? 0) < 0);
+
+  const maxProfitTrade = winningTrades.length
+    ? Math.max(...winningTrades.map((t) => Number(t?.pnl ?? 0)))
+    : 0;
+  const minProfitTrade = winningTrades.length
+    ? Math.min(...winningTrades.map((t) => Number(t?.pnl ?? 0)))
+    : 0;
+  const avgProfitTrade = winningTrades.length
+    ? winningTrades.reduce((sum, t) => sum + Number(t?.pnl ?? 0), 0) /
+      winningTrades.length
+    : 0;
+
+  const maxLossTrade = losingTrades.length
+    ? Math.min(...losingTrades.map((t) => Number(t?.pnl ?? 0)))
+    : 0;
+  const minLossTrade = losingTrades.length
+    ? Math.max(...losingTrades.map((t) => Number(t?.pnl ?? 0)))
+    : 0;
+  const avgLossTrade = losingTrades.length
+    ? losingTrades.reduce((sum, t) => sum + Math.abs(Number(t?.pnl ?? 0)), 0) /
+      losingTrades.length
+    : 0;
+
+  const durations = trades
+    .map(calcTradeDurationMs)
+    .filter((v) => Number.isFinite(v) && v > 0);
+
+  const avgDuration = durations.length
+    ? durations.reduce((a, b) => a + b, 0) / durations.length
+    : 0;
+  const minDuration = durations.length ? Math.min(...durations) : 0;
+  const maxDuration = durations.length ? Math.max(...durations) : 0;
 
   return {
     closedTrades,
@@ -290,7 +353,47 @@ function deriveStatsFromTrades(trades: any[]) {
     totalVolume,
     wins: wins.length,
     losses: losses.length,
+    maxProfitTrade,
+    minProfitTrade,
+    avgProfitTrade,
+    maxLossTrade,
+    minLossTrade,
+    avgLossTrade,
+    avgDuration,
+    minDuration,
+    maxDuration,
+    maxProfitDay,
+    maxProfitWeek,
+    maxProfitMonth,
+    maxLossDay,
+    maxLossWeek,
+    maxLossMonth,
+    maxBalanceSeen,
   };
+}
+
+function ringStyle(percent: number, color: string): CSSProperties {
+  const safePercent = Math.max(0, Math.min(100, percent));
+  return {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    background: `conic-gradient(${color} 0 ${safePercent}%, rgba(255,255,255,0.10) ${safePercent}% 100%)`,
+    WebkitMask:
+      "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
+  };
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M14.7 5.3a1 1 0 0 1 0 1.4L10.41 11H20a1 1 0 1 1 0 2h-9.59l4.3 4.3a1 1 0 0 1-1.42 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
 }
 
 function BotIcon() {
@@ -315,7 +418,7 @@ export default function BotPage() {
   const [mounted, setMounted] = useState(false);
 
   const [pagePaddingTop, setPagePaddingTop] = useState(
-    "calc(env(safe-area-inset-top, 0px) + 5px)"
+    "calc(env(safe-area-inset-top, 0px) + 15px)"
   );
 
   const [keys, setKeys] = useState<KeyRow[]>([]);
@@ -461,6 +564,46 @@ export default function BotPage() {
     }
   }
 
+  async function startBot() {
+    setLoading(true);
+    setErr("");
+
+    try {
+      const r = await api("/api/bot/start", { method: "POST" });
+      setResp(r.json);
+      setStatusCode(r.status);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function stopBot() {
+    setLoading(true);
+    setErr("");
+
+    try {
+      const r = await api("/api/bot/stop", { method: "POST" });
+      setResp(r.json);
+      setStatusCode(r.status);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     reloadAll(true);
 
@@ -468,9 +611,9 @@ export default function BotPage() {
 
     const updateLayout = () => {
       if (tg?.isFullscreen) {
-        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 78px)");
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 88px)");
       } else {
-        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 5px)");
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 15px)");
       }
     };
 
@@ -557,6 +700,20 @@ export default function BotPage() {
     .slice(0, 3);
 
   const canSave = !loading && !!keyId;
+  const botActive =
+    !!config?.enabled &&
+    String(state?.status ?? "").toUpperCase() !== "STOPPED" &&
+    String(state?.status ?? "").toUpperCase() !== "IDLE";
+
+  const netPnlCirclePercent = Math.min(
+    100,
+    Math.max(
+      0,
+      derived.grossProfit + derived.grossLossAbs > 0
+        ? (Math.abs(derived.totalPnl) / (derived.grossProfit + derived.grossLossAbs)) * 100
+        : 0
+    )
+  );
 
   return (
     <>
@@ -594,7 +751,16 @@ export default function BotPage() {
 
       <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
         <div style={styles.container}>
-          <section style={{ ...styles.topCtaWrap, ...reveal(0, mounted) }}>
+          <section style={{ ...styles.topBar, ...reveal(0, mounted) }}>
+            <button
+              type="button"
+              aria-label="Назад на Home"
+              style={styles.backButton}
+              onClick={() => router.replace("/")}
+            >
+              <ArrowLeftIcon />
+            </button>
+
             <button
               type="button"
               style={styles.topCtaButton}
@@ -603,18 +769,33 @@ export default function BotPage() {
               <span style={styles.topCtaIcon}>
                 <BotIcon />
               </span>
-              <span>Подключить API биржи</span>
+              <span>Добавить API</span>
             </button>
           </section>
 
           <section style={{ ...styles.botHero, ...reveal(1, mounted) }}>
             <div style={styles.botTopRow}>
-              <div>
-                <div style={styles.botEyebrow}>BOT CONTROL</div>
-                <div style={styles.botTitle}>Управление ботом</div>
-              </div>
-              <div style={styles.lastSyncChip}>
-                Sync: {formatDateTime(state?.lastSyncAt)}
+              <div style={styles.botEyebrow}>BOT CONTROL</div>
+
+              <div
+                style={{
+                  ...styles.statusPill,
+                  color: botActive ? UI.green : UI.red,
+                  border: botActive
+                    ? "1px solid rgba(100,217,123,0.22)"
+                    : "1px solid rgba(255,106,106,0.22)",
+                  background: botActive
+                    ? "rgba(100,217,123,0.08)"
+                    : "rgba(255,106,106,0.08)",
+                }}
+              >
+                <span
+                  style={{
+                    ...styles.statusDot,
+                    background: botActive ? UI.green : UI.red,
+                  }}
+                />
+                <span>{botActive ? "Активный" : "Не активный"}</span>
               </div>
             </div>
 
@@ -622,7 +803,7 @@ export default function BotPage() {
               <MetricBox
                 label="Открытые позиции"
                 value={String(openPositionsCount)}
-                sub="Сейчас в рынке"
+                sub="Сейчас в работе"
                 valueColor={UI.textMain}
                 glowColor="rgba(255,255,255,0.10)"
               />
@@ -636,7 +817,7 @@ export default function BotPage() {
               <MetricBox
                 label="Используется маржи"
                 value={formatUsd(capitalInWork)}
-                sub="Сумма в открытых позициях"
+                sub="Капитал в работе"
                 valueColor={UI.blue}
                 glowColor="rgba(41,121,255,0.18)"
               />
@@ -652,16 +833,39 @@ export default function BotPage() {
                 }
               />
             </div>
+
+            <div style={styles.botActionsRow}>
+              <button
+                type="button"
+                style={styles.primaryAction}
+                disabled={loading}
+                onClick={startBot}
+              >
+                {loading ? "..." : "Запустить"}
+              </button>
+
+              <button
+                type="button"
+                style={styles.secondaryAction}
+                disabled={loading}
+                onClick={stopBot}
+              >
+                Остановить
+              </button>
+
+              <button
+                type="button"
+                style={styles.ghostAction}
+                onClick={() => router.replace("/bot/config")}
+              >
+                Настройка бота
+              </button>
+            </div>
           </section>
 
           <section style={{ ...styles.block, ...reveal(2, mounted) }}>
             <div style={styles.sectionHead}>
-              <div>
-                <div style={styles.sectionMainTitle}>Статистика</div>
-                <div style={styles.sectionSubTitle}>
-                  Гибкая аналитика по выбранному диапазону
-                </div>
-              </div>
+              <div style={styles.sectionMainTitle}>Статистика</div>
             </div>
 
             <div style={styles.rangeBar}>
@@ -721,103 +925,139 @@ export default function BotPage() {
                 </div>
               </div>
 
-              <div style={styles.winLossCard}>
-                <div style={styles.winLossTop}>
-                  <span style={{ color: UI.green }}>{derived.wins} Win</span>
-                  <span style={{ color: UI.red }}>{derived.losses} Loss</span>
-                </div>
-                <div style={styles.winLossTrack}>
+              <div style={styles.ringWrapLarge}>
+                <div
+                  style={ringStyle(
+                    netPnlCirclePercent,
+                    derived.totalPnl >= 0 ? UI.green : UI.red
+                  )}
+                />
+                <div style={styles.ringCenterLabel}>
+                  <div style={styles.ringCenterValueLarge}>
+                    {Math.round(netPnlCirclePercent)}%
+                  </div>
                   <div
                     style={{
-                      ...styles.winLossPositive,
-                      width: `${derived.closedTrades ? (derived.wins / derived.closedTrades) * 100 : 0}%`,
+                      ...styles.ringCenterSub,
+                      color: derived.totalPnl >= 0 ? UI.green : UI.red,
                     }}
-                  />
-                </div>
-                <div style={styles.winLossBottom}>
-                  Profit factor {Number(derived.profitFactor).toLocaleString("ru-RU", {
-                    maximumFractionDigits: 2,
-                  })}
+                  >
+                    PnL
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div style={styles.statsGridEnhanced}>
-              <StatMini
-                label="Win Rate"
-                value={formatPct(derived.winRate)}
-                color={UI.textMain}
+            <div style={styles.statsSectionTitle}>Результат</div>
+            <div style={styles.analyticsGrid2}>
+              <AnalyticsCard
+                title="Прибыль"
+                accent={UI.green}
+                items={[
+                  ["Макс", formatUsd(derived.maxProfitTrade)],
+                  ["Мин", formatUsd(derived.minProfitTrade)],
+                  ["Средняя", formatUsd(derived.avgProfitTrade)],
+                ]}
               />
-              <StatMini
-                label="Closed Trades"
-                value={formatNum(derived.closedTrades, 0)}
-                color={UI.textMain}
+              <AnalyticsCard
+                title="Убыток"
+                accent={UI.red}
+                items={[
+                  ["Макс", formatUsd(Math.abs(derived.maxLossTrade))],
+                  ["Мин", formatUsd(Math.abs(derived.minLossTrade))],
+                  ["Средняя", formatUsd(derived.avgLossTrade)],
+                ]}
               />
-              <StatMini
-                label="Avg Trade"
-                value={formatUsd(derived.avgTradePnl)}
-                color={pnlColor(derived.avgTradePnl)}
+            </div>
+
+            <div style={styles.statsSectionTitle}>Время сделки</div>
+            <div style={styles.analyticsGrid2}>
+              <AnalyticsCard
+                title="Ожидание закрытия"
+                accent={UI.blue}
+                items={[
+                  ["Макс", formatDuration(derived.maxDuration)],
+                  ["Мин", formatDuration(derived.minDuration)],
+                  ["Среднее", formatDuration(derived.avgDuration)],
+                ]}
               />
-              <StatMini
-                label="Best Trade"
+              <AnalyticsCard
+                title="Общая эффективность"
+                accent={UI.yellow}
+                items={[
+                  ["Win Rate", formatPct(derived.winRate)],
+                  ["Profit factor", Number(derived.profitFactor).toLocaleString("ru-RU", {
+                    maximumFractionDigits: 2,
+                  })],
+                  ["Объём", formatUsd(derived.totalVolume)],
+                ]}
+              />
+            </div>
+
+            <div style={styles.statsSectionTitle}>Экстремумы</div>
+            <div style={styles.analyticsGrid3}>
+              <CircleStat
+                label="Макс прибыль / день"
+                value={formatUsd(derived.maxProfitDay)}
+                accent={UI.green}
+              />
+              <CircleStat
+                label="Макс прибыль / неделя"
+                value={formatUsd(derived.maxProfitWeek)}
+                accent={UI.green}
+              />
+              <CircleStat
+                label="Макс прибыль / месяц"
+                value={formatUsd(derived.maxProfitMonth)}
+                accent={UI.green}
+              />
+              <CircleStat
+                label="Макс убыток / день"
+                value={formatUsd(Math.abs(derived.maxLossDay))}
+                accent={UI.red}
+              />
+              <CircleStat
+                label="Макс убыток / неделя"
+                value={formatUsd(Math.abs(derived.maxLossWeek))}
+                accent={UI.red}
+              />
+              <CircleStat
+                label="Макс убыток / месяц"
+                value={formatUsd(Math.abs(derived.maxLossMonth))}
+                accent={UI.red}
+              />
+            </div>
+
+            <div style={styles.statsSectionTitle}>Дополнительно</div>
+            <div style={styles.analyticsGrid3}>
+              <CircleStat
+                label="Макс баланс"
+                value={formatUsd(derived.maxBalanceSeen)}
+                accent={UI.purple}
+              />
+              <CircleStat
+                label="Лучший трейд"
                 value={formatUsd(derived.bestTradePnl)}
-                color={pnlColor(derived.bestTradePnl)}
+                accent={UI.green}
               />
-              <StatMini
-                label="Worst Trade"
-                value={formatUsd(derived.worstTradePnl)}
-                color={pnlColor(derived.worstTradePnl)}
-              />
-              <StatMini
-                label="Profit Factor"
-                value={Number(derived.profitFactor).toLocaleString("ru-RU", {
-                  maximumFractionDigits: 2,
-                })}
-                color={UI.yellow}
-              />
-              <StatMini
-                label="Avg Win"
-                value={formatUsd(derived.avgWin)}
-                color={UI.green}
-              />
-              <StatMini
-                label="Avg Loss"
-                value={formatUsd(derived.avgLoss)}
-                color={UI.red}
-              />
-              <StatMini
-                label="Gross Profit"
-                value={formatUsd(derived.grossProfit)}
-                color={UI.green}
-              />
-              <StatMini
-                label="Gross Loss"
-                value={formatUsd(derived.grossLossAbs)}
-                color={UI.red}
-              />
-              <StatMini
-                label="Volume"
-                value={formatUsd(derived.totalVolume)}
-                color={UI.blue}
+              <CircleStat
+                label="Худший трейд"
+                value={formatUsd(Math.abs(derived.worstTradePnl))}
+                accent={UI.red}
               />
             </div>
           </section>
 
           <section style={{ ...styles.block, ...reveal(3, mounted) }}>
             <div style={styles.sectionHead}>
-              <div>
-                <div style={styles.sectionMainTitle}>Открытые позиции</div>
-                <div style={styles.sectionSubTitle}>
-                  Короткий список: 3 последние открытые
-                </div>
-              </div>
+              <div style={styles.sectionMainTitle}>В работе</div>
 
               <button
                 type="button"
-                style={styles.inlineAction}
+                style={styles.inlineActionBlue}
                 onClick={() => router.replace("/bot/open-positions")}
               >
-                Весь список
+                Все ордера
               </button>
             </div>
 
@@ -826,58 +1066,82 @@ export default function BotPage() {
             ) : (
               <div style={styles.listGrid}>
                 {shortOpenList.map((p) => {
-                  const t = getPositionDisplayTime(p);
                   const isOpen = expandedOpenId === p.id;
+                  const assetName =
+                    p.symbol?.replace("USDT", "") || p.symbol || "—";
 
                   return (
-                    <div key={p.id} style={styles.listCard}>
-                      <button
-                        type="button"
-                        style={styles.expandButton}
-                        onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
-                      >
-                        <div style={styles.listCardTop}>
-                          <div>
-                            <div style={styles.listCardTitle}>{p.symbol}</div>
-                            <div style={styles.listCardMiniSub}>
-                              {t.label}: {t.value}
-                            </div>
-                          </div>
-
-                          <div style={styles.expandRight}>
-                            <div style={styles.statusTag}>#{String(p.orderId ?? p.id).slice(0, 8)}</div>
-                            <div style={styles.chevron}>{isOpen ? "−" : "+"}</div>
+                    <div
+                      key={p.id}
+                      style={styles.tradeCard}
+                      onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
+                    >
+                      <div style={styles.tradeCardTop}>
+                        <div>
+                          <div style={styles.tradeCardTitle}>{assetName}</div>
+                          <div style={styles.tradeCardDate}>
+                            {formatDate(p.openedAt)}
                           </div>
                         </div>
-                      </button>
+
+                        <div style={styles.tradeCardRight}>
+                          <div style={styles.orderBadge}>
+                            #{String(p.orderId ?? p.id).slice(0, 8)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={styles.tradeCardSummaryRow}>
+                        <span>Цена входа: {p.avgPrice ?? "—"}</span>
+                        <span>
+                          Объём: {p.qty ?? "—"} {assetName}
+                        </span>
+                      </div>
 
                       {isOpen ? (
-                        <div style={styles.expandBody}>
-                          <div style={styles.rowMeta}>
-                            <span>Актив: {p.symbol ?? "—"}</span>
-                            <span>Биржа: {p.exchange ?? "—"}</span>
+                        <div style={styles.tradeExpanded}>
+                          <div style={styles.tradeExpandedHeader}>
+                            Детали позиции
                           </div>
 
-                          <div style={styles.rowMeta}>
-                            <span>Средняя цена: {p.avgPrice ?? "—"}</span>
-                            <span>TP: {p.tpPrice ?? "—"}</span>
-                          </div>
-
-                          <div style={styles.rowMeta}>
-                            <span>
-                              Объем: {p.qty ?? "—"} {String(p.symbol || "").replace("USDT", "") || ""}
-                            </span>
-                            <span>({formatUsd(p.investedQuote ?? 0)})</span>
-                          </div>
-
-                          <div style={styles.rowMetaMuted}>
-                            <span>Открыта: {formatDateTime(p.openedAt)}</span>
-                            <span>Изменена: {formatDateTime(p.updatedAt ?? p.openedAt)}</span>
-                          </div>
-
-                          <div style={styles.rowMetaMuted}>
-                            <span>addsCount: {p.addsCount ?? 0}</span>
-                            <span>Order: {String(p.orderId ?? p.id)}</span>
+                          <div style={styles.detailsGrid}>
+                            <DetailItem label="Актив" value={p.symbol ?? "—"} />
+                            <DetailItem
+                              label="Дата открытия"
+                              value={formatDate(p.openedAt)}
+                            />
+                            <DetailItem
+                              label="Цена открытия"
+                              value={String(p.avgPrice ?? "—")}
+                            />
+                            <DetailItem
+                              label="Таргет"
+                              value={String(p.tpPrice ?? "—")}
+                            />
+                            <DetailItem
+                              label="Объём"
+                              value={`${p.qty ?? "—"} ${assetName}`}
+                            />
+                            <DetailItem
+                              label="В USDT"
+                              value={formatUsd(p.investedQuote ?? 0)}
+                            />
+                            <DetailItem
+                              label="Последнее изменение"
+                              value={formatDate(p.updatedAt ?? p.openedAt)}
+                            />
+                            <DetailItem
+                              label="Номер ордера"
+                              value={String(p.orderId ?? p.id)}
+                            />
+                            <DetailItem
+                              label="Усреднений"
+                              value={String(p.addsCount ?? 0)}
+                            />
+                            <DetailItem
+                              label="Биржа"
+                              value={String(p.exchange ?? "—")}
+                            />
                           </div>
                         </div>
                       ) : null}
@@ -890,16 +1154,11 @@ export default function BotPage() {
 
           <section style={{ ...styles.block, ...reveal(4, mounted) }}>
             <div style={styles.sectionHead}>
-              <div>
-                <div style={styles.sectionMainTitle}>История</div>
-                <div style={styles.sectionSubTitle}>
-                  Короткий список: 3 последние закрытые сделки
-                </div>
-              </div>
+              <div style={styles.sectionMainTitle}>История</div>
 
               <button
                 type="button"
-                style={styles.inlineAction}
+                style={styles.inlineActionBlue}
                 onClick={() => router.replace("/bot/history")}
               >
                 Вся история
@@ -912,66 +1171,92 @@ export default function BotPage() {
               <div style={styles.listGrid}>
                 {shortHistoryList.map((t) => {
                   const isOpen = expandedHistoryId === t.id;
+                  const assetName =
+                    t.symbol?.replace("USDT", "") || t.symbol || "—";
 
                   return (
-                    <div key={t.id} style={styles.listCard}>
-                      <button
-                        type="button"
-                        style={styles.expandButton}
-                        onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
-                      >
-                        <div style={styles.listCardTop}>
-                          <div>
-                            <div style={styles.listCardTitle}>{t.symbol}</div>
-                            <div style={styles.listCardMiniSub}>
-                              Закрыта: {formatTime(t.closedAt)}
-                            </div>
-                          </div>
-
-                          <div style={styles.expandRight}>
-                            <div
-                              style={{
-                                ...styles.tradePnl,
-                                color: pnlColor(t.pnl),
-                              }}
-                            >
-                              {formatUsd(t.pnl)}
-                            </div>
-                            <div style={styles.chevron}>{isOpen ? "−" : "+"}</div>
+                    <div
+                      key={t.id}
+                      style={styles.tradeCard}
+                      onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
+                    >
+                      <div style={styles.tradeCardTop}>
+                        <div>
+                          <div style={styles.tradeCardTitle}>{assetName}</div>
+                          <div style={styles.tradeCardDate}>
+                            {formatDate(t.closedAt)}
                           </div>
                         </div>
-                      </button>
+
+                        <div
+                          style={{
+                            ...styles.tradePnlBadge,
+                            color: pnlColor(t.pnl),
+                          }}
+                        >
+                          {formatUsd(t.pnl)}
+                        </div>
+                      </div>
+
+                      <div style={styles.tradeCardSummaryRow}>
+                        <span>Вход: {t.avgEntryPrice ?? "—"}</span>
+                        <span>Выход: {t.exitPrice ?? "—"}</span>
+                      </div>
 
                       {isOpen ? (
-                        <div style={styles.expandBody}>
-                          <div style={styles.rowMeta}>
-                            <span>Актив: {t.symbol ?? "—"}</span>
-                            <span>Order: {String(t.orderId ?? t.id)}</span>
+                        <div style={styles.tradeExpanded}>
+                          <div style={styles.tradeExpandedHeader}>
+                            Анализ сделки
                           </div>
 
-                          <div style={styles.rowMeta}>
-                            <span>Средняя цена входа: {t.avgEntryPrice ?? "—"}</span>
-                            <span>Цена выхода: {t.exitPrice ?? "—"}</span>
-                          </div>
-
-                          <div style={styles.rowMeta}>
-                            <span>Объем: {t.qty ?? "—"}</span>
-                            <span>Вход: {formatUsd(t.entryValue ?? 0)}</span>
-                          </div>
-
-                          <div style={styles.rowMeta}>
-                            <span>Выход: {formatUsd(t.exitValue ?? 0)}</span>
-                            <span>Прибыль: {formatUsd(t.pnl ?? 0)} · {formatPct(t.pnlPercent ?? 0)}</span>
-                          </div>
-
-                          <div style={styles.rowMetaMuted}>
-                            <span>Открыта: {formatDateTime(t.openedAt)}</span>
-                            <span>Закрыта: {formatDateTime(t.closedAt)}</span>
-                          </div>
-
-                          <div style={styles.rowMetaMuted}>
-                            <span>addsCount: {t.addsCount ?? 0}</span>
-                            <span>{getCloseReasonLabel(t.closeReason)}</span>
+                          <div style={styles.detailsGrid}>
+                            <DetailItem label="Актив" value={t.symbol ?? "—"} />
+                            <DetailItem
+                              label="Номер ордера"
+                              value={String(t.orderId ?? t.id)}
+                            />
+                            <DetailItem
+                              label="Дата открытия"
+                              value={formatDate(t.openedAt)}
+                            />
+                            <DetailItem
+                              label="Дата закрытия"
+                              value={formatDate(t.closedAt)}
+                            />
+                            <DetailItem
+                              label="Цена входа"
+                              value={String(t.avgEntryPrice ?? "—")}
+                            />
+                            <DetailItem
+                              label="Цена выхода"
+                              value={String(t.exitPrice ?? "—")}
+                            />
+                            <DetailItem
+                              label="Объём"
+                              value={String(t.qty ?? "—")}
+                            />
+                            <DetailItem
+                              label="Вход в USDT"
+                              value={formatUsd(t.entryValue ?? 0)}
+                            />
+                            <DetailItem
+                              label="Выход в USDT"
+                              value={formatUsd(t.exitValue ?? 0)}
+                            />
+                            <DetailItem
+                              label="Прибыль"
+                              value={`${formatUsd(t.pnl ?? 0)} · ${formatPct(
+                                t.pnlPercent ?? 0
+                              )}`}
+                            />
+                            <DetailItem
+                              label="Закрытие"
+                              value={getCloseReasonLabel(t.closeReason)}
+                            />
+                            <DetailItem
+                              label="Усреднений"
+                              value={String(t.addsCount ?? 0)}
+                            />
                           </div>
                         </div>
                       ) : null}
@@ -984,12 +1269,7 @@ export default function BotPage() {
 
           <section style={{ ...styles.block, ...reveal(5, mounted) }}>
             <div style={styles.sectionHead}>
-              <div>
-                <div style={styles.sectionMainTitle}>Конфигурация бота</div>
-                <div style={styles.sectionSubTitle}>
-                  Сервисный блок настройки
-                </div>
-              </div>
+              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
             </div>
 
             <div style={styles.formGrid}>
@@ -1173,19 +1453,69 @@ function MetricBox(props: {
   );
 }
 
-function StatMini(props: { label: string; value: string; color?: string }) {
+function AnalyticsCard(props: {
+  title: string;
+  accent: string;
+  items: [string, string][];
+}) {
   return (
-    <section style={styles.miniCard}>
-      <div style={styles.cardLabel}>{props.label}</div>
-      <div
-        style={{
-          ...styles.miniCardValue,
-          color: props.color || UI.textMain,
-        }}
-      >
-        {props.value}
+    <div style={styles.analyticsCard}>
+      <div style={styles.analyticsCardHeader}>
+        <span
+          style={{
+            ...styles.analyticsDot,
+            background: props.accent,
+            boxShadow: `0 0 18px ${props.accent}55`,
+          }}
+        />
+        <div style={styles.analyticsTitle}>{props.title}</div>
       </div>
-    </section>
+
+      <div style={styles.analyticsRows}>
+        {props.items.map(([label, value]) => (
+          <div key={label} style={styles.analyticsRow}>
+            <span style={styles.analyticsRowLabel}>{label}</span>
+            <span style={{ ...styles.analyticsRowValue, color: props.accent }}>
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CircleStat(props: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div style={styles.circleCard}>
+      <div style={styles.circleOuter}>
+        <div
+          style={{
+            ...styles.circleGlow,
+            borderColor: `${props.accent}66`,
+            boxShadow: `0 0 20px ${props.accent}22 inset`,
+          }}
+        >
+          <div style={{ ...styles.circleValue, color: props.accent }}>
+            {props.value}
+          </div>
+        </div>
+      </div>
+      <div style={styles.circleLabel}>{props.label}</div>
+    </div>
+  );
+}
+
+function DetailItem(props: { label: string; value: string }) {
+  return (
+    <div style={styles.detailItem}>
+      <div style={styles.detailLabel}>{props.label}</div>
+      <div style={styles.detailValue}>{props.value}</div>
+    </div>
   );
 }
 
@@ -1208,13 +1538,31 @@ const styles = {
     overflowX: "hidden",
   } satisfies CSSProperties,
 
-  topCtaWrap: {
+  topBar: {
     marginTop: 8,
     marginBottom: 18,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.04)",
+    color: UI.textMain,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
   } satisfies CSSProperties,
 
   topCtaButton: {
-    width: "100%",
+    flex: 1,
     height: 48,
     borderRadius: 999,
     border: `1px solid ${UI.borderHard}`,
@@ -1262,36 +1610,77 @@ const styles = {
   } satisfies CSSProperties,
 
   botEyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 800,
     letterSpacing: "0.12em",
     textTransform: "uppercase",
     color: "rgba(100,217,123,0.72)",
-    marginBottom: 6,
+    marginTop: 6,
   } satisfies CSSProperties,
 
-  botTitle: {
-    fontSize: 20,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  lastSyncChip: {
-    padding: "7px 10px",
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "7px 11px",
     borderRadius: 999,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.04)",
-    color: UI.textMuted,
     fontSize: 11,
     fontWeight: 700,
     whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
   } satisfies CSSProperties,
 
   botMetricsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
+  } satisfies CSSProperties,
+
+  botActionsRow: {
+    marginTop: 14,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  primaryAction: {
+    height: 44,
+    borderRadius: 14,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+  } satisfies CSSProperties,
+
+  secondaryAction: {
+    height: 44,
+    borderRadius: 14,
+    border: "1px solid rgba(255,106,106,0.22)",
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  ghostAction: {
+    gridColumn: "1 / -1",
+    height: 42,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
   } satisfies CSSProperties,
 
   block: {
@@ -1303,7 +1692,7 @@ const styles = {
   sectionHead: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 10,
     marginBottom: 12,
   } satisfies CSSProperties,
@@ -1313,13 +1702,6 @@ const styles = {
     fontWeight: 800,
     letterSpacing: "-0.01em",
     color: UI.textMain,
-  } satisfies CSSProperties,
-
-  sectionSubTitle: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 1.45,
-    color: UI.textMuted,
   } satisfies CSSProperties,
 
   metricItem: {
@@ -1398,9 +1780,10 @@ const styles = {
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,0,0,0.03) 100%)",
     display: "grid",
-    gridTemplateColumns: "1.1fr 0.9fr",
+    gridTemplateColumns: "1.05fr 0.95fr",
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 16,
+    alignItems: "center",
   } satisfies CSSProperties,
 
   statsHeroLeft: {
@@ -1430,95 +1813,166 @@ const styles = {
     color: UI.textMuted,
   } satisfies CSSProperties,
 
-  winLossCard: {
-    borderRadius: 16,
-    border: `1px solid ${UI.border}`,
-    padding: 12,
-    background: "rgba(255,255,255,0.02)",
+  ringWrapLarge: {
+    width: 112,
+    height: 112,
+    position: "relative",
+    margin: "0 auto",
+  } satisfies CSSProperties,
+
+  ringCenterLabel: {
+    position: "absolute",
+    inset: 0,
     display: "flex",
     flexDirection: "column",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    padding: 4,
   } satisfies CSSProperties,
 
-  winLossTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    fontSize: 12,
+  ringCenterValueLarge: {
+    fontSize: 18,
     fontWeight: 800,
+    color: UI.textMain,
+    lineHeight: 1,
   } satisfies CSSProperties,
 
-  winLossTrack: {
-    marginTop: 10,
-    marginBottom: 10,
-    width: "100%",
-    height: 12,
-    borderRadius: 999,
-    overflow: "hidden",
-    background:
-      "linear-gradient(90deg, rgba(100,217,123,0.25) 0%, rgba(255,106,106,0.16) 100%)",
-    position: "relative",
-  } satisfies CSSProperties,
-
-  winLossPositive: {
-    height: "100%",
-    background: UI.green,
-    borderRadius: 999,
-  } satisfies CSSProperties,
-
-  winLossBottom: {
-    fontSize: 12,
-    lineHeight: 1.4,
-    color: UI.textMuted,
+  ringCenterSub: {
+    marginTop: 5,
+    fontSize: 11,
     fontWeight: 700,
   } satisfies CSSProperties,
 
-  statsGridEnhanced: {
+  statsSectionTitle: {
+    marginTop: 14,
+    marginBottom: 10,
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+    letterSpacing: "-0.01em",
+  } satisfies CSSProperties,
+
+  analyticsGrid2: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
   } satisfies CSSProperties,
 
-  miniCard: {
-    background: "transparent",
+  analyticsGrid3: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  analyticsCard: {
     border: `1px solid ${UI.border}`,
-    borderRadius: 16,
+    borderRadius: 18,
+    padding: 14,
+    background: "rgba(255,255,255,0.03)",
+  } satisfies CSSProperties,
+
+  analyticsCardHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  analyticsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  analyticsTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  analyticsRows: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  analyticsRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  analyticsRowLabel: {
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  analyticsRowValue: {
+    fontSize: 12,
+    fontWeight: 800,
+    textAlign: "right",
+  } satisfies CSSProperties,
+
+  circleCard: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 18,
     padding: 12,
-    minHeight: 90,
+    background: "rgba(255,255,255,0.02)",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "space-between",
-    minWidth: 0,
+    alignItems: "center",
+    gap: 10,
+    minHeight: 148,
+    justifyContent: "center",
+    textAlign: "center",
   } satisfies CSSProperties,
 
-  cardLabel: {
-    fontSize: 10,
-    letterSpacing: "0.10em",
-    textTransform: "uppercase",
-    color: UI.textFaint,
-    fontWeight: 700,
-    marginBottom: 8,
+  circleOuter: {
+    width: 78,
+    height: 78,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   } satisfies CSSProperties,
 
-  miniCardValue: {
-    fontSize: 18,
-    lineHeight: 1.05,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-    wordBreak: "break-word",
+  circleGlow: {
+    width: "100%",
+    height: "100%",
+    borderRadius: "50%",
+    border: "1px solid",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 8,
   } satisfies CSSProperties,
 
-  inlineAction: {
-    height: 34,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
+  circleValue: {
     fontSize: 12,
-    fontWeight: 700,
+    lineHeight: 1.2,
+    fontWeight: 800,
+  } satisfies CSSProperties,
+
+  circleLabel: {
+    fontSize: 11,
+    lineHeight: 1.35,
+    color: UI.textSoft,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  inlineActionBlue: {
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 999,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 800,
     cursor: "pointer",
-    flexShrink: 0,
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
 
   listGrid: {
@@ -1526,106 +1980,112 @@ const styles = {
     gap: 12,
   } satisfies CSSProperties,
 
-  listCard: {
-    background: "rgba(255,255,255,0.03)",
+  tradeCard: {
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
     border: `1px solid ${UI.border}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
-  } satisfies CSSProperties,
-
-  expandButton: {
-    width: "100%",
-    padding: 0,
-    border: "none",
-    background: "transparent",
-    color: "inherit",
     cursor: "pointer",
-    textAlign: "left",
   } satisfies CSSProperties,
 
-  listCardTop: {
+  tradeCardTop: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 10,
   } satisfies CSSProperties,
 
-  listCardTitle: {
-    fontSize: 14,
+  tradeCardTitle: {
+    fontSize: 16,
     fontWeight: 800,
     color: UI.textMain,
-    wordBreak: "break-word",
+    letterSpacing: "-0.02em",
   } satisfies CSSProperties,
 
-  listCardMiniSub: {
-    marginTop: 5,
+  tradeCardDate: {
+    marginTop: 6,
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 600,
   } satisfies CSSProperties,
 
-  expandRight: {
+  tradeCardRight: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     flexShrink: 0,
   } satisfies CSSProperties,
 
-  chevron: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    border: `1px solid ${UI.border}`,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 16,
-    color: UI.textSoft,
-  } satisfies CSSProperties,
-
-  expandBody: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTop: `1px solid ${UI.borderSoft}`,
-  } satisfies CSSProperties,
-
-  statusTag: {
+  orderBadge: {
     fontSize: 11,
     fontWeight: 800,
     border: `1px solid ${UI.border}`,
     borderRadius: 999,
-    padding: "5px 9px",
-    whiteSpace: "nowrap",
+    padding: "6px 10px",
     color: UI.textSoft,
+    whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
-  tradePnl: {
+  tradePnlBadge: {
     fontSize: 13,
     fontWeight: 800,
-    textAlign: "right",
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
-  rowMeta: {
+  tradeCardSummaryRow: {
+    marginTop: 12,
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
     flexWrap: "wrap",
     fontSize: 12,
-    color: UI.textSoft,
     lineHeight: 1.5,
+    color: UI.textSoft,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  tradeExpanded: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTop: `1px solid ${UI.borderSoft}`,
+  } satisfies CSSProperties,
+
+  tradeExpandedHeader: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  detailsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  detailItem: {
+    border: `1px solid ${UI.borderSoft}`,
+    borderRadius: 14,
+    padding: 10,
+    background: "rgba(255,255,255,0.02)",
+  } satisfies CSSProperties,
+
+  detailLabel: {
+    fontSize: 10,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: UI.textFaint,
+    fontWeight: 700,
     marginBottom: 6,
   } satisfies CSSProperties,
 
-  rowMetaMuted: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.5,
-    marginTop: 2,
+  detailValue: {
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: UI.textMain,
+    fontWeight: 700,
+    wordBreak: "break-word",
   } satisfies CSSProperties,
 
   emptyText: {
