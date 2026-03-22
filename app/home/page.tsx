@@ -319,8 +319,35 @@ export default function HomePage() {
 
       <main style={styles.page}>
         <div style={styles.container}>
-          <section style={{ ...styles.topRow, ...reveal(0, mounted) }}>
-            <div style={styles.topRightStack}>
+          <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
+            <div style={styles.heroLeft}>
+              <div style={styles.metricLabel}>Рын. капитализация</div>
+
+              <div style={styles.metricValueRow}>
+                <span style={styles.metricValue}>{marketCapT}</span>
+                <span style={styles.metricTinyUnit}>T</span>
+                <span style={styles.metricUnit}>USDT</span>
+              </div>
+
+              <div style={styles.deltaRow}>
+                <span style={styles.deltaLabel}>Изменение за день</span>
+                <span
+                  style={{
+                    ...styles.deltaNegative,
+                    color:
+                      marketChange24h != null
+                        ? marketChange24h >= 0
+                          ? UI.green
+                          : UI.red
+                        : UI.textMuted,
+                  }}
+                >
+                  {marketChange24h != null ? formatPct(marketChange24h) : "—"}
+                </span>
+              </div>
+            </div>
+
+            <div style={styles.heroRight}>
               <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
 
               <div style={styles.topActions}>
@@ -355,31 +382,6 @@ export default function HomePage() {
           </section>
 
           <section style={{ ...styles.heroCard, ...reveal(1, mounted) }}>
-            <div style={styles.metricLabel}>Рын. капитализация</div>
-
-            <div style={styles.metricValueRow}>
-              <span style={styles.metricValue}>{marketCapT}</span>
-              <span style={styles.metricTinyUnit}>T</span>
-              <span style={styles.metricUnit}>USDT</span>
-            </div>
-
-            <div style={styles.deltaRow}>
-              <span style={styles.deltaLabel}>Изменение за день</span>
-              <span
-                style={{
-                  ...styles.deltaNegative,
-                  color:
-                    marketChange24h != null
-                      ? marketChange24h >= 0
-                        ? UI.green
-                        : UI.red
-                      : UI.textMuted,
-                }}
-              >
-                {marketChange24h != null ? formatPct(marketChange24h) : "—"}
-              </span>
-            </div>
-
             <div style={styles.sentimentHeader}>
               <div style={styles.sentimentTitle}>Жадность и страх</div>
               <div style={styles.sentimentBadgeDanger}>
@@ -446,19 +448,18 @@ export default function HomePage() {
                 <div
                   style={{
                     ...styles.multiRing,
-                    background: marketData?.ok
-                      ? `conic-gradient(
+                    background:
+                      marketData?.ok
+                        ? `conic-gradient(
                             ${UI.btc} 0 ${marketData.market.btcDominance}%,
                             ${UI.eth} ${marketData.market.btcDominance}% ${
-                          marketData.market.btcDominance +
-                          marketData.market.ethDominance
-                        }%,
+                            marketData.market.btcDominance + marketData.market.ethDominance
+                          }%,
                             ${UI.alt} ${
-                          marketData.market.btcDominance +
-                          marketData.market.ethDominance
-                        }% 100%
+                            marketData.market.btcDominance + marketData.market.ethDominance
+                          }% 100%
                           )`
-                      : styles.multiRing.background,
+                        : styles.multiRing.background,
                   }}
                 />
                 <div style={styles.ringCenterLabel}>
@@ -483,9 +484,7 @@ export default function HomePage() {
                   <div style={{ ...styles.statBigValue, color: UI.blue }}>
                     {altseasonValue != null ? altseasonValue : "—"}
                   </div>
-                  <div style={styles.statSubtitle}>
-                    {getAltseasonLabel(altseasonValue)}
-                  </div>
+                  <div style={styles.statSubtitle}>{getAltseasonLabel(altseasonValue)}</div>
                 </div>
 
                 <div style={styles.ringWrap}>
@@ -510,9 +509,7 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(
-                        1
-                      )}%`
+                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(1)}%`
                     : "Нет данных"
                 }
                 valueColor={UI.btc}
@@ -529,9 +526,7 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `Alt dominance ${marketData.market.altDominance.toFixed(
-                        1
-                      )}%`
+                    ? `Alt dominance ${marketData.market.altDominance.toFixed(1)}%`
                     : "Нет данных"
                 }
                 valueColor={UI.alt}
@@ -546,9 +541,7 @@ export default function HomePage() {
 
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
-                <div style={styles.subBlockTitle}>
-                  Spot Activity / Perp Activity
-                </div>
+                <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
               </div>
 
               <div style={styles.splitBar}>
@@ -562,8 +555,8 @@ export default function HomePage() {
               </div>
 
               <div style={styles.bodyTextTight}>
-                Движение подтверждается в большей степени спотовым спросом, а не
-                перегретым деривативным потоком.
+                Движение подтверждается в большей степени спотовым спросом, а не перегретым
+                деривативным потоком.
               </div>
             </div>
 
@@ -590,8 +583,8 @@ export default function HomePage() {
             </div>
 
             <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет —
-              BTC, ETH и сильные альты с подтверждённым спросом.
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и
+              сильные альты с подтверждённым спросом.
             </div>
 
             <button
@@ -659,14 +652,7 @@ export default function HomePage() {
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  justifyContent: "flex-end",
-                }}
-              >
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <button
                   onClick={loadHomeMarket}
                   disabled={marketLoading}
@@ -701,9 +687,7 @@ export default function HomePage() {
               <div>
                 <span style={styles.debugMetaLabel}>fear & greed</span>
                 <div style={styles.debugMetaValue}>
-                  {marketData?.ok
-                    ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}`
-                    : "—"}
+                  {marketData?.ok ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}` : "—"}
                 </div>
               </div>
 
@@ -734,9 +718,7 @@ function MiniMetric(props: {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
-      <div
-        style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}
-      >
+      <div style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
       {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
@@ -755,18 +737,11 @@ function MetricBox(props: {
     <div
       style={{
         ...styles.metricItem,
-        boxShadow: props.glowColor
-          ? `0 0 0 1px ${props.glowColor} inset`
-          : undefined,
+        boxShadow: props.glowColor ? `0 0 0 1px ${props.glowColor} inset` : undefined,
       }}
     >
       <div style={styles.metricItemLabel}>{props.label}</div>
-      <div
-        style={{
-          ...styles.metricItemValueLarge,
-          color: props.valueColor || UI.textMain,
-        }}
-      >
+      <div style={{ ...styles.metricItemValueLarge, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
       {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
@@ -803,14 +778,24 @@ const styles = {
     overflowX: "hidden",
   } satisfies CSSProperties,
 
-  topRow: {
+  heroTop: {
     display: "flex",
-    justifyContent: "flex-end",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
     marginTop: 34,
     marginBottom: 18,
   } satisfies CSSProperties,
 
-  topRightStack: {
+  heroLeft: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 110,
+  } satisfies CSSProperties,
+
+  heroRight: {
+    width: 170,
+    flexShrink: 0,
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
@@ -898,7 +883,7 @@ const styles = {
     alignItems: "center",
     gap: 6,
     marginTop: 0,
-    marginBottom: 22,
+    marginBottom: 0,
     flexWrap: "wrap",
   } satisfies CSSProperties,
 
