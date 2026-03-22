@@ -689,6 +689,15 @@ export default function BotPage() {
     )
   );
 
+  const exchangeBalance =
+    Number(stats?.exchangeBalance ?? stats?.balance ?? stats?.equity ?? 0) || 0;
+  const collateralAmount =
+    Number(stats?.collateral ?? stats?.marginBalance ?? capitalInWork ?? 0) || 0;
+  const collateralPercent =
+    exchangeBalance > 0
+      ? Math.min(100, Math.max(0, (collateralAmount / exchangeBalance) * 100))
+      : 0;
+
   return (
     <>
       <style jsx global>{`
@@ -1180,94 +1189,48 @@ export default function BotPage() {
             )}
           </section>
 
-          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+          <section style={{ ...styles.accountBlock, ...reveal(5, mounted) }}>
             <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
+              <div style={styles.sectionMainTitle}>Состояние счета</div>
             </div>
 
-            <div style={styles.formGrid}>
-              <Field label="Биржа">
-                <select
-                  value={exchange}
-                  onChange={(e) => setExchange(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="BINANCE">BINANCE</option>
-                  <option value="BYBIT">BYBIT</option>
-                  <option value="OKX">OKX</option>
-                </select>
-              </Field>
-
-              <Field label="API key">
-                <select
-                  value={keyId}
-                  onChange={(e) => setKeyId(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="">Select API key</option>
-                  {filteredKeys.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              {!filteredKeys.length ? (
-                <div style={styles.inlineHint}>
-                  Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
+            <div style={styles.accountInner}>
+              <div style={styles.accountLeft}>
+                <div style={styles.accountMetric}>
+                  <div style={styles.accountMetricLabel}>Баланс на бирже</div>
+                  <div style={styles.accountMetricValue}>
+                    {formatUsd(exchangeBalance)}
+                  </div>
                 </div>
-              ) : null}
 
-              <Field label="maxActiveSymbols">
-                <input
-                  value={maxActiveSymbols}
-                  onChange={(e) => setMaxActiveSymbols(e.target.value)}
-                  placeholder="1..10"
-                  style={styles.input}
-                />
-              </Field>
+                <div style={styles.accountMetric}>
+                  <div style={styles.accountMetricLabel}>Сумма залога</div>
+                  <div style={{ ...styles.accountMetricValue, color: UI.blue }}>
+                    {formatUsd(collateralAmount)}
+                  </div>
+                </div>
+              </div>
 
-              <Field label="budgetPerSymbol">
-                <input
-                  value={budgetPerSymbol}
-                  onChange={(e) => setBudgetPerSymbol(e.target.value)}
-                  placeholder="50"
-                  style={styles.input}
-                />
-              </Field>
-
-              <Field label="maxTotalBudget">
-                <input
-                  value={maxTotalBudget}
-                  onChange={(e) => setMaxTotalBudget(e.target.value)}
-                  placeholder="optional"
-                  style={styles.input}
-                />
-              </Field>
-
-              <Field label="syncIntervalMin">
-                <input
-                  value={syncIntervalMin}
-                  onChange={(e) => setSyncIntervalMin(e.target.value)}
-                  placeholder="1..60"
-                  style={styles.input}
-                />
-              </Field>
-
-              <button
-                type="button"
-                disabled={!canSave}
-                onClick={saveConfig}
-                style={{
-                  ...styles.blockButtonBlue,
-                  opacity: canSave ? 1 : 0.7,
-                  cursor: canSave ? "pointer" : "not-allowed",
-                }}
-              >
-                {loading ? "..." : "Сохранить конфиг"}
-              </button>
+              <div style={styles.accountRingWrap}>
+                <div style={ringStyle(collateralPercent, UI.blue)} />
+                <div style={styles.ringCenterLabel}>
+                  <div style={styles.ringCenterValueLarge}>
+                    {Math.round(collateralPercent)}%
+                  </div>
+                  <div style={{ ...styles.ringCenterSub, color: UI.blue }}>
+                    Залог
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <button
+              type="button"
+              style={styles.ghostAction}
+              onClick={() => router.push("/bot/account-history")}
+            >
+              История счета
+            </button>
           </section>
 
           {err ? (
@@ -1277,45 +1240,8 @@ export default function BotPage() {
             </section>
           ) : null}
 
-          <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
-            <div style={styles.debugHeader}>
-              <div>
-                <div style={styles.debugTitle}>Технический статус</div>
-                <div style={styles.debugSub}>Сервисная информация</div>
-              </div>
-
-              <div style={styles.debugActions}>
-                <button
-                  onClick={() => reloadAll(false)}
-                  disabled={loading}
-                  style={styles.debugActionButton}
-                >
-                  {loading ? "..." : "Обновить"}
-                </button>
-              </div>
-            </div>
-
-            <div style={styles.debugMeta}>
-              <div>
-                <span style={styles.debugMetaLabel}>HTTP статус</span>
-                <div style={styles.debugMetaValue}>{statusCode ?? "—"}</div>
-              </div>
-
-              <div>
-                <span style={styles.debugMetaLabel}>Last sync</span>
-                <div style={styles.debugMetaValue}>
-                  {state?.lastSyncAt ?? "—"}
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.debugBox}>
-              {resp ? JSON.stringify(resp, null, 2) : "—"}
-            </div>
-          </section>
-
           {pageLoading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(8, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(7, mounted) }}>
               Загрузка bot dashboard...
             </section>
           ) : null}
@@ -1536,7 +1462,7 @@ const styles = {
   } satisfies CSSProperties,
 
   ghostAction: {
-    gridColumn: "1 / -1",
+    width: "100%",
     height: 42,
     borderRadius: 14,
     border: `1px solid ${UI.borderHard}`,
@@ -1545,11 +1471,17 @@ const styles = {
     fontSize: 13,
     fontWeight: 700,
     cursor: "pointer",
+    marginTop: 14,
   } satisfies CSSProperties,
 
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
+    marginBottom: 20,
+  } satisfies CSSProperties,
+
+  accountBlock: {
+    paddingBottom: 20,
     marginBottom: 20,
   } satisfies CSSProperties,
 
@@ -1936,6 +1868,52 @@ const styles = {
     wordBreak: "break-word",
   } satisfies CSSProperties,
 
+  accountInner: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 14,
+    alignItems: "center",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 20,
+    padding: 16,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(41,121,255,0.03) 100%)",
+  } satisfies CSSProperties,
+
+  accountLeft: {
+    display: "grid",
+    gap: 14,
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  accountMetric: {
+    display: "grid",
+    gap: 6,
+  } satisfies CSSProperties,
+
+  accountMetricLabel: {
+    fontSize: 11,
+    color: UI.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  accountMetricValue: {
+    fontSize: 24,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.04em",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  accountRingWrap: {
+    width: 112,
+    height: 112,
+    position: "relative",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
   emptyText: {
     fontSize: 12,
     color: UI.textMuted,
@@ -2007,91 +1985,6 @@ const styles = {
     color: UI.textSoft,
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
-  } satisfies CSSProperties,
-
-  debugCard: {
-    marginTop: 4,
-    background: "transparent",
-    border: "none",
-    borderRadius: 0,
-    padding: 0,
-  } satisfies CSSProperties,
-
-  debugHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 12,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  debugSub: {
-    fontSize: 11,
-    color: UI.textFaint,
-    marginTop: 4,
-  } satisfies CSSProperties,
-
-  debugActions: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-
-  debugActionButton: {
-    height: 36,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    flexShrink: 0,
-    WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  debugMeta: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
-    marginBottom: 10,
-  } satisfies CSSProperties,
-
-  debugMetaLabel: {
-    display: "block",
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: UI.textFaint,
-    marginBottom: 5,
-  } satisfies CSSProperties,
-
-  debugMetaValue: {
-    fontSize: 12,
-    color: UI.textSoft,
-    fontWeight: 600,
-    wordBreak: "break-word",
-  } satisfies CSSProperties,
-
-  debugBox: {
-    whiteSpace: "pre-wrap",
-    background: "transparent",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 14,
-    padding: 10,
-    minHeight: 100,
-    fontSize: 11,
-    lineHeight: 1.4,
-    overflowX: "auto",
-    color: UI.textMuted,
   } satisfies CSSProperties,
 
   loadingCard: {
