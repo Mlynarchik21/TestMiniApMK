@@ -95,15 +95,6 @@ function reveal(index: number, mounted: boolean): CSSProperties {
       };
 }
 
-function formatNum(v: unknown, digits = 2) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
-}
-
 function formatUsd(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0";
@@ -222,12 +213,10 @@ function inRange(dateLike: unknown, from: Date | null, to: Date | null) {
 
 function getCloseReasonLabel(reason: unknown) {
   const value = String(reason || "").toUpperCase();
-
   if (!value) return "—";
   if (value === "MANUAL") return "Ручное закрытие";
   if (value === "TP" || value === "TARGET") return "По таргету";
   if (value === "STRATEGY") return "По стратегии";
-
   return String(reason);
 }
 
@@ -260,48 +249,9 @@ function deriveStatsFromTrades(trades: any[]) {
   const avgTradePnl = closedTrades ? totalPnl / closedTrades : 0;
   const bestTradePnl = pnlList.length ? Math.max(...pnlList) : 0;
   const worstTradePnl = pnlList.length ? Math.min(...pnlList) : 0;
-
   const grossProfit = wins.reduce((a, b) => a + b, 0);
   const grossLossAbs = Math.abs(losses.reduce((a, b) => a + b, 0));
   const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
-
-  const avgWin = wins.length ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length
-    ? Math.abs(losses.reduce((a, b) => a + b, 0)) / losses.length
-    : 0;
-
-  let totalVolume = 0;
-  let maxBalanceSeen = 0;
-  let maxProfitDay = 0;
-  let maxProfitWeek = 0;
-  let maxProfitMonth = 0;
-  let maxLossDay = 0;
-  let maxLossWeek = 0;
-  let maxLossMonth = 0;
-
-  for (const t of trades) {
-    const entryValue = Number(t?.entryValue ?? 0);
-    const exitValue = Number(t?.exitValue ?? 0);
-    const pnl = Number(t?.pnl ?? 0);
-    const balance = Number(
-      t?.maxBalance ?? t?.balanceAfter ?? t?.equityAfter ?? 0
-    );
-
-    if (Number.isFinite(entryValue)) totalVolume += entryValue;
-    if (Number.isFinite(exitValue)) totalVolume += exitValue;
-    if (Number.isFinite(balance) && balance > maxBalanceSeen) {
-      maxBalanceSeen = balance;
-    }
-
-    if (Number.isFinite(pnl)) {
-      if (pnl > maxProfitDay) maxProfitDay = pnl;
-      if (pnl > maxProfitWeek) maxProfitWeek = pnl;
-      if (pnl > maxProfitMonth) maxProfitMonth = pnl;
-      if (pnl < maxLossDay) maxLossDay = pnl;
-      if (pnl < maxLossWeek) maxLossWeek = pnl;
-      if (pnl < maxLossMonth) maxLossMonth = pnl;
-    }
-  }
 
   const winningTrades = trades.filter((t) => Number(t?.pnl ?? 0) > 0);
   const losingTrades = trades.filter((t) => Number(t?.pnl ?? 0) < 0);
@@ -313,8 +263,7 @@ function deriveStatsFromTrades(trades: any[]) {
     ? Math.min(...winningTrades.map((t) => Number(t?.pnl ?? 0)))
     : 0;
   const avgProfitTrade = winningTrades.length
-    ? winningTrades.reduce((sum, t) => sum + Number(t?.pnl ?? 0), 0) /
-      winningTrades.length
+    ? winningTrades.reduce((sum, t) => sum + Number(t?.pnl ?? 0), 0) / winningTrades.length
     : 0;
 
   const maxLossTrade = losingTrades.length
@@ -338,6 +287,35 @@ function deriveStatsFromTrades(trades: any[]) {
   const minDuration = durations.length ? Math.min(...durations) : 0;
   const maxDuration = durations.length ? Math.max(...durations) : 0;
 
+  let totalVolume = 0;
+  let maxBalanceSeen = 0;
+  let maxProfitDay = 0;
+  let maxProfitWeek = 0;
+  let maxProfitMonth = 0;
+  let maxLossDay = 0;
+  let maxLossWeek = 0;
+  let maxLossMonth = 0;
+
+  for (const t of trades) {
+    const entryValue = Number(t?.entryValue ?? 0);
+    const exitValue = Number(t?.exitValue ?? 0);
+    const pnl = Number(t?.pnl ?? 0);
+    const balance = Number(t?.maxBalance ?? t?.balanceAfter ?? t?.equityAfter ?? 0);
+
+    if (Number.isFinite(entryValue)) totalVolume += entryValue;
+    if (Number.isFinite(exitValue)) totalVolume += exitValue;
+    if (Number.isFinite(balance) && balance > maxBalanceSeen) maxBalanceSeen = balance;
+
+    if (Number.isFinite(pnl)) {
+      if (pnl > maxProfitDay) maxProfitDay = pnl;
+      if (pnl > maxProfitWeek) maxProfitWeek = pnl;
+      if (pnl > maxProfitMonth) maxProfitMonth = pnl;
+      if (pnl < maxLossDay) maxLossDay = pnl;
+      if (pnl < maxLossWeek) maxLossWeek = pnl;
+      if (pnl < maxLossMonth) maxLossMonth = pnl;
+    }
+  }
+
   return {
     closedTrades,
     totalPnl,
@@ -348,11 +326,7 @@ function deriveStatsFromTrades(trades: any[]) {
     grossProfit,
     grossLossAbs,
     profitFactor,
-    avgWin,
-    avgLoss,
     totalVolume,
-    wins: wins.length,
-    losses: losses.length,
     maxProfitTrade,
     minProfitTrade,
     avgProfitTrade,
@@ -369,6 +343,8 @@ function deriveStatsFromTrades(trades: any[]) {
     maxLossWeek,
     maxLossMonth,
     maxBalanceSeen,
+    wins: wins.length,
+    losses: losses.length,
   };
 }
 
@@ -383,6 +359,21 @@ function ringStyle(percent: number, color: string): CSSProperties {
       "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   };
+}
+
+function compactNumber(value: unknown, digits = 3) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function assetCodeFromSymbol(symbol: unknown) {
+  const s = String(symbol || "");
+  if (!s) return "";
+  return s.replace(/USDT$/i, "");
 }
 
 function ArrowLeftIcon() {
@@ -604,6 +595,14 @@ export default function BotPage() {
     }
   }
 
+  function handleBack() {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.replace("/");
+  }
+
   useEffect(() => {
     reloadAll(true);
 
@@ -754,9 +753,9 @@ export default function BotPage() {
           <section style={{ ...styles.topBar, ...reveal(0, mounted) }}>
             <button
               type="button"
-              aria-label="Назад на Home"
+              aria-label="Назад"
               style={styles.backButton}
-              onClick={() => router.replace("/")}
+              onClick={handleBack}
             >
               <ArrowLeftIcon />
             </button>
@@ -764,7 +763,7 @@ export default function BotPage() {
             <button
               type="button"
               style={styles.topCtaButton}
-              onClick={() => router.replace("/keys")}
+              onClick={() => router.push("/keys")}
             >
               <span style={styles.topCtaIcon}>
                 <BotIcon />
@@ -856,7 +855,7 @@ export default function BotPage() {
               <button
                 type="button"
                 style={styles.ghostAction}
-                onClick={() => router.replace("/bot/config")}
+                onClick={() => router.push("/bot/config")}
               >
                 Настройка бота
               </button>
@@ -948,102 +947,94 @@ export default function BotPage() {
               </div>
             </div>
 
-            <div style={styles.statsSectionTitle}>Результат</div>
             <div style={styles.analyticsGrid2}>
               <AnalyticsCard
-                title="Прибыль"
                 accent={UI.green}
                 items={[
-                  ["Макс", formatUsd(derived.maxProfitTrade)],
-                  ["Мин", formatUsd(derived.minProfitTrade)],
-                  ["Средняя", formatUsd(derived.avgProfitTrade)],
+                  ["Макс прибыль", formatUsd(derived.maxProfitTrade)],
+                  ["Мин прибыль", formatUsd(derived.minProfitTrade)],
+                  ["Средняя прибыль", formatUsd(derived.avgProfitTrade)],
                 ]}
               />
               <AnalyticsCard
-                title="Убыток"
                 accent={UI.red}
                 items={[
-                  ["Макс", formatUsd(Math.abs(derived.maxLossTrade))],
-                  ["Мин", formatUsd(Math.abs(derived.minLossTrade))],
-                  ["Средняя", formatUsd(derived.avgLossTrade)],
+                  ["Макс убыток", formatUsd(Math.abs(derived.maxLossTrade))],
+                  ["Мин убыток", formatUsd(Math.abs(derived.minLossTrade))],
+                  ["Средний убыток", formatUsd(derived.avgLossTrade)],
                 ]}
               />
             </div>
 
-            <div style={styles.statsSectionTitle}>Время сделки</div>
-            <div style={styles.analyticsGrid2}>
+            <div style={styles.analyticsGrid2SingleGap}>
               <AnalyticsCard
-                title="Ожидание закрытия"
                 accent={UI.blue}
                 items={[
-                  ["Макс", formatDuration(derived.maxDuration)],
-                  ["Мин", formatDuration(derived.minDuration)],
-                  ["Среднее", formatDuration(derived.avgDuration)],
+                  ["Макс время", formatDuration(derived.maxDuration)],
+                  ["Мин время", formatDuration(derived.minDuration)],
+                  ["Среднее время", formatDuration(derived.avgDuration)],
                 ]}
               />
               <AnalyticsCard
-                title="Общая эффективность"
                 accent={UI.yellow}
                 items={[
                   ["Win Rate", formatPct(derived.winRate)],
-                  ["Profit factor", Number(derived.profitFactor).toLocaleString("ru-RU", {
-                    maximumFractionDigits: 2,
-                  })],
+                  [
+                    "Profit factor",
+                    Number(derived.profitFactor).toLocaleString("ru-RU", {
+                      maximumFractionDigits: 2,
+                    }),
+                  ],
                   ["Объём", formatUsd(derived.totalVolume)],
                 ]}
               />
             </div>
 
-            <div style={styles.statsSectionTitle}>Экстремумы</div>
-            <div style={styles.analyticsGrid3}>
+            <div style={styles.circleStatsWrap}>
               <CircleStat
-                label="Макс прибыль / день"
                 value={formatUsd(derived.maxProfitDay)}
                 accent={UI.green}
+                label="Макс прибыль / день"
               />
               <CircleStat
-                label="Макс прибыль / неделя"
                 value={formatUsd(derived.maxProfitWeek)}
                 accent={UI.green}
+                label="Макс прибыль / неделя"
               />
               <CircleStat
-                label="Макс прибыль / месяц"
                 value={formatUsd(derived.maxProfitMonth)}
                 accent={UI.green}
+                label="Макс прибыль / месяц"
               />
               <CircleStat
-                label="Макс убыток / день"
                 value={formatUsd(Math.abs(derived.maxLossDay))}
                 accent={UI.red}
+                label="Макс убыток / день"
               />
               <CircleStat
-                label="Макс убыток / неделя"
                 value={formatUsd(Math.abs(derived.maxLossWeek))}
                 accent={UI.red}
+                label="Макс убыток / неделя"
               />
               <CircleStat
-                label="Макс убыток / месяц"
                 value={formatUsd(Math.abs(derived.maxLossMonth))}
                 accent={UI.red}
+                label="Макс убыток / месяц"
               />
-            </div>
-
-            <div style={styles.statsSectionTitle}>Дополнительно</div>
-            <div style={styles.analyticsGrid3}>
               <CircleStat
-                label="Макс баланс"
                 value={formatUsd(derived.maxBalanceSeen)}
                 accent={UI.purple}
+                label="Макс баланс"
               />
               <CircleStat
-                label="Лучший трейд"
                 value={formatUsd(derived.bestTradePnl)}
                 accent={UI.green}
+                label="Лучший трейд"
               />
               <CircleStat
-                label="Худший трейд"
                 value={formatUsd(Math.abs(derived.worstTradePnl))}
                 accent={UI.red}
+                label="Худший трейд"
               />
             </div>
           </section>
@@ -1054,8 +1045,8 @@ export default function BotPage() {
 
               <button
                 type="button"
-                style={styles.inlineActionBlue}
-                onClick={() => router.replace("/bot/open-positions")}
+                style={styles.inlineActionGhost}
+                onClick={() => router.push("/bot/open-positions")}
               >
                 Все ордера
               </button>
@@ -1067,78 +1058,49 @@ export default function BotPage() {
               <div style={styles.listGrid}>
                 {shortOpenList.map((p) => {
                   const isOpen = expandedOpenId === p.id;
-                  const assetName =
-                    p.symbol?.replace("USDT", "") || p.symbol || "—";
+                  const assetName = assetCodeFromSymbol(p.symbol) || p.symbol || "—";
 
                   return (
                     <div
                       key={p.id}
-                      style={styles.tradeCard}
+                      style={styles.tradeCardCompact}
                       onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
                     >
-                      <div style={styles.tradeCardTop}>
-                        <div>
-                          <div style={styles.tradeCardTitle}>{assetName}</div>
-                          <div style={styles.tradeCardDate}>
-                            {formatDate(p.openedAt)}
-                          </div>
-                        </div>
-
-                        <div style={styles.tradeCardRight}>
-                          <div style={styles.orderBadge}>
-                            #{String(p.orderId ?? p.id).slice(0, 8)}
-                          </div>
-                        </div>
+                      <div style={styles.tradeCardTitleLarge}>{assetName}</div>
+                      <div style={styles.tradeCardSecondLine}>
+                        Ордер #{String(p.orderId ?? p.id).slice(0, 10)}
                       </div>
-
-                      <div style={styles.tradeCardSummaryRow}>
-                        <span>Цена входа: {p.avgPrice ?? "—"}</span>
-                        <span>
-                          Объём: {p.qty ?? "—"} {assetName}
-                        </span>
+                      <div style={styles.tradeCardThirdLine}>
+                        {formatDate(p.openedAt)}
+                      </div>
+                      <div style={styles.tradeCardFourthLine}>
+                        {compactNumber(p.qty, 3)} {assetName}
                       </div>
 
                       {isOpen ? (
-                        <div style={styles.tradeExpanded}>
-                          <div style={styles.tradeExpandedHeader}>
-                            Детали позиции
-                          </div>
-
-                          <div style={styles.detailsGrid}>
-                            <DetailItem label="Актив" value={p.symbol ?? "—"} />
-                            <DetailItem
-                              label="Дата открытия"
-                              value={formatDate(p.openedAt)}
-                            />
-                            <DetailItem
+                        <div style={styles.tradeExpandedCompact}>
+                          <div style={styles.detailsGridCompact}>
+                            <DetailItemCompact
                               label="Цена открытия"
-                              value={String(p.avgPrice ?? "—")}
+                              value={compactNumber(p.avgPrice, 3)}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Таргет"
-                              value={String(p.tpPrice ?? "—")}
+                              value={compactNumber(p.tpPrice, 3)}
                             />
-                            <DetailItem
-                              label="Объём"
-                              value={`${p.qty ?? "—"} ${assetName}`}
-                            />
-                            <DetailItem
+                            <DetailItemCompact
                               label="В USDT"
                               value={formatUsd(p.investedQuote ?? 0)}
                             />
-                            <DetailItem
-                              label="Последнее изменение"
+                            <DetailItemCompact
+                              label="Дата изменения"
                               value={formatDate(p.updatedAt ?? p.openedAt)}
                             />
-                            <DetailItem
-                              label="Номер ордера"
-                              value={String(p.orderId ?? p.id)}
-                            />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Усреднений"
                               value={String(p.addsCount ?? 0)}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Биржа"
                               value={String(p.exchange ?? "—")}
                             />
@@ -1158,8 +1120,8 @@ export default function BotPage() {
 
               <button
                 type="button"
-                style={styles.inlineActionBlue}
-                onClick={() => router.replace("/bot/history")}
+                style={styles.inlineActionGhost}
+                onClick={() => router.push("/bot/history")}
               >
                 Вся история
               </button>
@@ -1171,91 +1133,66 @@ export default function BotPage() {
               <div style={styles.listGrid}>
                 {shortHistoryList.map((t) => {
                   const isOpen = expandedHistoryId === t.id;
-                  const assetName =
-                    t.symbol?.replace("USDT", "") || t.symbol || "—";
+                  const assetName = assetCodeFromSymbol(t.symbol) || t.symbol || "—";
 
                   return (
                     <div
                       key={t.id}
-                      style={styles.tradeCard}
+                      style={styles.tradeCardCompact}
                       onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
                     >
-                      <div style={styles.tradeCardTop}>
-                        <div>
-                          <div style={styles.tradeCardTitle}>{assetName}</div>
-                          <div style={styles.tradeCardDate}>
-                            {formatDate(t.closedAt)}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            ...styles.tradePnlBadge,
-                            color: pnlColor(t.pnl),
-                          }}
-                        >
-                          {formatUsd(t.pnl)}
-                        </div>
+                      <div style={styles.tradeCardTitleLarge}>{assetName}</div>
+                      <div style={styles.tradeCardSecondLine}>
+                        Ордер #{String(t.orderId ?? t.id).slice(0, 10)}
                       </div>
-
-                      <div style={styles.tradeCardSummaryRow}>
-                        <span>Вход: {t.avgEntryPrice ?? "—"}</span>
-                        <span>Выход: {t.exitPrice ?? "—"}</span>
+                      <div style={styles.tradeCardThirdLine}>
+                        {formatDate(t.closedAt)}
+                      </div>
+                      <div
+                        style={{
+                          ...styles.tradeCardFourthLine,
+                          color: pnlColor(t.pnl),
+                        }}
+                      >
+                        {formatUsd(t.pnl)}
                       </div>
 
                       {isOpen ? (
-                        <div style={styles.tradeExpanded}>
-                          <div style={styles.tradeExpandedHeader}>
-                            Анализ сделки
-                          </div>
-
-                          <div style={styles.detailsGrid}>
-                            <DetailItem label="Актив" value={t.symbol ?? "—"} />
-                            <DetailItem
-                              label="Номер ордера"
-                              value={String(t.orderId ?? t.id)}
-                            />
-                            <DetailItem
-                              label="Дата открытия"
-                              value={formatDate(t.openedAt)}
-                            />
-                            <DetailItem
-                              label="Дата закрытия"
-                              value={formatDate(t.closedAt)}
-                            />
-                            <DetailItem
+                        <div style={styles.tradeExpandedCompact}>
+                          <div style={styles.detailsGridCompact}>
+                            <DetailItemCompact
                               label="Цена входа"
-                              value={String(t.avgEntryPrice ?? "—")}
+                              value={compactNumber(t.avgEntryPrice, 3)}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Цена выхода"
-                              value={String(t.exitPrice ?? "—")}
+                              value={compactNumber(t.exitPrice, 3)}
                             />
-                            <DetailItem
-                              label="Объём"
-                              value={String(t.qty ?? "—")}
-                            />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Вход в USDT"
                               value={formatUsd(t.entryValue ?? 0)}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Выход в USDT"
                               value={formatUsd(t.exitValue ?? 0)}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Прибыль"
                               value={`${formatUsd(t.pnl ?? 0)} · ${formatPct(
                                 t.pnlPercent ?? 0
                               )}`}
                             />
-                            <DetailItem
+                            <DetailItemCompact
                               label="Закрытие"
                               value={getCloseReasonLabel(t.closeReason)}
                             />
-                            <DetailItem
-                              label="Усреднений"
-                              value={String(t.addsCount ?? 0)}
+                            <DetailItemCompact
+                              label="Дата открытия"
+                              value={formatDate(t.openedAt)}
+                            />
+                            <DetailItemCompact
+                              label="Дата закрытия"
+                              value={formatDate(t.closedAt)}
                             />
                           </div>
                         </div>
@@ -1454,23 +1391,11 @@ function MetricBox(props: {
 }
 
 function AnalyticsCard(props: {
-  title: string;
   accent: string;
   items: [string, string][];
 }) {
   return (
     <div style={styles.analyticsCard}>
-      <div style={styles.analyticsCardHeader}>
-        <span
-          style={{
-            ...styles.analyticsDot,
-            background: props.accent,
-            boxShadow: `0 0 18px ${props.accent}55`,
-          }}
-        />
-        <div style={styles.analyticsTitle}>{props.title}</div>
-      </div>
-
       <div style={styles.analyticsRows}>
         {props.items.map(([label, value]) => (
           <div key={label} style={styles.analyticsRow}>
@@ -1510,11 +1435,11 @@ function CircleStat(props: {
   );
 }
 
-function DetailItem(props: { label: string; value: string }) {
+function DetailItemCompact(props: { label: string; value: string }) {
   return (
-    <div style={styles.detailItem}>
-      <div style={styles.detailLabel}>{props.label}</div>
-      <div style={styles.detailValue}>{props.value}</div>
+    <div style={styles.detailCompact}>
+      <div style={styles.detailCompactLabel}>{props.label}</div>
+      <div style={styles.detailCompactValue}>{props.value}</div>
     </div>
   );
 }
@@ -1844,25 +1769,18 @@ const styles = {
     fontWeight: 700,
   } satisfies CSSProperties,
 
-  statsSectionTitle: {
-    marginTop: 14,
-    marginBottom: 10,
-    fontSize: 13,
-    fontWeight: 800,
-    color: UI.textMain,
-    letterSpacing: "-0.01em",
-  } satisfies CSSProperties,
-
   analyticsGrid2: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
+    marginBottom: 12,
   } satisfies CSSProperties,
 
-  analyticsGrid3: {
+  analyticsGrid2SingleGap: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
+    marginBottom: 14,
   } satisfies CSSProperties,
 
   analyticsCard: {
@@ -1870,26 +1788,6 @@ const styles = {
     borderRadius: 18,
     padding: 14,
     background: "rgba(255,255,255,0.03)",
-  } satisfies CSSProperties,
-
-  analyticsCardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  analyticsDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-
-  analyticsTitle: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: UI.textMain,
   } satisfies CSSProperties,
 
   analyticsRows: {
@@ -1913,6 +1811,12 @@ const styles = {
     fontSize: 12,
     fontWeight: 800,
     textAlign: "right",
+  } satisfies CSSProperties,
+
+  circleStatsWrap: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 12,
   } satisfies CSSProperties,
 
   circleCard: {
@@ -1962,17 +1866,16 @@ const styles = {
     fontWeight: 600,
   } satisfies CSSProperties,
 
-  inlineActionBlue: {
-    height: 36,
+  inlineActionGhost: {
+    height: 42,
     padding: "0 14px",
-    borderRadius: 999,
-    border: "none",
-    background: UI.brand,
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: 800,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
     cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
 
   listGrid: {
@@ -1980,7 +1883,7 @@ const styles = {
     gap: 12,
   } satisfies CSSProperties,
 
-  tradeCard: {
+  tradeCardCompact: {
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
     border: `1px solid ${UI.border}`,
@@ -1989,102 +1892,68 @@ const styles = {
     cursor: "pointer",
   } satisfies CSSProperties,
 
-  tradeCardTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
-  } satisfies CSSProperties,
-
-  tradeCardTitle: {
-    fontSize: 16,
+  tradeCardTitleLarge: {
+    fontSize: 22,
     fontWeight: 800,
+    letterSpacing: "-0.04em",
     color: UI.textMain,
-    letterSpacing: "-0.02em",
+    lineHeight: 1,
   } satisfies CSSProperties,
 
-  tradeCardDate: {
+  tradeCardSecondLine: {
+    marginTop: 8,
+    fontSize: 12,
+    color: UI.textFaint,
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  tradeCardThirdLine: {
     marginTop: 6,
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 600,
   } satisfies CSSProperties,
 
-  tradeCardRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flexShrink: 0,
-  } satisfies CSSProperties,
-
-  orderBadge: {
-    fontSize: 11,
-    fontWeight: 800,
-    border: `1px solid ${UI.border}`,
-    borderRadius: 999,
-    padding: "6px 10px",
-    color: UI.textSoft,
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  tradePnlBadge: {
+  tradeCardFourthLine: {
+    marginTop: 8,
     fontSize: 13,
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  tradeCardSummaryRow: {
-    marginTop: 12,
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-    fontSize: 12,
-    lineHeight: 1.5,
     color: UI.textSoft,
-    fontWeight: 600,
+    fontWeight: 700,
   } satisfies CSSProperties,
 
-  tradeExpanded: {
-    marginTop: 14,
-    paddingTop: 14,
+  tradeExpandedCompact: {
+    marginTop: 12,
+    paddingTop: 12,
     borderTop: `1px solid ${UI.borderSoft}`,
   } satisfies CSSProperties,
 
-  tradeExpandedHeader: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: UI.textMain,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  detailsGrid: {
+  detailsGridCompact: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
+    gap: 8,
   } satisfies CSSProperties,
 
-  detailItem: {
+  detailCompact: {
     border: `1px solid ${UI.borderSoft}`,
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 12,
+    padding: 9,
     background: "rgba(255,255,255,0.02)",
   } satisfies CSSProperties,
 
-  detailLabel: {
+  detailCompactLabel: {
     fontSize: 10,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
     color: UI.textFaint,
     fontWeight: 700,
-    marginBottom: 6,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: 5,
   } satisfies CSSProperties,
 
-  detailValue: {
+  detailCompactValue: {
     fontSize: 12,
-    lineHeight: 1.45,
     color: UI.textMain,
     fontWeight: 700,
+    lineHeight: 1.35,
     wordBreak: "break-word",
   } satisfies CSSProperties,
 
