@@ -90,14 +90,18 @@ function fearFill(percent: number): CSSProperties {
 }
 
 function ringStyle(percent: number, color: string): CSSProperties {
-  const safe = Math.max(0, Math.min(100, percent));
   return {
     position: "absolute",
     inset: 0,
     borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${safe}%, rgba(255,255,255,0.10) ${safe}% 100%)`,
-    WebkitMask:
-      "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    background: `conic-gradient(${color} 0 ${Math.max(
+      0,
+      Math.min(100, percent)
+    )}%, rgba(255,255,255,0.10) ${Math.max(
+      0,
+      Math.min(100, percent)
+    )}% 100%)`,
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   };
 }
@@ -182,13 +186,11 @@ function SettingsIcon() {
 
 export default function HomePage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<AnyResp | null>(null);
   const [tokenPreview, setTokenPreview] = useState("нет токена");
   const [mounted, setMounted] = useState(false);
-
   const [marketData, setMarketData] = useState<HomeMarketResp | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
 
@@ -196,9 +198,7 @@ export default function HomePage() {
     setLoading(true);
     setStatus(null);
     setResult(null);
-
     const token = getToken();
-
     try {
       const res = await fetch(path, {
         cache: "no-store",
@@ -208,9 +208,7 @@ export default function HomePage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-
       setStatus(res.status);
-
       const contentType = res.headers.get("content-type") || "";
       const data = contentType.includes("application/json")
         ? ((await res.json()) as AnyResp)
@@ -219,7 +217,6 @@ export default function HomePage() {
             error: res.ok ? "" : "invalid_response",
             message: await res.text(),
           } as AnyResp);
-
       setResult(data);
     } catch (e: any) {
       setResult({ ok: false, error: e?.message ?? "fetch error" });
@@ -230,13 +227,11 @@ export default function HomePage() {
 
   async function loadHomeMarket() {
     setMarketLoading(true);
-
     try {
       const res = await fetch("/api/home-market", {
         method: "GET",
         cache: "no-store",
       });
-
       const data = (await res.json()) as HomeMarketResp;
       setMarketData(data);
     } catch (e: any) {
@@ -256,10 +251,8 @@ export default function HomePage() {
     setTokenPreview(
       t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена"
     );
-
     checkMe();
     loadHomeMarket();
-
     try {
       const tg = (window as any)?.Telegram?.WebApp;
       tg?.ready?.();
@@ -267,20 +260,15 @@ export default function HomePage() {
       tg?.setHeaderColor?.("#000000");
       tg?.setBackgroundColor?.("#000000");
     } catch {}
-
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const marketCapT = marketData?.ok ? marketData.market.totalMarketCapT : "—";
-  const marketChange24h = marketData?.ok
-    ? marketData.market.marketCapChange24h
-    : null;
+  const marketChange24h = marketData?.ok ? marketData.market.marketCapChange24h : null;
   const fearValue = marketData?.ok ? marketData.fearGreed.value : 0;
-  const fearText = marketData?.ok
-    ? marketData.fearGreed.classification
-    : "Нет данных";
-
+  const fearText = marketData?.ok ? marketData.fearGreed.classification : "Нет данных";
   const btcDominance = marketData?.ok ? marketData.market.btcDominance : null;
   const ethDominance = marketData?.ok ? marketData.market.ethDominance : null;
   const altDominance = marketData?.ok ? marketData.market.altDominance : null;
@@ -293,7 +281,6 @@ export default function HomePage() {
         * {
           box-sizing: border-box;
         }
-
         html,
         body {
           margin: 0;
@@ -301,7 +288,6 @@ export default function HomePage() {
           background: #000;
           overflow-x: hidden;
         }
-
         @keyframes fadeUp {
           from {
             opacity: 0;
@@ -313,13 +299,12 @@ export default function HomePage() {
           }
         }
       `}</style>
-
       <main style={styles.page}>
         <div style={styles.container}>
           <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
-            <div style={styles.heroTopRow}>
+            <div style={styles.heroHeaderRow}>
               <div style={styles.metricLabel}>Рын. капитализация</div>
-              <div style={styles.rightHeader}>
+              <div style={styles.heroRightColumn}>
                 <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
                 <div style={styles.topActions}>
                   <button
@@ -330,7 +315,6 @@ export default function HomePage() {
                   >
                     <BellIcon />
                   </button>
-
                   <button
                     type="button"
                     aria-label="Поддержка"
@@ -339,7 +323,6 @@ export default function HomePage() {
                   >
                     <ChatIcon />
                   </button>
-
                   <button
                     type="button"
                     aria-label="Настройки"
@@ -351,13 +334,13 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-
-            <div style={styles.metricValueRow}>
-              <span style={styles.metricValue}>{marketCapT}</span>
-              <span style={styles.metricTinyUnit}>T</span>
-              <span style={styles.metricUnit}>USDT</span>
+            <div style={styles.heroRowMiddle}>
+              <div style={styles.metricValueRow}>
+                <span style={styles.metricValue}>{marketCapT}</span>
+                <span style={styles.metricTinyUnit}>T</span>
+                <span style={styles.metricUnit}>USDT</span>
+              </div>
             </div>
-
             <div style={styles.deltaRowInline}>
               <span style={styles.deltaLabel}>Изменение за день</span>
               <span
@@ -383,13 +366,10 @@ export default function HomePage() {
                 {marketData?.ok ? `${marketData.fearGreed.value}%` : "—"}
               </div>
             </div>
-
             <div style={styles.fearTrack}>
               <div style={fearFill(fearValue)} />
             </div>
-
             <div style={{ ...styles.smallSub, marginTop: 10 }}>{fearText}</div>
-
             <div style={styles.heroButtons}>
               <button
                 type="button"
@@ -405,7 +385,6 @@ export default function HomePage() {
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>BTC Dominance</div>
             </div>
-
             <div style={styles.signalRowTopAligned}>
               <div style={styles.dominanceLegend}>
                 <div style={styles.dominanceItem}>
@@ -417,7 +396,6 @@ export default function HomePage() {
                     {btcDominance != null ? `${btcDominance.toFixed(1)}%` : "—"}
                   </span>
                 </div>
-
                 <div style={styles.dominanceItem}>
                   <div style={styles.legendLeft}>
                     <span style={{ ...styles.legendDot, background: UI.eth }} />
@@ -427,7 +405,6 @@ export default function HomePage() {
                     {ethDominance != null ? `${ethDominance.toFixed(1)}%` : "—"}
                   </span>
                 </div>
-
                 <div style={styles.dominanceItem}>
                   <div style={styles.legendLeft}>
                     <span style={{ ...styles.legendDot, background: UI.alt }} />
@@ -438,25 +415,21 @@ export default function HomePage() {
                   </span>
                 </div>
               </div>
-
               <div style={styles.ringWrapLarge}>
                 <div
                   style={{
                     ...styles.multiRing,
-                    background:
-                      marketData?.ok
-                        ? `conic-gradient(
-                            ${UI.btc} 0 ${marketData.market.btcDominance}%,
-                            ${UI.eth} ${marketData.market.btcDominance}% ${
-                            marketData.market.btcDominance +
-                            marketData.market.ethDominance
-                          }%,
-                            ${UI.alt} ${
-                            marketData.market.btcDominance +
-                            marketData.market.ethDominance
-                          }% 100%
-                          )`
-                        : styles.multiRing.background,
+                    background: marketData?.ok
+                      ? `conic-gradient(
+                          ${UI.btc} 0 ${marketData.market.btcDominance}%,
+                          ${UI.eth} ${marketData.market.btcDominance}% ${
+                          marketData.market.btcDominance + marketData.market.ethDominance
+                        }%,
+                          ${UI.alt} ${
+                          marketData.market.btcDominance + marketData.market.ethDominance
+                        }% 100%
+                        )`
+                      : styles.multiRing.background,
                   }}
                 />
                 <div style={styles.ringCenterLabel}>
@@ -473,7 +446,6 @@ export default function HomePage() {
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Индекс альтсезона</div>
             </div>
-
             <div style={styles.signalCard}>
               <div style={styles.signalRowTopAligned}>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -485,7 +457,6 @@ export default function HomePage() {
                     {getAltseasonLabel(altseasonValue)}
                   </div>
                 </div>
-
                 <div style={styles.ringWrap}>
                   <div style={ringStyle(altseasonValue ?? 0, UI.blue)} />
                   <div style={styles.ringTextSmall}>
@@ -494,7 +465,6 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-
             <div style={styles.twoCol}>
               <MiniMetric
                 label="BTC CAP"
@@ -508,9 +478,7 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(
-                        1
-                      )}%`
+                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(1)}%`
                     : "Нет данных"
                 }
                 valueColor={UI.btc}
@@ -527,9 +495,7 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `Alt dominance ${marketData.market.altDominance.toFixed(
-                        1
-                      )}%`
+                    ? `Alt dominance ${marketData.market.altDominance.toFixed(1)}%`
                     : "Нет данных"
                 }
                 valueColor={UI.alt}
@@ -541,40 +507,31 @@ export default function HomePage() {
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Positioning</div>
             </div>
-
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
-                <div style={styles.subBlockTitle}>
-                  Spot Activity / Perp Activity
-                </div>
+                <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
               </div>
-
               <div style={styles.splitBar}>
                 <div style={styles.splitBarSpot} />
                 <div style={styles.splitBarPerp} />
               </div>
-
               <div style={styles.splitMeta}>
                 <span style={{ color: UI.green }}>68% Spot Activity</span>
                 <span style={{ color: UI.red }}>32% Perp Activity</span>
               </div>
-
               <div style={styles.bodyTextTight}>
                 Движение подтверждается в большей степени спотовым спросом, а не
                 перегретым деривативным потоком.
               </div>
             </div>
-
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
                 <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
               </div>
-
               <div style={styles.splitBar}>
                 <div style={styles.splitBarLong} />
                 <div style={styles.splitBarShort} />
               </div>
-
               <div style={styles.splitMeta}>
                 <span style={{ color: UI.green }}>61.4% Longs</span>
                 <span style={{ color: UI.red }}>38.6% Shorts</span>
@@ -586,12 +543,10 @@ export default function HomePage() {
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>AI Insight</div>
             </div>
-
             <div style={styles.bodyText}>
               Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет —
               BTC, ETH и сильные альты с подтверждённым спросом.
             </div>
-
             <button
               type="button"
               style={styles.blockButton}
@@ -609,7 +564,6 @@ export default function HomePage() {
               </div>
               <StatusDot text="Активен" />
             </div>
-
             <div style={styles.botMetricsGrid}>
               <MetricBox
                 label="Статус"
@@ -640,7 +594,6 @@ export default function HomePage() {
                 glowColor="rgba(41,121,255,0.18)"
               />
             </div>
-
             <button
               type="button"
               style={styles.blockButtonBlue}
@@ -656,7 +609,6 @@ export default function HomePage() {
                 <div style={styles.debugTitle}>Технический статус</div>
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
-
               <div
                 style={{
                   display: "flex",
@@ -672,7 +624,6 @@ export default function HomePage() {
                 >
                   {marketLoading ? "..." : "Обновить рынок"}
                 </button>
-
                 <button
                   onClick={checkMe}
                   disabled={loading}
@@ -682,19 +633,16 @@ export default function HomePage() {
                 </button>
               </div>
             </div>
-
             <div style={styles.debugMeta}>
               <div>
                 <span style={styles.debugMetaLabel}>sessionToken</span>
                 <div style={styles.debugMetaValue}>{tokenPreview}</div>
               </div>
-
               <div>
                 <span style={styles.debugMetaLabel}>HTTP статус</span>
                 <div style={styles.debugMetaValue}>{status ?? "—"}</div>
               </div>
             </div>
-
             <div style={styles.debugMeta}>
               <div>
                 <span style={styles.debugMetaLabel}>fear & greed</span>
@@ -704,7 +652,6 @@ export default function HomePage() {
                     : "—"}
                 </div>
               </div>
-
               <div>
                 <span style={styles.debugMetaLabel}>updatedAt</span>
                 <div style={styles.debugMetaValue}>
@@ -712,7 +659,6 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-
             <div style={styles.debugBox}>
               {result ? JSON.stringify(result, null, 2) : "—"}
             </div>
@@ -756,9 +702,7 @@ function MetricBox(props: {
     <div
       style={{
         ...styles.metricItem,
-        boxShadow: props.glowColor
-          ? `0 0 0 1px ${props.glowColor} inset`
-          : undefined,
+        boxShadow: props.glowColor ? `0 0 0 1px ${props.glowColor} inset` : undefined,
       }}
     >
       <div style={styles.metricItemLabel}>{props.label}</div>
@@ -770,9 +714,7 @@ function MetricBox(props: {
       >
         {props.value}
       </div>
-      {props.sub ? (
-        <div style={styles.metricItemSubStrong}>{props.sub}</div>
-      ) : null}
+      {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
     </div>
   );
 }
@@ -793,11 +735,10 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 40px)", // Уменьшена пустота сверху, но оставлено место для шапки TG
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
-
   container: {
     width: "100%",
     maxWidth: 560,
@@ -805,52 +746,58 @@ const styles = {
     padding: "0 16px",
     overflowX: "hidden",
   } satisfies CSSProperties,
-
   heroTop: {
-    marginTop: 0,
-    marginBottom: 18,
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 132px)",
+    position: "relative",
+    marginTop: 8,
+    marginBottom: 16,
   } satisfies CSSProperties,
-
-  heroTopRow: {
+  heroHeaderRow: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 6,
-    gap: 12,
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: -8, // Отрицательный отступ, чтобы "Рын. капитализация" стала почти вплотную к значению
+    position: "relative",
+    top: 14, // Опускаем весь верхний блок (и левую, и правую часть) вниз на одно расстояние
+    zIndex: 10,
   } satisfies CSSProperties,
-
-  rightHeader: {
-    minWidth: 180,
+  heroRowMiddle: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: 4,
+  } satisfies CSSProperties,
+  heroRightColumn: {
+    width: 170,
+    flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-end",
-    gap: 4,
+    alignItems: "flex-start",
   } satisfies CSSProperties,
-
   metricLabel: {
     fontSize: 13,
     color: UI.textMuted,
     fontWeight: 500,
     lineHeight: 1.2,
     margin: 0,
-    paddingTop: 2,
   } satisfies CSSProperties,
-
   updatedAt: {
     fontSize: 11,
     color: UI.textFaint,
-    whiteSpace: "nowrap",
     lineHeight: 1.2,
-    textAlign: "right",
+    textAlign: "left",
+    margin: 0,
+    whiteSpace: "nowrap",
   } satisfies CSSProperties,
-
   topActions: {
     display: "flex",
-    gap: 8,
-    justifyContent: "flex-end",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 10,
+    width: "100%",
+    marginTop: 6,
   } satisfies CSSProperties,
-
   iconButton: {
     width: 34,
     height: 34,
@@ -858,74 +805,68 @@ const styles = {
     border: `1px solid ${UI.border}`,
     background: "rgba(255,255,255,0.04)",
     color: UI.textMain,
+    fontSize: 15,
     cursor: "pointer",
+    flexShrink: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     WebkitTapHighlightColor: "transparent",
-    flexShrink: 0,
   } satisfies CSSProperties,
-
-  metricValueRow: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 0,
-    marginBottom: 2,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-
-  metricValue: {
-    fontSize: 42,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: "-0.06em",
-    color: "#fff",
-  } satisfies CSSProperties,
-
-  metricTinyUnit: {
-    fontSize: 15,
-    color: "#fff",
-    fontWeight: 700,
-    marginLeft: 1,
-    marginRight: 3,
-    letterSpacing: "-0.03em",
-  } satisfies CSSProperties,
-
-  metricUnit: {
-    fontSize: 18,
-    color: UI.textMain,
-    fontWeight: 700,
-    letterSpacing: "-0.02em",
-  } satisfies CSSProperties,
-
-  deltaRowInline: {
-    display: "flex",
-    gap: 10,
-    alignItems: "baseline",
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-
-  deltaLabel: {
-    fontSize: 14,
-    color: UI.textMuted,
-    fontWeight: 500,
-    lineHeight: 1.2,
-  } satisfies CSSProperties,
-
-  deltaNegative: {
-    fontSize: 15,
-    fontWeight: 700,
-    lineHeight: 1.15,
-    margin: 0,
-  } satisfies CSSProperties,
-
   heroCard: {
     background: "transparent",
     border: "none",
     padding: 0,
     marginBottom: 26,
   } satisfies CSSProperties,
-
+  metricValueRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 0,
+    flexWrap: "wrap",
+    marginBottom: 0,
+  } satisfies CSSProperties,
+  metricValue: {
+    fontSize: 40,
+    lineHeight: 0.95,
+    fontWeight: 800,
+    letterSpacing: "-0.06em",
+    color: "#ffffff",
+  } satisfies CSSProperties,
+  metricTinyUnit: {
+    fontSize: 15,
+    color: "#ffffff",
+    fontWeight: 700,
+    letterSpacing: "-0.03em",
+    marginLeft: 1,
+    marginRight: 3,
+  } satisfies CSSProperties,
+  metricUnit: {
+    fontSize: 18,
+    color: UI.textMain,
+    fontWeight: 700,
+    letterSpacing: "-0.02em",
+  } satisfies CSSProperties,
+  deltaRowInline: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 0,
+    marginBottom: 0,
+  } satisfies CSSProperties,
+  deltaLabel: {
+    fontSize: 14,
+    color: UI.textMuted,
+    fontWeight: 500,
+    lineHeight: 1.2,
+  } satisfies CSSProperties,
+  deltaNegative: {
+    fontSize: 15,
+    fontWeight: 700,
+    lineHeight: 1.15,
+    margin: 0,
+  } satisfies CSSProperties,
   sentimentHeader: {
     display: "flex",
     alignItems: "center",
@@ -933,13 +874,11 @@ const styles = {
     gap: 10,
     marginBottom: 10,
   } satisfies CSSProperties,
-
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.yellow,
   } satisfies CSSProperties,
-
   sentimentBadgeDanger: {
     minWidth: 52,
     height: 24,
@@ -953,7 +892,6 @@ const styles = {
     fontSize: 14,
     padding: 0,
   } satisfies CSSProperties,
-
   fearTrack: {
     width: "100%",
     height: 10,
@@ -963,14 +901,12 @@ const styles = {
     overflow: "hidden",
     position: "relative",
   } satisfies CSSProperties,
-
   heroButtons: {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
     marginTop: 18,
   } satisfies CSSProperties,
-
   primaryPill: {
     width: "100%",
     height: 46,
@@ -983,17 +919,14 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
-
   block: {
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
   } satisfies CSSProperties,
-
   blockNoBorder: {
     paddingBottom: 20,
     borderBottom: "none",
   } satisfies CSSProperties,
-
   sectionHead: {
     display: "flex",
     justifyContent: "space-between",
@@ -1001,27 +934,23 @@ const styles = {
     gap: 10,
     marginBottom: 12,
   } satisfies CSSProperties,
-
   sectionMainTitle: {
     fontSize: 16,
     fontWeight: 800,
     letterSpacing: "-0.01em",
     color: UI.textMain,
   } satisfies CSSProperties,
-
   signalCard: {
     borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
     marginBottom: 12,
   } satisfies CSSProperties,
-
   signalTitle: {
     fontSize: 13,
     fontWeight: 700,
     color: UI.textMain,
     marginBottom: 8,
   } satisfies CSSProperties,
-
   signalRowTopAligned: {
     display: "flex",
     alignItems: "flex-start",
@@ -1029,28 +958,24 @@ const styles = {
     gap: 12,
     minWidth: 0,
   } satisfies CSSProperties,
-
   statBigValue: {
     fontSize: 30,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: "-0.04em",
   } satisfies CSSProperties,
-
   statSubtitle: {
     marginTop: 6,
     fontSize: 12,
     color: UI.textMuted,
     fontWeight: 500,
   } satisfies CSSProperties,
-
   ringWrap: {
     width: 68,
     height: 68,
     position: "relative",
     flexShrink: 0,
   } satisfies CSSProperties,
-
   ringWrapLarge: {
     width: 86,
     height: 86,
@@ -1058,7 +983,6 @@ const styles = {
     flexShrink: 0,
     marginTop: 2,
   } satisfies CSSProperties,
-
   ringTextSmall: {
     position: "absolute",
     inset: 0,
@@ -1069,7 +993,6 @@ const styles = {
     fontWeight: 700,
     color: UI.textMain,
   } satisfies CSSProperties,
-
   dominanceLegend: {
     flex: 1,
     display: "flex",
@@ -1077,7 +1000,6 @@ const styles = {
     gap: 12,
     minWidth: 0,
   } satisfies CSSProperties,
-
   dominanceItem: {
     display: "flex",
     alignItems: "center",
@@ -1085,14 +1007,12 @@ const styles = {
     gap: 12,
     minWidth: 0,
   } satisfies CSSProperties,
-
   legendLeft: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     minWidth: 0,
   } satisfies CSSProperties,
-
   legendDot: {
     width: 10,
     height: 10,
@@ -1100,19 +1020,16 @@ const styles = {
     display: "inline-block",
     flexShrink: 0,
   } satisfies CSSProperties,
-
   legendText: {
     fontSize: 13,
     color: UI.textSoft,
     fontWeight: 600,
   } satisfies CSSProperties,
-
   legendValue: {
     fontSize: 15,
     fontWeight: 800,
     flexShrink: 0,
   } satisfies CSSProperties,
-
   multiRing: {
     position: "absolute",
     inset: 0,
@@ -1122,11 +1039,9 @@ const styles = {
       ${UI.eth} 56.6% 74.4%,
       ${UI.alt} 74.4% 100%
     )`,
-    WebkitMask:
-      "radial-gradient(circle at center, transparent 58%, #000 59%)",
+    WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
   } satisfies CSSProperties,
-
   ringCenterLabel: {
     position: "absolute",
     inset: 0,
@@ -1137,27 +1052,23 @@ const styles = {
     textAlign: "center",
     padding: 4,
   } satisfies CSSProperties,
-
   ringCenterValueLarge: {
     fontSize: 12,
     fontWeight: 800,
     color: UI.textMain,
     lineHeight: 1,
   } satisfies CSSProperties,
-
   ringCenterSub: {
     marginTop: 3,
     fontSize: 10,
     fontWeight: 700,
     color: UI.btc,
   } satisfies CSSProperties,
-
   twoCol: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
   } satisfies CSSProperties,
-
   miniCard: {
     background: "transparent",
     border: `1px solid ${UI.border}`,
@@ -1169,7 +1080,6 @@ const styles = {
     justifyContent: "space-between",
     minWidth: 0,
   } satisfies CSSProperties,
-
   cardLabel: {
     fontSize: 10,
     letterSpacing: "0.10em",
@@ -1178,7 +1088,6 @@ const styles = {
     fontWeight: 700,
     marginBottom: 8,
   } satisfies CSSProperties,
-
   miniCardValue: {
     fontSize: 18,
     lineHeight: 1,
@@ -1186,7 +1095,6 @@ const styles = {
     letterSpacing: "-0.03em",
     wordBreak: "break-word",
   } satisfies CSSProperties,
-
   smallSub: {
     marginTop: 8,
     fontSize: 11,
@@ -1194,11 +1102,9 @@ const styles = {
     lineHeight: 1.4,
     wordBreak: "break-word",
   } satisfies CSSProperties,
-
   subBlock: {
     marginTop: 12,
   } satisfies CSSProperties,
-
   subBlockTitleRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -1206,20 +1112,17 @@ const styles = {
     gap: 8,
     marginBottom: 10,
   } satisfies CSSProperties,
-
   subBlockTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.textMain,
   } satisfies CSSProperties,
-
   bodyTextTight: {
     marginTop: 10,
     fontSize: 11,
     lineHeight: 1.5,
     color: UI.textMuted,
   } satisfies CSSProperties,
-
   splitBar: {
     width: "100%",
     height: 12,
@@ -1228,27 +1131,22 @@ const styles = {
     overflow: "hidden",
     display: "flex",
   } satisfies CSSProperties,
-
   splitBarSpot: {
     width: "68%",
     background: UI.green,
   } satisfies CSSProperties,
-
   splitBarPerp: {
     width: "32%",
     background: UI.red,
   } satisfies CSSProperties,
-
   splitBarLong: {
     width: "61.4%",
     background: UI.green,
   } satisfies CSSProperties,
-
   splitBarShort: {
     width: "38.6%",
     background: UI.red,
   } satisfies CSSProperties,
-
   splitMeta: {
     display: "flex",
     justifyContent: "space-between",
@@ -1258,7 +1156,6 @@ const styles = {
     fontWeight: 700,
     flexWrap: "wrap",
   } satisfies CSSProperties,
-
   aiBlock: {
     marginTop: 4,
     marginBottom: 2,
@@ -1268,13 +1165,11 @@ const styles = {
     background:
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
   } satisfies CSSProperties,
-
   bodyText: {
     fontSize: 12,
     lineHeight: 1.55,
     color: UI.textSoft,
   } satisfies CSSProperties,
-
   blockButton: {
     width: "100%",
     height: 42,
@@ -1287,7 +1182,6 @@ const styles = {
     cursor: "pointer",
     marginTop: 14,
   } satisfies CSSProperties,
-
   botBlock: {
     marginTop: 8,
     padding: 16,
@@ -1296,7 +1190,6 @@ const styles = {
     background:
       "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
   } satisfies CSSProperties,
-
   botTopRow: {
     display: "flex",
     alignItems: "flex-start",
@@ -1304,7 +1197,6 @@ const styles = {
     gap: 12,
     marginBottom: 14,
   } satisfies CSSProperties,
-
   botEyebrow: {
     fontSize: 10,
     fontWeight: 800,
@@ -1313,14 +1205,12 @@ const styles = {
     color: "rgba(100,217,123,0.72)",
     marginBottom: 6,
   } satisfies CSSProperties,
-
   botTitle: {
     fontSize: 20,
     fontWeight: 800,
     letterSpacing: "-0.03em",
     color: UI.textMain,
   } satisfies CSSProperties,
-
   statusPill: {
     display: "inline-flex",
     alignItems: "center",
@@ -1333,20 +1223,17 @@ const styles = {
     fontSize: 11,
     fontWeight: 700,
   } satisfies CSSProperties,
-
   statusDot: {
     width: 6,
     height: 6,
     borderRadius: "50%",
     background: UI.green,
   } satisfies CSSProperties,
-
   botMetricsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
   } satisfies CSSProperties,
-
   metricItem: {
     background: "rgba(255,255,255,0.03)",
     border: `1px solid ${UI.border}`,
@@ -1358,7 +1245,6 @@ const styles = {
     justifyContent: "space-between",
     minWidth: 0,
   } satisfies CSSProperties,
-
   metricItemLabel: {
     fontSize: 11,
     color: UI.textMuted,
@@ -1366,7 +1252,6 @@ const styles = {
     fontWeight: 600,
     letterSpacing: "0.02em",
   } satisfies CSSProperties,
-
   metricItemValueLarge: {
     fontSize: 24,
     fontWeight: 800,
@@ -1374,7 +1259,6 @@ const styles = {
     letterSpacing: "-0.04em",
     wordBreak: "break-word",
   } satisfies CSSProperties,
-
   metricItemSubStrong: {
     marginTop: 8,
     fontSize: 12,
@@ -1383,7 +1267,6 @@ const styles = {
     fontWeight: 600,
     wordBreak: "break-word",
   } satisfies CSSProperties,
-
   blockButtonBlue: {
     width: "100%",
     height: 42,
@@ -1397,7 +1280,6 @@ const styles = {
     marginTop: 14,
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
-
   debugCard: {
     marginTop: 20,
     background: "transparent",
@@ -1405,7 +1287,6 @@ const styles = {
     borderRadius: 0,
     padding: 0,
   } satisfies CSSProperties,
-
   debugHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -1414,26 +1295,22 @@ const styles = {
     marginBottom: 12,
     flexWrap: "wrap",
   } satisfies CSSProperties,
-
   debugTitle: {
     fontSize: 14,
     fontWeight: 800,
     color: UI.textMain,
   } satisfies CSSProperties,
-
   debugSub: {
     fontSize: 11,
     color: UI.textFaint,
     marginTop: 4,
   } satisfies CSSProperties,
-
   debugMeta: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
     marginBottom: 10,
   } satisfies CSSProperties,
-
   debugMetaLabel: {
     display: "block",
     fontSize: 10,
@@ -1442,14 +1319,12 @@ const styles = {
     color: UI.textFaint,
     marginBottom: 5,
   } satisfies CSSProperties,
-
   debugMetaValue: {
     fontSize: 12,
     color: UI.textSoft,
     fontWeight: 600,
     wordBreak: "break-word",
   } satisfies CSSProperties,
-
   debugBox: {
     whiteSpace: "pre-wrap",
     background: "transparent",
