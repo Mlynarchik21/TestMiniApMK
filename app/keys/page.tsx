@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import type { Exchange } from "@prisma/client";
 
 type AnyResp =
   | { ok: true; [k: string]: any }
   | { ok: false; error: string; message?: string; [k: string]: any };
+
+type ExchangeOption = "NONE" | "BYBIT" | "BINGX";
 
 type KeyRow = {
   id: string;
@@ -22,6 +25,16 @@ type BalanceRow = {
   locked: string;
 };
 
+type KeyMetaState = {
+  loading: boolean;
+  loaded: boolean;
+  ok: boolean;
+  error: string;
+  updatedAt: number | null;
+  balances: BalanceRow[];
+  raw: any;
+};
+
 function getToken() {
   try {
     return localStorage.getItem("sessionToken") || "";
@@ -35,6 +48,7 @@ async function api(
   init?: RequestInit
 ): Promise<{ status: number; json: AnyResp }> {
   const token = getToken();
+
   const res = await fetch(path, {
     cache: "no-store",
     ...init,
@@ -45,7 +59,12 @@ async function api(
     },
   });
 
-  let json: AnyResp = { ok: false, error: "BAD_RESPONSE", message: "Invalid JSON response" };
+  let json: AnyResp = {
+    ok: false,
+    error: "BAD_RESPONSE",
+    message: "Invalid JSON response",
+  };
+
   try {
     json = (await res.json()) as AnyResp;
   } catch {}
@@ -57,53 +76,104 @@ function humanizeError(r: AnyResp): string {
   if (!r || (r as any).ok) return "";
   const code = (r as any).error || "ERROR";
   const msg = (r as any).message ? `: ${(r as any).message}` : "";
-  const binanceCode =
-    (r as any).binanceCode != null ? ` (binanceCode=${String((r as any).binanceCode)})` : "";
-  const hint = (r as any).hint ? `\nПодсказка: ${String((r as any).hint)}` : "";
-  return `${code}${msg}${binanceCode}${hint}`;
+  const bybitCode =
+    (r as any).bybitCode != null ? ` (bybitCode=${String((r as any).bybitCode)})` : "";
+  return `${code}${msg}${bybitCode}`;
 }
 
-function formatTime(ts: number | null): string {
+const UI = {
+  border: "rgba(255,255,255,0.12)",
+  borderSoft: "rgba(255,255,255,0.09)",
+  borderHard: "rgba(255,255,255,0.16)",
+  text: "#f3f3f3",
+  textMain: "rgba(255,255,255,0.96)",
+  textSoft: "rgba(255,255,255,0.78)",
+  textMuted: "rgba(255,255,255,0.60)",
+  textFaint: "rgba(255,255,255,0.42)",
+  green: "#64d97b",
+  red: "#ff6a6a",
+  blue: "#8eb2ff",
+  brand: "#2979ff",
+  yellow: "#f3d709",
+  purple: "#9b8cff",
+  cyan: "#6fdcff",
+};
+
+function reveal(index: number, mounted: boolean): CSSProperties {
+  return mounted
+    ? {
+        opacity: 1,
+        animationName: "fadeUp",
+        animationDuration: "560ms",
+        animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+        animationFillMode: "both",
+        animationDelay: `${index * 60}ms`,
+        willChange: "transform, opacity",
+      }
+    : {
+        opacity: 0,
+        transform: "translate3d(0, 14px, 0)",
+      };
+}
+
+function safeDate(value: unknown) {
+  if (!value) return null;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function formatDateTime(ts: number | string | null | undefined) {
   if (!ts) return "—";
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return "—";
-  }
+  const d = typeof ts === "number" ? new Date(ts) : safeDate(ts);
+  if (!d) return "—";
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatAmount(value: unknown, digits = 6) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatUsd(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "$0";
+  return `$${n.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function hasWord(label: string | null | undefined, word: string) {
   return new RegExp(word, "i").test(label || "");
 }
 
-function isBinanceTestnetKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
-  return key.exchange === ("BINANCE" as Exchange) && hasWord(key.label, "testnet");
+function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label">) {
+  return key.exchange === "BYBIT" && hasWord(key.label, "demo");
 }
 
-function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label">): boolean {
-  return key.exchange === ("BYBIT" as Exchange) && hasWord(key.label, "demo");
-}
-
-function getNetworkName(key: Pick<KeyRow, "exchange" | "label">): "TESTNET" | "DEMO" | "MAINNET" {
-  if (isBinanceTestnetKey(key)) return "TESTNET";
-  if (isBybitDemoKey(key)) return "DEMO";
-  return "MAINNET";
+function getNetworkName(key: Pick<KeyRow, "exchange" | "label">): "DEMO" | "MAINNET" {
+  return isBybitDemoKey(key) ? "DEMO" : "MAINNET";
 }
 
 function buildStoredLabel(
   rawLabel: string,
-  exchange: Exchange,
-  opts: { isTestnet: boolean; isDemo: boolean }
+  exchange: ExchangeOption,
+  opts: { isDemo: boolean }
 ): string | null {
   const clean = rawLabel.trim();
 
-  if (exchange === ("BINANCE" as Exchange) && opts.isTestnet) {
-    if (!clean) return "[TESTNET]";
-    if (/testnet/i.test(clean)) return clean;
-    return `[TESTNET] ${clean}`;
-  }
-
-  if (exchange === ("BYBIT" as Exchange) && opts.isDemo) {
+  if (exchange === "BYBIT" && opts.isDemo) {
     if (!clean) return "[DEMO]";
     if (/demo/i.test(clean)) return clean;
     return `[DEMO] ${clean}`;
@@ -112,86 +182,141 @@ function buildStoredLabel(
   return clean || null;
 }
 
+function getExchangeUiLabel(value: Exchange | ExchangeOption) {
+  if (value === "NONE") return "Нет";
+  if (value === "BINGX") return "BingX";
+  if (value === "BYBIT") return "Bybit";
+  return String(value);
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M14.7 5.3a1 1 0 0 1 0 1.4L10.41 11H20a1 1 0 1 1 0 2h-9.59l4.3 4.3a1 1 0 0 1-1.42 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M11 5a1 1 0 1 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ChevronIcon(props: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      style={{
+        transform: props.open ? "rotate(180deg)" : "rotate(0deg)",
+        transition: "transform 180ms ease",
+      }}
+    >
+      <path
+        d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.87a1 1 0 1 1 1.4 1.42l-4.6 4.55a1 1 0 0 1-1.4 0L6.7 10.72a1 1 0 0 1 0-1.42Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export default function KeysPage() {
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pagePaddingTop, setPagePaddingTop] = useState(
+    "calc(env(safe-area-inset-top, 0px) + 15px)"
+  );
+
   const [resp, setResp] = useState<AnyResp | null>(null);
+  const [err, setErr] = useState("");
+
   const [keys, setKeys] = useState<KeyRow[]>([]);
+  const [metaByKey, setMetaByKey] = useState<Record<string, KeyMetaState>>({});
+  const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
 
-  const [balancesByKey, setBalancesByKey] = useState<Record<string, BalanceRow[]>>({});
-  const [balanceLoading, setBalanceLoading] = useState<Record<string, boolean>>({});
-  const [balanceErrorByKey, setBalanceErrorByKey] = useState<Record<string, string>>({});
-  const [balanceUpdatedAtByKey, setBalanceUpdatedAtByKey] = useState<Record<string, number>>({});
-
-  const [exchange, setExchange] = useState<Exchange>("BINANCE" as Exchange);
+  const [exchange, setExchange] = useState<ExchangeOption>("BYBIT");
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
-  const [passphrase, setPassphrase] = useState("");
-  const [isTestnet, setIsTestnet] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
 
-  const [tokenState, setTokenState] = useState<string>("");
-
-  useEffect(() => {
-    setTokenState(getToken());
-    const t = setInterval(() => setTokenState(getToken()), 800);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    if (exchange !== ("BINANCE" as Exchange)) {
-      setIsTestnet(false);
-    }
-    if (exchange !== ("BYBIT" as Exchange)) {
-      setIsDemo(false);
-    }
-  }, [exchange]);
-
-  const tokenPreview = useMemo(() => {
-    const t = tokenState;
-    return t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена";
-  }, [tokenState]);
+  const canSave = useMemo(() => {
+    if (exchange !== "BYBIT") return false;
+    return !!apiKey.trim() && !!apiSecret.trim() && !loading;
+  }, [exchange, apiKey, apiSecret, loading]);
 
   async function reload() {
     setLoading(true);
+    setErr("");
     try {
       const r = await api("/api/keys", { method: "GET" });
       setResp(r.json);
-      if (r.json.ok) setKeys((r.json as any).keys ?? []);
+
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      const rows = ((r.json as any).keys ?? []) as KeyRow[];
+      setKeys(rows);
     } finally {
       setLoading(false);
     }
   }
 
   async function addKey() {
+    if (exchange === "NONE" || exchange === "BINGX") {
+      setErr("Сейчас подключение доступно только для Bybit.");
+      return;
+    }
+
+    if (!apiKey.trim() || !apiSecret.trim()) {
+      setErr("Заполни API key и API secret key.");
+      return;
+    }
+
     setLoading(true);
+    setErr("");
+
     try {
-      const storedLabel = buildStoredLabel(label, exchange, { isTestnet, isDemo });
+      const storedLabel = buildStoredLabel(label, exchange, { isDemo });
 
       const r = await api("/api/keys", {
         method: "POST",
         body: JSON.stringify({
           exchange,
           label: storedLabel,
-          apiKey,
-          apiSecret,
-          passphrase: passphrase || null,
+          apiKey: apiKey.trim(),
+          apiSecret: apiSecret.trim(),
         }),
       });
 
       setResp(r.json);
 
-      if (r.json.ok) {
-        setLabel("");
-        setApiKey("");
-        setApiSecret("");
-        setPassphrase("");
-        setIsTestnet(false);
-        setIsDemo(false);
-        await reload();
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
       }
+
+      setLabel("");
+      setApiKey("");
+      setApiSecret("");
+      setIsDemo(false);
+
+      await reload();
     } finally {
       setLoading(false);
     }
@@ -199,26 +324,25 @@ export default function KeysPage() {
 
   async function delKey(id: string) {
     setLoading(true);
+    setErr("");
+
     try {
       const r = await api(`/api/keys/${id}`, { method: "DELETE" });
       setResp(r.json);
 
-      if (r.json.ok) {
-        setBalancesByKey((m) => {
-          const copy = { ...m };
-          delete copy[id];
-          return copy;
-        });
-        setBalanceErrorByKey((m) => {
-          const copy = { ...m };
-          delete copy[id];
-          return copy;
-        });
-        setBalanceUpdatedAtByKey((m) => {
-          const copy = { ...m };
-          delete copy[id];
-          return copy;
-        });
+      if (!r.json.ok) {
+        setErr(humanizeError(r.json));
+        return;
+      }
+
+      setMetaByKey((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+
+      if (expandedKeyId === id) {
+        setExpandedKeyId(null);
       }
 
       await reload();
@@ -229,366 +353,1044 @@ export default function KeysPage() {
 
   async function refreshBalance(key: KeyRow) {
     const keyId = key.id;
-    const testnet = isBinanceTestnetKey(key);
 
-    setBalanceErrorByKey((m) => ({ ...m, [keyId]: "" }));
-    setBalanceLoading((m) => ({ ...m, [keyId]: true }));
+    setMetaByKey((prev) => ({
+      ...prev,
+      [keyId]: {
+        loading: true,
+        loaded: prev[keyId]?.loaded ?? false,
+        ok: prev[keyId]?.ok ?? false,
+        error: "",
+        updatedAt: prev[keyId]?.updatedAt ?? null,
+        balances: prev[keyId]?.balances ?? [],
+        raw: prev[keyId]?.raw ?? null,
+      },
+    }));
 
     try {
-      const suffix = testnet ? "&testnet=1" : "";
-      const r = await api(`/api/balance?keyId=${encodeURIComponent(keyId)}${suffix}`, {
+      const r = await api(`/api/balance?keyId=${encodeURIComponent(keyId)}`, {
         method: "GET",
       });
 
       setResp(r.json);
 
-      if (r.json.ok) {
-        const balances = ((r.json as any).balances ?? []) as BalanceRow[];
-        setBalancesByKey((m) => ({ ...m, [keyId]: balances }));
-        setBalanceUpdatedAtByKey((m) => ({ ...m, [keyId]: Date.now() }));
-      } else {
-        setBalanceErrorByKey((m) => ({ ...m, [keyId]: humanizeError(r.json) }));
+      if (!r.json.ok) {
+        setMetaByKey((prev) => ({
+          ...prev,
+          [keyId]: {
+            loading: false,
+            loaded: true,
+            ok: false,
+            error: humanizeError(r.json),
+            updatedAt: Date.now(),
+            balances: [],
+            raw: null,
+          },
+        }));
+        return;
       }
-    } finally {
-      setBalanceLoading((m) => ({ ...m, [keyId]: false }));
+
+      setMetaByKey((prev) => ({
+        ...prev,
+        [keyId]: {
+          loading: false,
+          loaded: true,
+          ok: true,
+          error: "",
+          updatedAt: Date.now(),
+          balances: (((r.json as any).balances ?? []) as BalanceRow[]) || [],
+          raw: (r.json as any).raw ?? null,
+        },
+      }));
+    } catch (e: any) {
+      setMetaByKey((prev) => ({
+        ...prev,
+        [keyId]: {
+          loading: false,
+          loaded: true,
+          ok: false,
+          error: e?.message ?? "Balance request failed",
+          updatedAt: Date.now(),
+          balances: [],
+          raw: null,
+        },
+      }));
     }
   }
 
   async function refreshAll() {
-    for (const k of keys) {
-      await refreshBalance(k);
+    for (const key of keys) {
+      await refreshBalance(key);
     }
+  }
+
+  function handleBack() {
+    router.replace("/home");
   }
 
   useEffect(() => {
     reload();
+
+    const tg = (window as any)?.Telegram?.WebApp;
+
+    const updateLayout = () => {
+      if (tg?.isFullscreen) {
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 88px)");
+      } else {
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 15px)");
+      }
+    };
+
+    try {
+      tg?.ready?.();
+      tg?.expand?.();
+      tg?.setHeaderColor?.("#000000");
+      tg?.setBackgroundColor?.("#000000");
+
+      updateLayout();
+
+      if (tg?.onEvent) {
+        tg.onEvent("fullscreen_changed", updateLayout);
+      }
+    } catch {}
+
+    const id = requestAnimationFrame(() => setMounted(true));
+
+    return () => {
+      cancelAnimationFrame(id);
+      try {
+        if (tg?.offEvent) {
+          tg.offEvent("fullscreen_changed", updateLayout);
+        }
+      } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        background: "#000",
-        color: "#fff",
-        fontFamily: "system-ui",
-      }}
-    >
-      <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 22, fontWeight: 900 }}>API Keys</div>
+    <>
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button disabled={loading} onClick={reload} style={btnGhost()}>
-              Обновить список
-            </button>
+        html,
+        body {
+          margin: 0;
+          padding: 0;
+          background: #000;
+          overflow-x: hidden;
+        }
+
+        select,
+        input,
+        button,
+        textarea {
+          font: inherit;
+        }
+
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 14px, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+      `}</style>
+
+      <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
+        <div style={styles.container}>
+          <section style={{ ...styles.topBar, ...reveal(0, mounted) }}>
             <button
-              disabled={loading || keys.length === 0}
-              onClick={refreshAll}
-              style={btnGhost()}
-              title="Обновляет баланс для всех ключей"
+              type="button"
+              aria-label="Назад"
+              style={styles.backButton}
+              onClick={handleBack}
             >
-              Обновить баланс
+              <ArrowLeftIcon />
             </button>
-            <button onClick={() => router.replace("/home")} style={btnGhost()}>
-              Home
-            </button>
-          </div>
-        </div>
 
-        <div style={{ opacity: 0.85, fontSize: 13 }}>
-          <b>sessionToken:</b> {tokenPreview}
-        </div>
+            <div style={styles.pageTitle}>API Keys</div>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>Add key</div>
+            <div style={styles.topBarActions}>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={reload}
+                style={styles.topActionButton}
+              >
+                {loading ? "..." : "Обновить"}
+              </button>
 
-          <div style={{ display: "grid", gap: 8 }}>
-            <select
-              value={exchange}
-              onChange={(e) => setExchange(e.target.value as Exchange)}
-              style={input()}
-            >
-              <option value="BINANCE">BINANCE</option>
-              <option value="BYBIT">BYBIT</option>
-              <option value="OKX">OKX</option>
-            </select>
+              <button
+                type="button"
+                disabled={loading || keys.length === 0}
+                onClick={refreshAll}
+                style={styles.topActionButton}
+              >
+                Баланс
+              </button>
+            </div>
+          </section>
 
-            {exchange === ("BINANCE" as Exchange) ? (
-              <label style={checkboxWrap()}>
-                <input
-                  type="checkbox"
-                  checked={isTestnet}
-                  onChange={(e) => setIsTestnet(e.target.checked)}
-                />
-                <span>Это Binance Testnet ключ</span>
-              </label>
-            ) : null}
+          <section style={{ ...styles.formBlock, ...reveal(1, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Добавить API</div>
+            </div>
 
-            {exchange === ("BYBIT" as Exchange) ? (
-              <label style={checkboxWrap()}>
+            <div style={styles.formGrid}>
+              <Field label="Биржа">
+                <select
+                  value={exchange}
+                  onChange={(e) => setExchange(e.target.value as ExchangeOption)}
+                  style={styles.input}
+                >
+                  <option value="NONE">Нет</option>
+                  <option value="BYBIT">Bybit</option>
+                  <option value="BINGX">BingX</option>
+                </select>
+              </Field>
+
+              <label style={styles.checkboxRow}>
                 <input
                   type="checkbox"
                   checked={isDemo}
                   onChange={(e) => setIsDemo(e.target.checked)}
+                  disabled={exchange !== "BYBIT"}
                 />
-                <span>Это Bybit Demo ключ</span>
+                <span>Демо</span>
               </label>
-            ) : null}
 
-            <input
-              placeholder="label (optional)"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              style={input()}
-            />
-            <input
-              placeholder="apiKey"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              style={input()}
-              autoComplete="off"
-            />
-            <input
-              placeholder="apiSecret"
-              value={apiSecret}
-              onChange={(e) => setApiSecret(e.target.value)}
-              style={input()}
-              type="password"
-              autoComplete="off"
-            />
-            <input
-              placeholder="passphrase (OKX optional)"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              style={input()}
-              type="password"
-              autoComplete="off"
-            />
+              <Field label="Label">
+                <input
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="Например: Main account"
+                  style={styles.input}
+                />
+              </Field>
 
-            <button disabled={loading} onClick={addKey} style={btnPrimary(loading)}>
-              {loading ? "..." : "Save"}
-            </button>
+              <Field label="API key">
+                <input
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Вставь API key"
+                  style={styles.input}
+                  autoComplete="off"
+                />
+              </Field>
 
-            <div style={{ opacity: 0.65, fontSize: 12, lineHeight: 1.4 }}>
-              Важно: секреты не отображаются после сохранения. Если ошибся — удали ключ и добавь
-              заново.
+              <Field label="API secret key">
+                <input
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  placeholder="Вставь API secret key"
+                  style={styles.input}
+                  type="password"
+                  autoComplete="off"
+                />
+              </Field>
+
+              {exchange !== "BYBIT" ? (
+                <div style={styles.inlineHint}>
+                  Сейчас страница подключена только под Bybit. Пункты «Нет» и «BingX» оставлены
+                  под будущее расширение.
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={addKey}
+                style={{
+                  ...styles.primaryButton,
+                  opacity: canSave ? 1 : 0.7,
+                  cursor: canSave ? "pointer" : "not-allowed",
+                }}
+              >
+                {loading ? "..." : "Сохранить"}
+              </button>
             </div>
-          </div>
-        </div>
+          </section>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>Your keys</div>
+          <section style={{ ...styles.keysBlock, ...reveal(2, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Мои API</div>
+            </div>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            {keys.map((k) => {
-              const b = balancesByKey[k.id] || [];
-              const bl = !!balanceLoading[k.id];
-              const err = (balanceErrorByKey[k.id] || "").trim();
-              const updatedAt = balanceUpdatedAtByKey[k.id] ?? null;
-              const network = getNetworkName(k);
+            {!keys.length ? (
+              <div style={styles.emptyText}>Пока нет сохраненных API ключей.</div>
+            ) : (
+              <div style={styles.keysList}>
+                {keys.map((key) => {
+                  const meta = metaByKey[key.id];
+                  const open = expandedKeyId === key.id;
+                  const working = meta?.loaded ? meta.ok : false;
+                  const statusText = meta?.loaded
+                    ? meta.ok
+                      ? "Активный"
+                      : "Не активный"
+                    : "Не проверен";
 
-              return (
-                <div
-                  key={k.id}
-                  style={{
-                    padding: 12,
-                    borderRadius: 16,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ display: "grid" }}>
-                      <div style={{ fontWeight: 900 }}>
-                        {k.exchange}
-                        {k.label ? ` · ${k.label}` : ""}
-                      </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                        <span style={networkBadge(network)}>{network}</span>
-                      </div>
-                      <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>{k.id}</div>
-                      <div style={{ opacity: 0.65, fontSize: 12 }}>
-                        Последнее обновление баланса: <b>{formatTime(updatedAt)}</b>
-                      </div>
-                    </div>
+                  const totalEquity = Number(meta?.raw?.totalEquity ?? 0);
+                  const totalWalletBalance = Number(meta?.raw?.totalWalletBalance ?? 0);
+                  const totalAvailableBalance = Number(
+                    meta?.raw?.totalAvailableBalance ?? 0
+                  );
 
-                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  const balanceValue =
+                    totalEquity || totalWalletBalance
+                      ? formatUsd(totalEquity || totalWalletBalance)
+                      : meta?.loaded && meta.ok
+                        ? `${meta.balances.length} монет`
+                        : "—";
+
+                  return (
+                    <div key={key.id} style={styles.keyCard}>
                       <button
-                        disabled={loading || bl}
-                        onClick={() => refreshBalance(k)}
-                        style={btnGhost()}
-                        title="Запросить баланс по ключу"
+                        type="button"
+                        style={styles.keyCardHead}
+                        onClick={() => setExpandedKeyId(open ? null : key.id)}
                       >
-                        {bl ? "..." : "Обновить баланс"}
-                      </button>
-                      <button disabled={loading} onClick={() => delKey(k.id)} style={btnDanger()}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
+                        <div style={styles.keyCardMain}>
+                          <div style={styles.keyCardTitleRow}>
+                            <div style={styles.keyCardTitle}>
+                              {getExchangeUiLabel(key.exchange)}
+                            </div>
 
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 800 }}>Баланс (Spot) · {network}</div>
-                      {!!b.length && (
-                        <div style={{ opacity: 0.7, fontSize: 12 }}>Монет: {b.length}</div>
-                      )}
-                    </div>
-
-                    {err ? (
-                      <div style={errorBox()}>
-                        <div style={{ fontWeight: 900, marginBottom: 6 }}>Ошибка</div>
-                        <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>
-                          {err}
-                        </pre>
-                      </div>
-                    ) : !b.length ? (
-                      <div style={{ opacity: 0.7, fontSize: 13 }}>
-                        Нажми “Обновить баланс”. Если ключ рабочий — тут появятся монеты.
-                      </div>
-                    ) : (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {b.slice(0, 20).map((x) => (
-                          <div
-                            key={x.asset}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              padding: "8px 10px",
-                              borderRadius: 12,
-                              border: "1px solid rgba(255,255,255,0.10)",
-                              fontSize: 13,
-                            }}
-                          >
-                            <div style={{ fontWeight: 800 }}>{x.asset}</div>
-                            <div style={{ opacity: 0.9 }}>
-                              free: {x.free} · locked: {x.locked}
+                            <div
+                              style={{
+                                ...styles.statusBadge,
+                                color:
+                                  statusText === "Активный"
+                                    ? UI.green
+                                    : statusText === "Не активный"
+                                      ? UI.red
+                                      : UI.textMuted,
+                                borderColor:
+                                  statusText === "Активный"
+                                    ? "rgba(100,217,123,0.22)"
+                                    : statusText === "Не активный"
+                                      ? "rgba(255,106,106,0.22)"
+                                      : "rgba(255,255,255,0.16)",
+                                background:
+                                  statusText === "Активный"
+                                    ? "rgba(100,217,123,0.08)"
+                                    : statusText === "Не активный"
+                                      ? "rgba(255,106,106,0.08)"
+                                      : "rgba(255,255,255,0.05)",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  ...styles.statusDot,
+                                  background:
+                                    statusText === "Активный"
+                                      ? UI.green
+                                      : statusText === "Не активный"
+                                        ? UI.red
+                                        : UI.textFaint,
+                                }}
+                              />
+                              <span>{statusText}</span>
                             </div>
                           </div>
-                        ))}
-                        {b.length > 20 && (
-                          <div style={{ opacity: 0.7, fontSize: 12 }}>
-                            Показано 20 из {b.length}
+
+                          <div style={styles.keyCardSubRow}>
+                            <span style={styles.keyCardLabel}>
+                              {key.label || "Без названия"}
+                            </span>
+                            <span style={styles.networkPill}>
+                              {getNetworkName(key)}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                        </div>
 
-            {!keys.length && <div style={{ opacity: 0.7 }}>No keys yet</div>}
-          </div>
-        </div>
+                        <div style={styles.chevronWrap}>
+                          <ChevronIcon open={open} />
+                        </div>
+                      </button>
 
-        <div style={card()}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Last response</div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-            {resp ? JSON.stringify(resp, null, 2) : "—"}
-          </pre>
+                      {open ? (
+                        <div style={styles.keyCardBody}>
+                          <div style={styles.metaGrid}>
+                            <MiniInfo
+                              label="Баланс счета"
+                              value={balanceValue}
+                              color={UI.blue}
+                            />
+                            <MiniInfo
+                              label="Последнее обновление"
+                              value={formatDateTime(meta?.updatedAt ?? null)}
+                              color={UI.textMain}
+                            />
+                            <MiniInfo
+                              label="Статус ключа"
+                              value={working ? "Рабочий" : "Не подтвержден"}
+                              color={working ? UI.green : UI.red}
+                            />
+                            <MiniInfo
+                              label="ID ключа"
+                              value={key.id}
+                              color={UI.textSoft}
+                            />
+                          </div>
+
+                          <div style={styles.permissionBlock}>
+                            <div style={styles.permissionTitle}>Разрешения</div>
+
+                            <div style={styles.permissionGrid}>
+                              <PermissionPill
+                                label="Чтение баланса"
+                                active={!!meta?.ok}
+                              />
+                              <PermissionPill
+                                label="Торговля"
+                                active={false}
+                                unknown
+                              />
+                              <PermissionPill
+                                label="Вывод средств"
+                                active={false}
+                                unknown
+                              />
+                            </div>
+
+                            <div style={styles.permissionHint}>
+                              Сейчас точно определяется только факт успешного чтения баланса.
+                              Отдельную автоматическую проверку торговых и withdrawal permissions
+                              добавим следующим этапом.
+                            </div>
+                          </div>
+
+                          {meta?.error ? (
+                            <div style={styles.errorInline}>{meta.error}</div>
+                          ) : null}
+
+                          {meta?.ok && meta.balances.length ? (
+                            <div style={styles.balanceBlock}>
+                              <div style={styles.balanceHead}>
+                                <div style={styles.balanceTitle}>Баланс</div>
+                                <div style={styles.balanceSub}>
+                                  Активов: {meta.balances.length}
+                                </div>
+                              </div>
+
+                              <div style={styles.balanceList}>
+                                {meta.balances.slice(0, 12).map((row) => (
+                                  <div key={row.asset} style={styles.balanceRow}>
+                                    <div style={styles.balanceAsset}>{row.asset}</div>
+                                    <div style={styles.balanceValues}>
+                                      free {formatAmount(row.free)} · locked{" "}
+                                      {formatAmount(row.locked)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {meta.balances.length > 12 ? (
+                                <div style={styles.moreText}>
+                                  Показано 12 из {meta.balances.length}
+                                </div>
+                              ) : null}
+
+                              {(totalEquity || totalWalletBalance || totalAvailableBalance) ? (
+                                <div style={styles.balanceTotals}>
+                                  <MiniInfo
+                                    label="Total equity"
+                                    value={formatUsd(totalEquity)}
+                                    color={UI.green}
+                                  />
+                                  <MiniInfo
+                                    label="Wallet balance"
+                                    value={formatUsd(totalWalletBalance)}
+                                    color={UI.blue}
+                                  />
+                                  <MiniInfo
+                                    label="Available"
+                                    value={formatUsd(totalAvailableBalance)}
+                                    color={UI.yellow}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          <div style={styles.actionsRow}>
+                            <button
+                              type="button"
+                              disabled={!!meta?.loading}
+                              onClick={() => refreshBalance(key)}
+                              style={styles.ghostButton}
+                            >
+                              {meta?.loading ? "..." : "Обновить баланс"}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => delKey(key.id)}
+                              style={styles.dangerButton}
+                            >
+                              Удалить ключ
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {err ? (
+            <section style={{ ...styles.errorCard, ...reveal(3, mounted) }}>
+              <div style={styles.sectionMainTitle}>Ошибка</div>
+              <div style={styles.errorText}>{err}</div>
+            </section>
+          ) : null}
         </div>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }
 
-function card(): React.CSSProperties {
-  return {
-    background: "#111",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 16,
-    padding: 14,
-  };
+function Field(props: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={styles.fieldWrap}>
+      <span style={styles.fieldLabel}>{props.label}</span>
+      {props.children}
+    </label>
+  );
 }
 
-function errorBox(): React.CSSProperties {
-  return {
-    background: "rgba(255,0,0,0.08)",
-    border: "1px solid rgba(255,0,0,0.25)",
-    borderRadius: 12,
-    padding: 10,
-  };
+function MiniInfo(props: { label: string; value: string; color?: string }) {
+  return (
+    <div style={styles.miniInfoCard}>
+      <div style={styles.miniInfoLabel}>{props.label}</div>
+      <div style={{ ...styles.miniInfoValue, color: props.color || UI.textMain }}>
+        {props.value}
+      </div>
+    </div>
+  );
 }
 
-function input(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
+function PermissionPill(props: {
+  label: string;
+  active: boolean;
+  unknown?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        ...styles.permissionPill,
+        color: props.unknown
+          ? UI.textMuted
+          : props.active
+            ? UI.green
+            : UI.red,
+        borderColor: props.unknown
+          ? "rgba(255,255,255,0.14)"
+          : props.active
+            ? "rgba(100,217,123,0.22)"
+            : "rgba(255,106,106,0.22)",
+        background: props.unknown
+          ? "rgba(255,255,255,0.04)"
+          : props.active
+            ? "rgba(100,217,123,0.08)"
+            : "rgba(255,106,106,0.08)",
+      }}
+    >
+      <span
+        style={{
+          ...styles.permissionDot,
+          background: props.unknown
+            ? UI.textFaint
+            : props.active
+              ? UI.green
+              : UI.red,
+        }}
+      />
+      <span>{props.label}</span>
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: "100vh",
     background: "#000",
-    color: "#fff",
-    outline: "none",
-  };
-}
+    color: UI.text,
+    fontFamily:
+      'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
+    overflowX: "hidden",
+  } satisfies CSSProperties,
 
-function checkboxWrap(): React.CSSProperties {
-  return {
+  container: {
+    width: "100%",
+    maxWidth: 560,
+    margin: "0 auto",
+    padding: "0 16px",
+    overflowX: "hidden",
+  } satisfies CSSProperties,
+
+  topBar: {
+    marginTop: 8,
+    marginBottom: 18,
+    display: "grid",
+    gridTemplateColumns: "44px 1fr auto",
+    alignItems: "center",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.04)",
+    color: UI.textMain,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+  } satisfies CSSProperties,
+
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "-0.03em",
+    color: UI.textMain,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    textAlign: "center",
+  } satisfies CSSProperties,
+
+  topBarActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  topActionButton: {
+    height: 38,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+
+  formBlock: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 22,
+    border: `1px solid ${UI.border}`,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+  } satisfies CSSProperties,
+
+  keysBlock: {
+    marginBottom: 20,
+    paddingBottom: 4,
+  } satisfies CSSProperties,
+
+  sectionHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  sectionMainTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  formGrid: {
+    display: "grid",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  fieldWrap: {
+    display: "grid",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  fieldLabel: {
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  input: {
+    width: "100%",
+    height: 46,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    outline: "none",
+    padding: "0 14px",
+    WebkitAppearance: "none",
+    appearance: "none",
+  } satisfies CSSProperties,
+
+  checkboxRow: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     fontSize: 14,
-    opacity: 0.95,
-  };
-}
+    color: UI.textSoft,
+    fontWeight: 600,
+    padding: "2px 2px 0",
+  } satisfies CSSProperties,
 
-function networkBadge(network: "TESTNET" | "DEMO" | "MAINNET"): React.CSSProperties {
-  return {
+  inlineHint: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  primaryButton: {
+    width: "100%",
+    height: 46,
+    borderRadius: 999,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+  } satisfies CSSProperties,
+
+  keysList: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  keyCard: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 20,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+    overflow: "hidden",
+  } satisfies CSSProperties,
+
+  keyCardHead: {
+    width: "100%",
+    border: "none",
+    background: "transparent",
+    color: UI.textMain,
+    padding: 14,
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    alignItems: "center",
+    gap: 12,
+    cursor: "pointer",
+    textAlign: "left",
+  } satisfies CSSProperties,
+
+  keyCardMain: {
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  keyCardTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 8,
+  } satisfies CSSProperties,
+
+  keyCardTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  keyCardSubRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
+  keyCardLabel: {
+    fontSize: 13,
+    color: UI.textSoft,
+    fontWeight: 600,
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  networkPill: {
     display: "inline-flex",
     alignItems: "center",
-    padding: "4px 8px",
+    height: 24,
+    padding: "0 9px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.16)",
-    background:
-      network === "TESTNET"
-        ? "rgba(255,255,255,0.10)"
-        : network === "DEMO"
-          ? "rgba(0,153,255,0.14)"
-          : "rgba(255,255,255,0.04)",
+    border: `1px solid rgba(111,220,255,0.20)`,
+    background: "rgba(111,220,255,0.10)",
+    color: UI.cyan,
     fontSize: 11,
-    fontWeight: 900,
-    letterSpacing: 0.3,
-  };
-}
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+  } satisfies CSSProperties,
 
-function btnPrimary(disabled: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "12px 14px",
+  statusBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 28,
+    padding: "0 10px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "#fff",
-    color: "#000",
-    fontWeight: 900,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.85 : 1,
-  };
-}
+    border: "1px solid",
+    fontSize: 11,
+    fontWeight: 700,
+    flexShrink: 0,
+  } satisfies CSSProperties,
 
-function btnGhost(): React.CSSProperties {
-  return {
-    padding: "10px 14px",
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+  } satisfies CSSProperties,
+
+  chevronWrap: {
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: UI.textMuted,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  keyCardBody: {
+    padding: "0 14px 14px",
+    borderTop: `1px solid ${UI.borderSoft}`,
+    display: "grid",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  metaGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 12,
+  } satisfies CSSProperties,
+
+  miniInfoCard: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 14,
+    padding: 10,
+    background: "rgba(255,255,255,0.02)",
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  miniInfoLabel: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  miniInfoValue: {
+    fontSize: 12,
+    fontWeight: 800,
+    lineHeight: 1.35,
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  permissionBlock: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    background: "rgba(255,255,255,0.02)",
+  } satisfies CSSProperties,
+
+  permissionTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  permissionGrid: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
+  permissionPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 30,
+    padding: "0 10px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 900,
+    border: "1px solid",
+    fontSize: 11,
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  permissionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+  } satisfies CSSProperties,
+
+  permissionHint: {
+    marginTop: 10,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  errorInline: {
+    fontSize: 12,
+    color: UI.red,
+    lineHeight: 1.5,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  balanceBlock: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    background: "rgba(255,255,255,0.02)",
+  } satisfies CSSProperties,
+
+  balanceHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  balanceTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  balanceSub: {
+    fontSize: 11,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  balanceList: {
+    display: "grid",
+    gap: 6,
+  } satisfies CSSProperties,
+
+  balanceRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "9px 10px",
+    borderRadius: 12,
+    border: `1px solid ${UI.borderSoft}`,
+    background: "rgba(255,255,255,0.015)",
+  } satisfies CSSProperties,
+
+  balanceAsset: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  balanceValues: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: UI.textSoft,
+    textAlign: "right",
+  } satisfies CSSProperties,
+
+  balanceTotals: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 10,
+  } satisfies CSSProperties,
+
+  moreText: {
+    marginTop: 8,
+    fontSize: 11,
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  actionsRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  ghostButton: {
+    height: 42,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
     cursor: "pointer",
-  };
-}
+  } satisfies CSSProperties,
 
-function btnDanger(): React.CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,0,0,0.35)",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 900,
+  dangerButton: {
+    height: 42,
+    borderRadius: 14,
+    border: "1px solid rgba(255,106,106,0.24)",
+    background: "rgba(255,106,106,0.06)",
+    color: UI.red,
+    fontSize: 13,
+    fontWeight: 800,
     cursor: "pointer",
-  };
-}
+  } satisfies CSSProperties,
+
+  emptyText: {
+    fontSize: 12,
+    color: UI.textMuted,
+    lineHeight: 1.55,
+    padding: "4px 2px 0",
+  } satisfies CSSProperties,
+
+  errorCard: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 16,
+    border: "1px solid rgba(255,106,106,0.22)",
+    background: "rgba(255,106,106,0.06)",
+  } satisfies CSSProperties,
+
+  errorText: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: UI.textSoft,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+};
