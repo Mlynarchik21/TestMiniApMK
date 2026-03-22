@@ -193,6 +193,9 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [marketData, setMarketData] = useState<HomeMarketResp | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
+  
+  // Добавляем стейт для динамического отступа сверху
+  const [pagePaddingTop, setPagePaddingTop] = useState("calc(env(safe-area-inset-top, 0px) + 16px)");
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
@@ -253,15 +256,45 @@ export default function HomePage() {
     );
     checkMe();
     loadHomeMarket();
+    
+    // Переменная для хранения API Telegram
+    const tg = (window as any)?.Telegram?.WebApp;
+    
+    // Функция обновления отступа
+    const updateLayout = () => {
+      // Если приложение открыто в режиме Fullscreen (кнопки Telegram накладываются поверх)
+      if (tg?.isFullscreen) {
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 54px)"); // Делаем большой отступ, чтобы уйти из-под кнопок
+      } else {
+        // Если это обычное окно/шторка
+        setPagePaddingTop("calc(env(safe-area-inset-top, 0px) + 16px)"); // Оставляем аккуратный маленький отступ
+      }
+    };
+
     try {
-      const tg = (window as any)?.Telegram?.WebApp;
       tg?.ready?.();
       tg?.expand?.();
       tg?.setHeaderColor?.("#000000");
       tg?.setBackgroundColor?.("#000000");
+      
+      // Вызываем проверку сразу
+      updateLayout();
+      
+      // И слушаем изменения на случай, если юзер переключит режим прямо во время работы
+      if (tg?.onEvent) {
+        tg.onEvent('fullscreen_changed', updateLayout);
+      }
     } catch {}
+
     const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
+    return () => {
+      cancelAnimationFrame(id);
+      try {
+        if (tg?.offEvent) {
+          tg.offEvent('fullscreen_changed', updateLayout);
+        }
+      } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -299,7 +332,7 @@ export default function HomePage() {
           }
         }
       `}</style>
-      <main style={styles.page}>
+      <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
         <div style={styles.container}>
           <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
             <div style={styles.heroHeaderRow}>
@@ -735,7 +768,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)", // Сильно уменьшено лишнее пространство вверху
+    // paddingTop теперь убран отсюда, так как задается динамически прямо в теге <main>
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -773,7 +806,7 @@ const styles = {
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-end", // Прижимаем содержимое к правому краю блока
+    alignItems: "flex-end",
   } satisfies CSSProperties,
   metricLabel: {
     fontSize: 13,
@@ -786,14 +819,14 @@ const styles = {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
-    textAlign: "right", // Выравнивание текста по правому краю
+    textAlign: "right",
     margin: 0,
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
   topActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end", // Выравниваем иконки по правому краю
+    justifyContent: "flex-end",
     gap: 10,
     width: "100%",
     marginTop: 6,
