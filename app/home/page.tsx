@@ -324,18 +324,24 @@ export default function HomePage() {
       <main style={styles.page}>
         <div style={styles.container}>
           <section style={{ ...styles.heroTop, ...reveal(0, mounted) }}>
-            <div style={styles.heroLeft}>
+            <div style={styles.heroHeaderRow}>
               <div style={styles.metricLabel}>Рын. капитализация</div>
+              <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
+            </div>
 
-              <div style={styles.metricValueRow}>
-                <span style={styles.metricValue}>{marketCapT}</span>
-                <span style={styles.metricTinyUnit}>T</span>
-                <span style={styles.metricUnit}>USDT</span>
-              </div>
+            <div style={styles.heroContentRow}>
+              <div style={styles.heroLeft}>
+                <div style={styles.metricValueRow}>
+                  <span style={styles.metricValue}>{marketCapT}</span>
+                  <span style={styles.metricTinyUnit}>T</span>
+                  <span style={styles.metricUnit}>USDT</span>
+                </div>
 
-              <div style={styles.deltaRow}>
-                <span style={styles.deltaLabel}>Изменение за день</span>
-                <span
+                <div style={styles.deltaRow}>
+                  <span style={styles.deltaLabel}>Изменение за день</span>
+                </div>
+
+                <div
                   style={{
                     ...styles.deltaNegative,
                     color:
@@ -347,40 +353,38 @@ export default function HomePage() {
                   }}
                 >
                   {marketChange24h != null ? formatPct(marketChange24h) : "—"}
-                </span>
+                </div>
               </div>
-            </div>
 
-            <div style={styles.heroRight}>
-              <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
+              <div style={styles.heroRight}>
+                <div style={styles.topActions}>
+                  <button
+                    type="button"
+                    aria-label="Уведомления"
+                    style={styles.iconButton}
+                    onClick={() => router.replace("/notifications")}
+                  >
+                    <BellIcon />
+                  </button>
 
-              <div style={styles.topActions}>
-                <button
-                  type="button"
-                  aria-label="Уведомления"
-                  style={styles.iconButton}
-                  onClick={() => router.replace("/notifications")}
-                >
-                  <BellIcon />
-                </button>
+                  <button
+                    type="button"
+                    aria-label="Поддержка"
+                    style={styles.iconButton}
+                    onClick={() => router.replace("/support")}
+                  >
+                    <ChatIcon />
+                  </button>
 
-                <button
-                  type="button"
-                  aria-label="Поддержка"
-                  style={styles.iconButton}
-                  onClick={() => router.replace("/support")}
-                >
-                  <ChatIcon />
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="Настройки"
-                  style={styles.iconButton}
-                  onClick={() => router.replace("/settings")}
-                >
-                  <SettingsIcon />
-                </button>
+                  <button
+                    type="button"
+                    aria-label="Настройки"
+                    style={styles.iconButton}
+                    onClick={() => router.replace("/settings")}
+                  >
+                    <SettingsIcon />
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -817,32 +821,45 @@ const styles = {
 
   heroTop: {
     position: "relative",
+    marginTop: 8,
+    marginBottom: 14,
+  } satisfies CSSProperties,
+
+  heroHeaderRow: {
     display: "flex",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "flex-start",
     gap: 16,
-    marginTop: 12,
-    marginBottom: 22,
-    minHeight: 120,
+    marginBottom: 8,
+  } satisfies CSSProperties,
+
+  heroContentRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
   } satisfies CSSProperties,
 
   heroLeft: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 0,
   } satisfies CSSProperties,
 
   heroRight: {
     width: 170,
     flexShrink: 0,
     display: "flex",
-    flexDirection: "column",
     alignItems: "flex-end",
     justifyContent: "flex-start",
-    gap: 10,
-    marginTop: 42,
-    paddingTop: 0,
-    paddingBottom: 0,
+    paddingTop: 22,
+  } satisfies CSSProperties,
+
+  metricLabel: {
+    fontSize: 13,
+    color: UI.textMuted,
+    fontWeight: 500,
+    lineHeight: 1.2,
+    margin: 0,
   } satisfies CSSProperties,
 
   updatedAt: {
@@ -850,6 +867,8 @@ const styles = {
     color: UI.textFaint,
     lineHeight: 1.2,
     textAlign: "right",
+    margin: 0,
+    whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
   topActions: {
@@ -882,19 +901,12 @@ const styles = {
     marginBottom: 26,
   } satisfies CSSProperties,
 
-  metricLabel: {
-    fontSize: 13,
-    color: UI.textMuted,
-    marginBottom: 4,
-    fontWeight: 500,
-  } satisfies CSSProperties,
-
   metricValueRow: {
     display: "flex",
     alignItems: "baseline",
     gap: 0,
     flexWrap: "wrap",
-    marginBottom: 4,
+    marginBottom: 6,
   } satisfies CSSProperties,
 
   metricValue: {
@@ -926,7 +938,7 @@ const styles = {
     alignItems: "center",
     gap: 6,
     marginTop: 0,
-    marginBottom: 0,
+    marginBottom: 4,
     flexWrap: "wrap",
   } satisfies CSSProperties,
 
@@ -934,12 +946,16 @@ const styles = {
     fontSize: 14,
     color: UI.textMuted,
     fontWeight: 500,
+    lineHeight: 1.2,
   } satisfies CSSProperties,
 
   deltaNegative: {
     fontSize: 15,
     color: "#ff5f5f",
     fontWeight: 700,
+    lineHeight: 1.15,
+    marginTop: 0,
+    marginBottom: 0,
   } satisfies CSSProperties,
 
   sentimentHeader: {
