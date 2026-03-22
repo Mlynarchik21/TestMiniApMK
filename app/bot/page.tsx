@@ -199,15 +199,6 @@ function inRange(dateLike: unknown, from: Date | null, to: Date | null) {
   return true;
 }
 
-function getCloseReasonLabel(reason: unknown) {
-  const value = String(reason || "").toUpperCase();
-  if (!value) return "—";
-  if (value === "MANUAL") return "Ручное закрытие";
-  if (value === "TP" || value === "TARGET") return "По таргету";
-  if (value === "STRATEGY") return "По стратегии";
-  return String(reason);
-}
-
 function sumCapitalInWork(rows: any[]) {
   return rows.reduce((sum, p) => {
     const v = Number(p?.investedQuote ?? 0);
@@ -234,7 +225,6 @@ function deriveStatsFromTrades(trades: any[]) {
 
   const totalPnl = pnlList.reduce((a, b) => a + b, 0);
   const winRate = closedTrades ? (wins.length / closedTrades) * 100 : 0;
-  const avgTradePnl = closedTrades ? totalPnl / closedTrades : 0;
   const bestTradePnl = pnlList.length ? Math.max(...pnlList) : 0;
   const worstTradePnl = pnlList.length ? Math.min(...pnlList) : 0;
   const grossProfit = wins.reduce((a, b) => a + b, 0);
@@ -299,7 +289,6 @@ function deriveStatsFromTrades(trades: any[]) {
     closedTrades,
     totalPnl,
     winRate,
-    avgTradePnl,
     bestTradePnl,
     worstTradePnl,
     grossProfit,
@@ -318,8 +307,6 @@ function deriveStatsFromTrades(trades: any[]) {
     maxBalanceSeen,
     maxProfitSeries,
     maxLossSeries,
-    wins: wins.length,
-    losses: losses.length,
   };
 }
 
@@ -407,7 +394,6 @@ export default function BotPage() {
   const [customTo, setCustomTo] = useState("");
 
   const [expandedOpenId, setExpandedOpenId] = useState<string | null>(null);
-  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const filteredKeys = useMemo(
     () => keys.filter((k) => k.exchange === exchange),
@@ -571,11 +557,7 @@ export default function BotPage() {
   }
 
   function handleBack() {
-    if (window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.replace("/");
+    window.location.replace("/");
   }
 
   useEffect(() => {
@@ -660,15 +642,6 @@ export default function BotPage() {
     .sort((a, b) => {
       const ad = safeDate(a?.updatedAt ?? a?.openedAt)?.getTime() ?? 0;
       const bd = safeDate(b?.updatedAt ?? b?.openedAt)?.getTime() ?? 0;
-      return bd - ad;
-    })
-    .slice(0, 3);
-
-  const shortHistoryList = recentTrades
-    .slice()
-    .sort((a, b) => {
-      const ad = safeDate(a?.closedAt ?? a?.openedAt)?.getTime() ?? 0;
-      const bd = safeDate(b?.closedAt ?? b?.openedAt)?.getTime() ?? 0;
       return bd - ad;
     })
     .slice(0, 3);
@@ -1066,130 +1039,7 @@ export default function BotPage() {
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>В работе</div>
-
-              <button
-                type="button"
-                style={styles.inlineActionGhost}
-                onClick={() => router.push("/bot/open-positions")}
-              >
-                Все ордера
-              </button>
-            </div>
-
-            {!shortOpenList.length ? (
-              <div style={styles.emptyText}>Нет открытых позиций.</div>
-            ) : (
-              <div style={styles.listGridTight}>
-                {shortOpenList.map((p) => {
-                  const isOpen = expandedOpenId === p.id;
-                  const assetName = assetCodeFromSymbol(p.symbol) || p.symbol || "—";
-
-                  return (
-                    <div
-                      key={p.id}
-                      style={styles.tradeCardCompactDense}
-                      onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
-                    >
-                      <div style={styles.tradeDenseHead}>
-                        <div style={styles.tradeDenseAsset}>{assetName}</div>
-                        <div style={styles.tradeDenseQty}>
-                          {compactNumber(p.qty, 3)} {assetName}
-                        </div>
-                      </div>
-
-                      <div style={styles.tradeDenseMetaLine}>
-                        <span style={styles.tradeDenseOrder}>#{String(p.orderId ?? p.id).slice(0, 10)}</span>
-                        <span style={styles.tradeDenseDate}>{formatDate(p.openedAt)}</span>
-                      </div>
-
-                      {isOpen ? (
-                        <div style={styles.tradeExpandedDense}>
-                          <div style={styles.detailsGridDense}>
-                            <DetailChip label="Цена" value={compactNumber(p.avgPrice, 3)} color={UI.blue} />
-                            <DetailChip label="TP" value={compactNumber(p.tpPrice, 3)} color={UI.green} />
-                            <DetailChip label="USDT" value={formatUsd(p.investedQuote ?? 0)} color={UI.yellow} />
-                            <DetailChip label="Изменена" value={formatDate(p.updatedAt ?? p.openedAt)} color={UI.textSoft} />
-                            <DetailChip label="Усреднений" value={String(p.addsCount ?? 0)} color={UI.purple} />
-                            <DetailChip label="Биржа" value={String(p.exchange ?? "—")} color={UI.cyan} />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>История</div>
-
-              <button
-                type="button"
-                style={styles.inlineActionGhost}
-                onClick={() => router.push("/bot/history")}
-              >
-                Вся история
-              </button>
-            </div>
-
-            {!shortHistoryList.length ? (
-              <div style={styles.emptyText}>Закрытых сделок пока нет.</div>
-            ) : (
-              <div style={styles.listGridTight}>
-                {shortHistoryList.map((t) => {
-                  const isOpen = expandedHistoryId === t.id;
-                  const assetName = assetCodeFromSymbol(t.symbol) || t.symbol || "—";
-
-                  return (
-                    <div
-                      key={t.id}
-                      style={styles.tradeCardCompactDense}
-                      onClick={() => setExpandedHistoryId(isOpen ? null : t.id)}
-                    >
-                      <div style={styles.tradeDenseHead}>
-                        <div style={styles.tradeDenseAsset}>{assetName}</div>
-                        <div
-                          style={{
-                            ...styles.tradeDenseQty,
-                            color: pnlColor(t.pnl),
-                          }}
-                        >
-                          {formatUsd(t.pnl)}
-                        </div>
-                      </div>
-
-                      <div style={styles.tradeDenseMetaLine}>
-                        <span style={styles.tradeDenseOrder}>#{String(t.orderId ?? t.id).slice(0, 10)}</span>
-                        <span style={styles.tradeDenseDate}>{formatDate(t.closedAt)}</span>
-                      </div>
-
-                      {isOpen ? (
-                        <div style={styles.tradeExpandedDense}>
-                          <div style={styles.detailsGridDense}>
-                            <DetailChip label="Вход" value={compactNumber(t.avgEntryPrice, 3)} color={UI.blue} />
-                            <DetailChip label="Выход" value={compactNumber(t.exitPrice, 3)} color={UI.orange} />
-                            <DetailChip label="P&L" value={`${formatUsd(t.pnl ?? 0)} · ${formatPct(t.pnlPercent ?? 0)}`} color={pnlColor(t.pnl)} />
-                            <DetailChip label="Закрытие" value={getCloseReasonLabel(t.closeReason)} color={UI.yellow} />
-                            <DetailChip label="Открыта" value={formatDate(t.openedAt)} color={UI.textSoft} />
-                            <DetailChip label="Закрыта" value={formatDate(t.closedAt)} color={UI.textSoft} />
-                            <DetailChip label="Вход USDT" value={formatUsd(t.entryValue ?? 0)} color={UI.purple} />
-                            <DetailChip label="Выход USDT" value={formatUsd(t.exitValue ?? 0)} color={UI.green} />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section style={{ ...styles.accountBlock, ...reveal(5, mounted) }}>
+          <section style={{ ...styles.accountBlock, ...reveal(3, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Состояние счета</div>
             </div>
@@ -1231,6 +1081,182 @@ export default function BotPage() {
             >
               История счета
             </button>
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>В работе</div>
+
+              <button
+                type="button"
+                style={styles.inlineActionGhost}
+                onClick={() => router.push("/bot/open-positions")}
+              >
+                Все ордера
+              </button>
+            </div>
+
+            {!shortOpenList.length ? (
+              <div style={styles.emptyText}>Нет открытых позиций.</div>
+            ) : (
+              <div style={styles.listGridTight}>
+                {shortOpenList.map((p) => {
+                  const isOpen = expandedOpenId === p.id;
+                  const assetName = assetCodeFromSymbol(p.symbol) || p.symbol || "—";
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={styles.tradeCardCompactDense}
+                      onClick={() => setExpandedOpenId(isOpen ? null : p.id)}
+                    >
+                      <div style={styles.tradeDenseHead}>
+                        <div style={styles.tradeDenseAsset}>{assetName}</div>
+                        <div style={styles.tradeDenseQty}>
+                          {compactNumber(p.qty, 3)} {assetName}
+                        </div>
+                      </div>
+
+                      <div style={styles.tradeDenseMetaLine}>
+                        <span style={styles.tradeDenseOrder}>
+                          #{String(p.orderId ?? p.id).slice(0, 10)}
+                        </span>
+                        <span style={styles.tradeDenseDate}>
+                          {formatDate(p.openedAt)}
+                        </span>
+                      </div>
+
+                      {isOpen ? (
+                        <div style={styles.tradeExpandedDense}>
+                          <div style={styles.detailsGridDense}>
+                            <DetailChip
+                              label="Цена"
+                              value={compactNumber(p.avgPrice, 3)}
+                              color={UI.blue}
+                            />
+                            <DetailChip
+                              label="TP"
+                              value={compactNumber(p.tpPrice, 3)}
+                              color={UI.green}
+                            />
+                            <DetailChip
+                              label="USDT"
+                              value={formatUsd(p.investedQuote ?? 0)}
+                              color={UI.yellow}
+                            />
+                            <DetailChip
+                              label="Изменена"
+                              value={formatDate(p.updatedAt ?? p.openedAt)}
+                              color={UI.textSoft}
+                            />
+                            <DetailChip
+                              label="Усреднений"
+                              value={String(p.addsCount ?? 0)}
+                              color={UI.purple}
+                            />
+                            <DetailChip
+                              label="Биржа"
+                              value={String(p.exchange ?? "—")}
+                              color={UI.cyan}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
+            </div>
+
+            <div style={styles.formGrid}>
+              <Field label="Биржа">
+                <select
+                  value={exchange}
+                  onChange={(e) => setExchange(e.target.value)}
+                  style={styles.input}
+                >
+                  <option value="BINANCE">BINANCE</option>
+                  <option value="BYBIT">BYBIT</option>
+                  <option value="OKX">OKX</option>
+                </select>
+              </Field>
+
+              <Field label="API key">
+                <select
+                  value={keyId}
+                  onChange={(e) => setKeyId(e.target.value)}
+                  style={styles.input}
+                >
+                  <option value="">Select API key</option>
+                  {filteredKeys.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.exchange} {k.label ? `· ${k.label}` : `· ${k.id.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {!filteredKeys.length ? (
+                <div style={styles.inlineHint}>
+                  Для биржи {exchange} пока нет ключей. Сначала добавь ключ на странице Keys.
+                </div>
+              ) : null}
+
+              <Field label="maxActiveSymbols">
+                <input
+                  value={maxActiveSymbols}
+                  onChange={(e) => setMaxActiveSymbols(e.target.value)}
+                  placeholder="1..10"
+                  style={styles.input}
+                />
+              </Field>
+
+              <Field label="budgetPerSymbol">
+                <input
+                  value={budgetPerSymbol}
+                  onChange={(e) => setBudgetPerSymbol(e.target.value)}
+                  placeholder="50"
+                  style={styles.input}
+                />
+              </Field>
+
+              <Field label="maxTotalBudget">
+                <input
+                  value={maxTotalBudget}
+                  onChange={(e) => setMaxTotalBudget(e.target.value)}
+                  placeholder="optional"
+                  style={styles.input}
+                />
+              </Field>
+
+              <Field label="syncIntervalMin">
+                <input
+                  value={syncIntervalMin}
+                  onChange={(e) => setSyncIntervalMin(e.target.value)}
+                  placeholder="1..60"
+                  style={styles.input}
+                />
+              </Field>
+
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={saveConfig}
+                style={{
+                  ...styles.blockButtonBlue,
+                  opacity: canSave ? 1 : 0.7,
+                  cursor: canSave ? "pointer" : "not-allowed",
+                }}
+              >
+                {loading ? "..." : "Сохранить конфиг"}
+              </button>
+            </div>
           </section>
 
           {err ? (
@@ -1482,6 +1508,7 @@ const styles = {
 
   accountBlock: {
     paddingBottom: 20,
+    borderBottom: `1px solid ${UI.borderSoft}`,
     marginBottom: 20,
   } satisfies CSSProperties,
 
