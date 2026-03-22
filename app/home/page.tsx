@@ -742,7 +742,10 @@ function MiniMetric(props: {
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
       <div
-        style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}
+        style={{
+          ...styles.miniCardValue,
+          color: props.valueColor || UI.textMain,
+        }}
       >
         {props.value}
       </div>
@@ -776,7 +779,9 @@ function MetricBox(props: {
       >
         {props.value}
       </div>
-      {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
+      {props.sub ? (
+        <div style={styles.metricItemSubStrong}>{props.sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -797,7 +802,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 84px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 52px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -814,11 +819,11 @@ const styles = {
     position: "relative",
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     gap: 16,
-    marginTop: 28,
-    marginBottom: 26,
-    minHeight: 220,
+    marginTop: 12,
+    marginBottom: 22,
+    minHeight: 120,
   } satisfies CSSProperties,
 
   heroLeft: {
@@ -833,11 +838,11 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     gap: 10,
-    minHeight: 150,
+    marginTop: 42,
     paddingTop: 0,
-    paddingBottom: 8,
+    paddingBottom: 0,
   } satisfies CSSProperties,
 
   updatedAt: {
