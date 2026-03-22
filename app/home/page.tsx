@@ -735,7 +735,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 40px)", // Уменьшена пустота сверху, но оставлено место для шапки TG
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)", // Сильно уменьшено лишнее пространство вверху
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -756,9 +756,9 @@ const styles = {
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16,
-    marginBottom: -8, // Отрицательный отступ, чтобы "Рын. капитализация" стала почти вплотную к значению
+    marginBottom: -8,
     position: "relative",
-    top: 14, // Опускаем весь верхний блок (и левую, и правую часть) вниз на одно расстояние
+    top: 14,
     zIndex: 10,
   } satisfies CSSProperties,
   heroRowMiddle: {
@@ -773,7 +773,7 @@ const styles = {
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-start",
+    alignItems: "flex-end", // Прижимаем содержимое к правому краю блока
   } satisfies CSSProperties,
   metricLabel: {
     fontSize: 13,
@@ -786,14 +786,14 @@ const styles = {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
-    textAlign: "left",
+    textAlign: "right", // Выравнивание текста по правому краю
     margin: 0,
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
   topActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "flex-end", // Выравниваем иконки по правому краю
     gap: 10,
     width: "100%",
     marginTop: 6,
