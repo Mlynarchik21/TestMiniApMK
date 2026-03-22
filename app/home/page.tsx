@@ -361,12 +361,10 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div style={styles.heroRowMiddle}>
-              <div style={styles.metricValueRow}>
-                <span style={styles.metricValue}>{marketCapT}</span>
-                <span style={styles.metricTinyUnit}>T</span>
-                <span style={styles.metricUnit}>USDT</span>
-              </div>
+            <div style={styles.metricValueRow}>
+              <span style={styles.metricValue}>{marketCapT}</span>
+              <span style={styles.metricTinyUnit}>T</span>
+              <span style={styles.metricUnit}>USDT</span>
             </div>
 
             <div style={styles.deltaRowInline}>
@@ -804,7 +802,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 84px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 58px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
@@ -819,7 +817,7 @@ const styles = {
 
   heroTop: {
     position: "relative",
-    marginTop: 8,
+    marginTop: 0,
     marginBottom: 16,
   } satisfies CSSProperties,
 
@@ -831,20 +829,12 @@ const styles = {
     marginBottom: 0,
   } satisfies CSSProperties,
 
-  heroRowMiddle: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    marginBottom: 4,
-  } satisfies CSSProperties,
-
   heroRightColumn: {
     width: 170,
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
   } satisfies CSSProperties,
 
   metricLabel: {
@@ -853,13 +843,14 @@ const styles = {
     fontWeight: 500,
     lineHeight: 1.2,
     margin: 0,
+    paddingTop: 8,
   } satisfies CSSProperties,
 
   updatedAt: {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
-    textAlign: "left",
+    textAlign: "right",
     margin: 0,
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
@@ -867,10 +858,10 @@ const styles = {
   topActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "flex-end",
     gap: 10,
     width: "100%",
-    marginTop: 6,
+    marginTop: 4,
   } satisfies CSSProperties,
 
   iconButton: {
@@ -887,6 +878,12 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     WebkitTapHighlightColor: "transparent",
+  } satisfies CSSProperties,
+
+  heroRowMiddle: {
+    display: "block",
+    marginTop: -2,
+    marginBottom: 0,
   } satisfies CSSProperties,
 
   heroCard: {
@@ -933,7 +930,7 @@ const styles = {
     alignItems: "baseline",
     gap: 10,
     flexWrap: "wrap",
-    marginTop: 0,
+    marginTop: -2,
     marginBottom: 0,
   } satisfies CSSProperties,
 
