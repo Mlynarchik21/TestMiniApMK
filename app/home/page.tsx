@@ -71,12 +71,12 @@ function reveal(index: number, mounted: boolean): CSSProperties {
         animationDuration: "560ms",
         animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
         animationFillMode: "both",
-        animationDelay: `${index * 70}ms`,
+        animationDelay: `${index * 60}ms`,
         willChange: "transform, opacity",
       }
     : {
         opacity: 0,
-        transform: "translate3d(0, 18px, 0)",
+        transform: "translate3d(0, 14px, 0)",
       };
 }
 
@@ -85,9 +85,7 @@ function fearFill(percent: number): CSSProperties {
     width: `${Math.max(0, Math.min(100, percent))}%`,
     height: "100%",
     borderRadius: 999,
-    background: "#ff5a5a",
-    transformOrigin: "left center",
-    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
+    background: "#ff6a6a",
   };
 }
 
@@ -102,7 +100,6 @@ function ringStyle(percent: number, color: string): CSSProperties {
     )}%, rgba(255,255,255,0.10) ${Math.max(0, Math.min(100, percent))}% 100%)`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    animation: "ringAppear 700ms cubic-bezier(0.22, 1, 0.36, 1) both",
   };
 }
 
@@ -119,7 +116,6 @@ function debugActionStyle(disabled: boolean): CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.8 : 1,
     flexShrink: 0,
-    transition: "transform 160ms ease, border-color 180ms ease",
     WebkitTapHighlightColor: "transparent",
   };
 }
@@ -133,18 +129,23 @@ function formatTrillionsFromUsdAndPercent(totalUsd: number, percent: number) {
   return `$${((totalUsd * percent) / 100 / 1_000_000_000_000).toFixed(2)}T`;
 }
 
-function getFearColor(value: number) {
-  if (value < 25) return UI.red;
-  if (value < 50) return UI.yellow;
-  if (value < 75) return UI.green;
-  return UI.green;
-}
-
 function getAltseasonLabel(value: number | null) {
   if (value == null) return "Нет данных";
   if (value >= 75) return "Altseason";
   if (value <= 25) return "Bitcoin season";
   return "Промежуточная фаза";
+}
+
+function formatUpdatedAt(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function HomePage() {
@@ -250,72 +251,68 @@ export default function HomePage() {
   const ethDominance = marketData?.ok ? marketData.market.ethDominance : null;
   const altDominance = marketData?.ok ? marketData.market.altDominance : null;
   const altseasonValue = marketData?.ok ? marketData.altseason.value : null;
+  const updatedAt = marketData?.ok ? formatUpdatedAt(marketData.updatedAt) : "—";
 
   return (
     <>
       <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body {
+          margin: 0;
+          padding: 0;
+          background: #000;
+          overflow-x: hidden;
+        }
+
         @keyframes fadeUp {
           from {
             opacity: 0;
-            transform: translate3d(0, 18px, 0);
+            transform: translate3d(0, 14px, 0);
           }
           to {
             opacity: 1;
             transform: translate3d(0, 0, 0);
           }
         }
-
-        @keyframes pulseDot {
-          0% {
-            transform: scale(1);
-            opacity: 0.9;
-            box-shadow: 0 0 0 0 rgba(100, 217, 123, 0.35);
-          }
-          70% {
-            transform: scale(1.08);
-            opacity: 1;
-            box-shadow: 0 0 0 8px rgba(100, 217, 123, 0);
-          }
-          100% {
-            transform: scale(1);
-            opacity: 0.9;
-            box-shadow: 0 0 0 0 rgba(100, 217, 123, 0);
-          }
-        }
-
-        @keyframes ringAppear {
-          from {
-            opacity: 0;
-            transform: scale(0.92);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        @keyframes fillX {
-          from {
-            transform: scaleX(0);
-          }
-          to {
-            transform: scaleX(1);
-          }
-        }
-
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-120%);
-          }
-          100% {
-            transform: translateX(120%);
-          }
-        }
       `}</style>
 
       <main style={styles.page}>
         <div style={styles.container}>
-          <section style={{ ...styles.heroCard, ...reveal(0, mounted) }}>
+          <section style={{ ...styles.topRow, ...reveal(0, mounted) }}>
+            <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
+
+            <div style={styles.topActions}>
+              <button
+                type="button"
+                style={styles.iconButton}
+                onClick={() => router.replace("/notifications")}
+              >
+                🔔
+              </button>
+
+              <button
+                type="button"
+                style={styles.iconButton}
+                onClick={() => router.replace("/support")}
+              >
+                💬
+              </button>
+
+              <button
+                type="button"
+                style={styles.iconButton}
+                onClick={() => router.replace("/settings")}
+              >
+                ⚙️
+              </button>
+            </div>
+          </section>
+
+          <section style={{ ...styles.heroCard, ...reveal(1, mounted) }}>
             <div style={styles.metricLabel}>Рын. капитализация</div>
 
             <div style={styles.metricValueRow}>
@@ -342,9 +339,7 @@ export default function HomePage() {
             </div>
 
             <div style={styles.sentimentHeader}>
-              <div>
-                <div style={styles.sentimentTitle}>Жадность и страх</div>
-              </div>
+              <div style={styles.sentimentTitle}>Жадность и страх</div>
               <div style={styles.sentimentBadgeDanger}>
                 {marketData?.ok ? `${marketData.fearGreed.value}%` : "—"}
               </div>
@@ -352,10 +347,9 @@ export default function HomePage() {
 
             <div style={styles.fearTrack}>
               <div style={fearFill(fearValue)} />
-              <div style={styles.trackShimmer} />
             </div>
 
-            <div style={{ ...styles.smallSub, marginTop: 8 }}>{fearText}</div>
+            <div style={{ ...styles.smallSub, marginTop: 10 }}>{fearText}</div>
 
             <div style={styles.heroButtons}>
               <button
@@ -368,12 +362,12 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section style={{ ...styles.blockNoBorder, ...reveal(1, mounted) }}>
+          <section style={{ ...styles.blockNoBorder, ...reveal(2, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>BTC Dominance</div>
             </div>
 
-            <div style={styles.signalRow}>
+            <div style={styles.signalRowTopAligned}>
               <div style={styles.dominanceLegend}>
                 <div style={styles.dominanceItem}>
                   <div style={styles.legendLeft}>
@@ -406,7 +400,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div style={styles.ringWrap}>
+              <div style={styles.ringWrapLarge}>
                 <div
                   style={{
                     ...styles.multiRing,
@@ -425,7 +419,7 @@ export default function HomePage() {
                   }}
                 />
                 <div style={styles.ringCenterLabel}>
-                  <div style={styles.ringCenterValue}>
+                  <div style={styles.ringCenterValueLarge}>
                     {btcDominance != null ? `${btcDominance.toFixed(1)}%` : "—"}
                   </div>
                   <div style={styles.ringCenterSub}>BTC</div>
@@ -434,15 +428,14 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(2, mounted) }}>
+          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Индекс альтсезона</div>
-              <span style={styles.outlineBadge}>Overview</span>
             </div>
 
             <div style={styles.signalCard}>
-              <div style={styles.signalRow}>
-                <div>
+              <div style={styles.signalRowTopAligned}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.signalTitle}>Altseason Index</div>
                   <div style={{ ...styles.statBigValue, color: UI.blue }}>
                     {altseasonValue != null ? altseasonValue : "—"}
@@ -497,16 +490,14 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
+          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Positioning</div>
-              <span style={styles.outlineBadge}>Live</span>
             </div>
 
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
                 <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
-                <span style={styles.outlineBadge}>Live</span>
               </div>
 
               <div style={styles.splitBar}>
@@ -528,7 +519,6 @@ export default function HomePage() {
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
                 <div style={styles.subBlockTitle}>BTC Long / Short Ratio</div>
-                <span style={styles.outlineBadge}>Live</span>
               </div>
 
               <div style={styles.splitBar}>
@@ -543,16 +533,14 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section style={{ ...styles.aiBlock, ...reveal(4, mounted) }}>
+          <section style={{ ...styles.aiBlock, ...reveal(5, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>AI Insight</div>
-              <span style={styles.outlineBadgeBlue}>AI</span>
             </div>
 
             <div style={styles.bodyText}>
               Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и
-              сильные альты с подтверждённым спросом. По слабым альтам риск остаётся
-              повышенным.
+              сильные альты с подтверждённым спросом.
             </div>
 
             <button
@@ -564,7 +552,7 @@ export default function HomePage() {
             </button>
           </section>
 
-          <section style={{ ...styles.botBlock, ...reveal(5, mounted) }}>
+          <section style={{ ...styles.botBlock, ...reveal(6, mounted) }}>
             <div style={styles.botTopRow}>
               <div>
                 <div style={styles.botEyebrow}>TRADING SYSTEM</div>
@@ -611,33 +599,6 @@ export default function HomePage() {
             >
               Открыть бот
             </button>
-          </section>
-
-          <section style={{ ...styles.section, ...reveal(6, mounted) }}>
-            <div style={styles.sectionTitle}>Переходы</div>
-
-            <div style={styles.quickGrid}>
-              <QuickNavCard
-                title="Bot"
-                subtitle="Сделки и контроль"
-                onClick={() => router.replace("/bot")}
-              />
-              <QuickNavCard
-                title="AI"
-                subtitle="Аналитика рынка"
-                onClick={() => router.replace("/ai")}
-              />
-              <QuickNavCard
-                title="Profile"
-                subtitle="Статус и аккаунт"
-                onClick={() => router.replace("/profile")}
-              />
-              <QuickNavCard
-                title="Settings"
-                subtitle="Параметры"
-                onClick={() => router.replace("/settings")}
-              />
-            </div>
           </section>
 
           <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
@@ -753,15 +714,6 @@ function StatusDot(props: { text: string }) {
   );
 }
 
-function QuickNavCard(props: { title: string; subtitle: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={props.onClick} style={styles.quickCard}>
-      <div style={styles.quickCardTitle}>{props.title}</div>
-      <div style={styles.quickCardSub}>{props.subtitle}</div>
-    </button>
-  );
-}
-
 const styles = {
   page: {
     minHeight: "100vh",
@@ -769,8 +721,9 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingTop: "calc(env(safe-area-inset-top, 0px) + 88px)",
+    paddingTop: "calc(env(safe-area-inset-top, 0px) + 84px)",
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
+    overflowX: "hidden",
   } satisfies CSSProperties,
 
   container: {
@@ -778,6 +731,40 @@ const styles = {
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
+    overflowX: "hidden",
+  } satisfies CSSProperties,
+
+  topRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  } satisfies CSSProperties,
+
+  updatedAt: {
+    fontSize: 11,
+    color: UI.textFaint,
+    lineHeight: 1.2,
+  } satisfies CSSProperties,
+
+  topActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  iconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: `1px solid ${UI.border}`,
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 15,
+    cursor: "pointer",
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   heroCard: {
@@ -792,7 +779,6 @@ const styles = {
     color: UI.textMuted,
     marginBottom: 8,
     fontWeight: 500,
-    transition: "color 180ms ease",
   } satisfies CSSProperties,
 
   metricValueRow: {
@@ -808,7 +794,6 @@ const styles = {
     fontWeight: 800,
     letterSpacing: "-0.06em",
     color: "#ffffff",
-    textShadow: "0 0 18px rgba(255,255,255,0.05)",
   } satisfies CSSProperties,
 
   metricTinyUnit: {
@@ -832,7 +817,7 @@ const styles = {
     alignItems: "center",
     gap: 6,
     marginTop: 12,
-    marginBottom: 14,
+    marginBottom: 22,
     flexWrap: "wrap",
   } satisfies CSSProperties,
 
@@ -853,34 +838,32 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
-    marginBottom: 8,
+    marginBottom: 10,
   } satisfies CSSProperties,
 
   sentimentTitle: {
     fontSize: 14,
     fontWeight: 700,
     color: UI.yellow,
-    textShadow: "0 0 14px rgba(243, 215, 9, 0.08)",
   } satisfies CSSProperties,
 
   sentimentBadgeDanger: {
     minWidth: 52,
-    height: 32,
-    borderRadius: 999,
-    padding: "0 12px",
+    height: 24,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     background: "transparent",
     border: "none",
     color: UI.red,
     fontWeight: 800,
     fontSize: 14,
+    padding: 0,
   } satisfies CSSProperties,
 
   fearTrack: {
     width: "100%",
-    height: 9,
+    height: 10,
     borderRadius: 999,
     background:
       "linear-gradient(90deg, rgba(110,25,25,0.50) 0%, rgba(104,71,16,0.42) 46%, rgba(18,62,37,0.42) 100%)",
@@ -888,25 +871,15 @@ const styles = {
     position: "relative",
   } satisfies CSSProperties,
 
-  trackShimmer: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: "24%",
-    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
-    animation: "shimmer 2.8s linear infinite",
-    pointerEvents: "none",
-  } satisfies CSSProperties,
-
   heroButtons: {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
-    marginTop: 16,
+    marginTop: 18,
   } satisfies CSSProperties,
 
   primaryPill: {
-    flex: "1 1 180px",
+    width: "100%",
     height: 46,
     borderRadius: 999,
     border: "none",
@@ -915,9 +888,7 @@ const styles = {
     fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
-    transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
-    WebkitTapHighlightColor: "transparent",
   } satisfies CSSProperties,
 
   block: {
@@ -945,202 +916,6 @@ const styles = {
     color: UI.textMain,
   } satisfies CSSProperties,
 
-  outlineBadge: {
-    padding: "5px 9px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    fontSize: 11,
-    color: UI.textSoft,
-    fontWeight: 700,
-    transition: "opacity 180ms ease, transform 180ms ease",
-  } satisfies CSSProperties,
-
-  outlineBadgeBlue: {
-    padding: "5px 9px",
-    borderRadius: 999,
-    border: "1px solid rgba(142,178,255,0.34)",
-    fontSize: 11,
-    color: UI.blue,
-    fontWeight: 700,
-    transition: "opacity 180ms ease, transform 180ms ease",
-  } satisfies CSSProperties,
-
-  compactGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  twoCol: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  subBlock: {
-    marginTop: 12,
-  } satisfies CSSProperties,
-
-  subBlockTitleRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-  } satisfies CSSProperties,
-
-  subBlockTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  miniCard: {
-    background: "transparent",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 108,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    transition:
-      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
-    WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  cardLabel: {
-    fontSize: 10,
-    letterSpacing: "0.10em",
-    textTransform: "uppercase",
-    color: UI.textFaint,
-    fontWeight: 700,
-    marginBottom: 8,
-  } satisfies CSSProperties,
-
-  miniCardValue: {
-    fontSize: 18,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-  } satisfies CSSProperties,
-
-  smallSub: {
-    marginTop: 8,
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.4,
-  } satisfies CSSProperties,
-
-  metricItem: {
-    background: "rgba(255,255,255,0.03)",
-    border: `1px solid ${UI.border}`,
-    borderRadius: 18,
-    padding: 14,
-    minHeight: 118,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    transition:
-      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
-    WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  metricItemLabel: {
-    fontSize: 11,
-    color: UI.textMuted,
-    marginBottom: 8,
-    fontWeight: 600,
-    letterSpacing: "0.02em",
-  } satisfies CSSProperties,
-
-  metricItemValue: {
-    fontSize: 15,
-    fontWeight: 800,
-    lineHeight: 1.1,
-  } satisfies CSSProperties,
-
-  metricItemSub: {
-    marginTop: 6,
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.35,
-  } satisfies CSSProperties,
-
-  metricItemValueLarge: {
-    fontSize: 24,
-    fontWeight: 800,
-    lineHeight: 1,
-    letterSpacing: "-0.04em",
-  } satisfies CSSProperties,
-
-  metricItemSubStrong: {
-    marginTop: 8,
-    fontSize: 12,
-    color: UI.textSoft,
-    lineHeight: 1.35,
-    fontWeight: 600,
-  } satisfies CSSProperties,
-
-  bodyText: {
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: UI.textSoft,
-  } satisfies CSSProperties,
-
-  bodyTextTight: {
-    marginTop: 10,
-    fontSize: 11,
-    lineHeight: 1.5,
-    color: UI.textMuted,
-  } satisfies CSSProperties,
-
-  splitBar: {
-    width: "100%",
-    height: 12,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-    display: "flex",
-  } satisfies CSSProperties,
-
-  splitBarSpot: {
-    width: "68%",
-    background: UI.green,
-    transformOrigin: "left center",
-    animation: "fillX 900ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } satisfies CSSProperties,
-
-  splitBarPerp: {
-    width: "32%",
-    background: UI.red,
-    transformOrigin: "left center",
-    animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } satisfies CSSProperties,
-
-  splitBarLong: {
-    width: "61.4%",
-    background: UI.green,
-    transformOrigin: "left center",
-    animation: "fillX 980ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } satisfies CSSProperties,
-
-  splitBarShort: {
-    width: "38.6%",
-    background: UI.red,
-    transformOrigin: "left center",
-    animation: "fillX 1060ms cubic-bezier(0.22, 1, 0.36, 1) both",
-  } satisfies CSSProperties,
-
-  splitMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: 700,
-  } satisfies CSSProperties,
-
   signalCard: {
     borderBottom: `1px solid ${UI.borderSoft}`,
     paddingBottom: 12,
@@ -1154,11 +929,12 @@ const styles = {
     marginBottom: 8,
   } satisfies CSSProperties,
 
-  signalRow: {
+  signalRowTopAligned: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
+    minWidth: 0,
   } satisfies CSSProperties,
 
   statBigValue: {
@@ -1182,6 +958,14 @@ const styles = {
     flexShrink: 0,
   } satisfies CSSProperties,
 
+  ringWrapLarge: {
+    width: 86,
+    height: 86,
+    position: "relative",
+    flexShrink: 0,
+    marginTop: 2,
+  } satisfies CSSProperties,
+
   ringTextSmall: {
     position: "absolute",
     inset: 0,
@@ -1198,6 +982,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
+    minWidth: 0,
   } satisfies CSSProperties,
 
   dominanceItem: {
@@ -1205,12 +990,14 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    minWidth: 0,
   } satisfies CSSProperties,
 
   legendLeft: {
     display: "flex",
     alignItems: "center",
     gap: 8,
+    minWidth: 0,
   } satisfies CSSProperties,
 
   legendDot: {
@@ -1219,7 +1006,6 @@ const styles = {
     borderRadius: "50%",
     display: "inline-block",
     flexShrink: 0,
-    boxShadow: "0 0 12px rgba(255,255,255,0.06)",
   } satisfies CSSProperties,
 
   legendText: {
@@ -1231,6 +1017,7 @@ const styles = {
   legendValue: {
     fontSize: 15,
     fontWeight: 800,
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   multiRing: {
@@ -1244,7 +1031,6 @@ const styles = {
     )`,
     WebkitMask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
     mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    animation: "ringAppear 760ms cubic-bezier(0.22, 1, 0.36, 1) both",
   } satisfies CSSProperties,
 
   ringCenterLabel: {
@@ -1255,9 +1041,10 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
+    padding: 4,
   } satisfies CSSProperties,
 
-  ringCenterValue: {
+  ringCenterValueLarge: {
     fontSize: 12,
     fontWeight: 800,
     color: UI.textMain,
@@ -1271,6 +1058,113 @@ const styles = {
     color: UI.btc,
   } satisfies CSSProperties,
 
+  twoCol: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  miniCard: {
+    background: "transparent",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 108,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  cardLabel: {
+    fontSize: 10,
+    letterSpacing: "0.10em",
+    textTransform: "uppercase",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 8,
+  } satisfies CSSProperties,
+
+  miniCardValue: {
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  smallSub: {
+    marginTop: 8,
+    fontSize: 11,
+    color: UI.textMuted,
+    lineHeight: 1.4,
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  subBlock: {
+    marginTop: 12,
+  } satisfies CSSProperties,
+
+  subBlockTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  subBlockTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  bodyTextTight: {
+    marginTop: 10,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  splitBar: {
+    width: "100%",
+    height: 12,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    display: "flex",
+  } satisfies CSSProperties,
+
+  splitBarSpot: {
+    width: "68%",
+    background: UI.green,
+  } satisfies CSSProperties,
+
+  splitBarPerp: {
+    width: "32%",
+    background: UI.red,
+  } satisfies CSSProperties,
+
+  splitBarLong: {
+    width: "61.4%",
+    background: UI.green,
+  } satisfies CSSProperties,
+
+  splitBarShort: {
+    width: "38.6%",
+    background: UI.red,
+  } satisfies CSSProperties,
+
+  splitMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: 700,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
   aiBlock: {
     marginTop: 4,
     marginBottom: 2,
@@ -1281,6 +1175,25 @@ const styles = {
       "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
   } satisfies CSSProperties,
 
+  bodyText: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: UI.textSoft,
+  } satisfies CSSProperties,
+
+  blockButton: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "transparent",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    marginTop: 14,
+  } satisfies CSSProperties,
+
   botBlock: {
     marginTop: 8,
     padding: 16,
@@ -1288,7 +1201,6 @@ const styles = {
     border: "1px solid rgba(100,217,123,0.16)",
     background:
       "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
-    boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
   } satisfies CSSProperties,
 
   botTopRow: {
@@ -1315,25 +1227,67 @@ const styles = {
     color: UI.textMain,
   } satisfies CSSProperties,
 
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(100,217,123,0.08)",
+    border: "1px solid rgba(100,217,123,0.22)",
+    color: UI.green,
+    fontSize: 11,
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    background: UI.green,
+  } satisfies CSSProperties,
+
   botMetricsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 12,
   } satisfies CSSProperties,
 
-  blockButton: {
-    width: "100%",
-    height: 42,
-    borderRadius: 14,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-    marginTop: 14,
-    transition: "transform 160ms ease, border-color 180ms ease, background 180ms ease",
-    WebkitTapHighlightColor: "transparent",
+  metricItem: {
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 18,
+    padding: 14,
+    minHeight: 118,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  metricItemLabel: {
+    fontSize: 11,
+    color: UI.textMuted,
+    marginBottom: 8,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+  } satisfies CSSProperties,
+
+  metricItemValueLarge: {
+    fontSize: 24,
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "-0.04em",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  metricItemSubStrong: {
+    marginTop: 8,
+    fontSize: 12,
+    color: UI.textSoft,
+    lineHeight: 1.35,
+    fontWeight: 600,
+    wordBreak: "break-word",
   } satisfies CSSProperties,
 
   blockButtonBlue: {
@@ -1347,74 +1301,7 @@ const styles = {
     fontWeight: 800,
     cursor: "pointer",
     marginTop: 14,
-    transition: "transform 160ms ease, opacity 160ms ease, box-shadow 200ms ease",
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
-    WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  statusPill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "rgba(100,217,123,0.08)",
-    border: "1px solid rgba(100,217,123,0.22)",
-    color: UI.green,
-    fontSize: 11,
-    fontWeight: 700,
-    backdropFilter: "blur(4px)",
-  } satisfies CSSProperties,
-
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-    background: UI.green,
-    animation: "pulseDot 1.9s ease-in-out infinite",
-  } satisfies CSSProperties,
-
-  section: {
-    marginTop: 20,
-  } satisfies CSSProperties,
-
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: UI.textMuted,
-    margin: "0 2px 10px",
-  } satisfies CSSProperties,
-
-  quickGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  quickCard: {
-    textAlign: "left",
-    minHeight: 88,
-    borderRadius: 16,
-    padding: 12,
-    border: `1px solid ${UI.border}`,
-    background: "transparent",
-    color: UI.textMain,
-    cursor: "pointer",
-    transition:
-      "transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease",
-    WebkitTapHighlightColor: "transparent",
-  } satisfies CSSProperties,
-
-  quickCardTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    marginBottom: 4,
-  } satisfies CSSProperties,
-
-  quickCardSub: {
-    fontSize: 11,
-    lineHeight: 1.4,
-    color: UI.textMuted,
   } satisfies CSSProperties,
 
   debugCard: {
@@ -1431,6 +1318,7 @@ const styles = {
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 12,
+    flexWrap: "wrap",
   } satisfies CSSProperties,
 
   debugTitle: {
