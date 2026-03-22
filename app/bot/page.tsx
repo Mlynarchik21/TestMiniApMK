@@ -10,8 +10,14 @@ type AnyResp =
 
 type KeyRow = {
   id: string;
-  exchange: string;
+  exchange: "BINANCE" | "BYBIT" | "OKX";
   label: string | null;
+};
+
+type BalanceRow = {
+  asset: string;
+  free: string;
+  locked: string;
 };
 
 type StatsRangePreset = "1D" | "1W" | "1M" | "CUSTOM";
@@ -191,125 +197,6 @@ function getRangeDates(
   return { from, to };
 }
 
-function inRange(dateLike: unknown, from: Date | null, to: Date | null) {
-  const d = safeDate(dateLike);
-  if (!d) return false;
-  if (from && d < from) return false;
-  if (to && d > to) return false;
-  return true;
-}
-
-function sumCapitalInWork(rows: any[]) {
-  return rows.reduce((sum, p) => {
-    const v = Number(p?.investedQuote ?? 0);
-    return sum + (Number.isFinite(v) ? v : 0);
-  }, 0);
-}
-
-function countOpenedToday(rows: any[]) {
-  return rows.filter((p) => isTodayGmtPlus3(p?.openedAt)).length;
-}
-
-function calcTradeDurationMs(t: any) {
-  const opened = safeDate(t?.openedAt);
-  const closed = safeDate(t?.closedAt);
-  if (!opened || !closed) return 0;
-  return closed.getTime() - opened.getTime();
-}
-
-function deriveStatsFromTrades(trades: any[]) {
-  const closedTrades = trades.length;
-  const pnlList = trades.map((t) => Number(t?.pnl ?? 0)).filter(Number.isFinite);
-  const wins = pnlList.filter((n) => n > 0);
-  const losses = pnlList.filter((n) => n < 0);
-
-  const totalPnl = pnlList.reduce((a, b) => a + b, 0);
-  const winRate = closedTrades ? (wins.length / closedTrades) * 100 : 0;
-  const bestTradePnl = pnlList.length ? Math.max(...pnlList) : 0;
-  const worstTradePnl = pnlList.length ? Math.min(...pnlList) : 0;
-  const grossProfit = wins.reduce((a, b) => a + b, 0);
-  const grossLossAbs = Math.abs(losses.reduce((a, b) => a + b, 0));
-  const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
-
-  const winningTrades = trades.filter((t) => Number(t?.pnl ?? 0) > 0);
-  const losingTrades = trades.filter((t) => Number(t?.pnl ?? 0) < 0);
-
-  const maxProfitTrade = winningTrades.length
-    ? Math.max(...winningTrades.map((t) => Number(t?.pnl ?? 0)))
-    : 0;
-  const minProfitTrade = winningTrades.length
-    ? Math.min(...winningTrades.map((t) => Number(t?.pnl ?? 0)))
-    : 0;
-  const avgProfitTrade = winningTrades.length
-    ? winningTrades.reduce((sum, t) => sum + Number(t?.pnl ?? 0), 0) / winningTrades.length
-    : 0;
-
-  const maxLossTrade = losingTrades.length
-    ? Math.min(...losingTrades.map((t) => Number(t?.pnl ?? 0)))
-    : 0;
-  const minLossTrade = losingTrades.length
-    ? Math.max(...losingTrades.map((t) => Number(t?.pnl ?? 0)))
-    : 0;
-  const avgLossTrade = losingTrades.length
-    ? losingTrades.reduce((sum, t) => sum + Math.abs(Number(t?.pnl ?? 0)), 0) /
-      losingTrades.length
-    : 0;
-
-  const durations = trades
-    .map(calcTradeDurationMs)
-    .filter((v) => Number.isFinite(v) && v > 0);
-
-  const avgDuration = durations.length
-    ? durations.reduce((a, b) => a + b, 0) / durations.length
-    : 0;
-  const minDuration = durations.length ? Math.min(...durations) : 0;
-  const maxDuration = durations.length ? Math.max(...durations) : 0;
-
-  let totalVolume = 0;
-  let maxBalanceSeen = 0;
-  let maxProfitSeries = 0;
-  let maxLossSeries = 0;
-
-  for (const t of trades) {
-    const entryValue = Number(t?.entryValue ?? 0);
-    const exitValue = Number(t?.exitValue ?? 0);
-    const pnl = Number(t?.pnl ?? 0);
-    const balance = Number(t?.maxBalance ?? t?.balanceAfter ?? t?.equityAfter ?? 0);
-
-    if (Number.isFinite(entryValue)) totalVolume += entryValue;
-    if (Number.isFinite(exitValue)) totalVolume += exitValue;
-    if (Number.isFinite(balance) && balance > maxBalanceSeen) maxBalanceSeen = balance;
-    if (Number.isFinite(pnl)) {
-      if (pnl > maxProfitSeries) maxProfitSeries = pnl;
-      if (pnl < maxLossSeries) maxLossSeries = pnl;
-    }
-  }
-
-  return {
-    closedTrades,
-    totalPnl,
-    winRate,
-    bestTradePnl,
-    worstTradePnl,
-    grossProfit,
-    grossLossAbs,
-    profitFactor,
-    totalVolume,
-    maxProfitTrade,
-    minProfitTrade,
-    avgProfitTrade,
-    maxLossTrade,
-    minLossTrade,
-    avgLossTrade,
-    avgDuration,
-    minDuration,
-    maxDuration,
-    maxBalanceSeen,
-    maxProfitSeries,
-    maxLossSeries,
-  };
-}
-
 function ringStyle(percent: number, color: string): CSSProperties {
   const safePercent = Math.max(0, Math.min(100, percent));
   return {
@@ -336,6 +223,23 @@ function assetCodeFromSymbol(symbol: unknown) {
   const s = String(symbol || "");
   if (!s) return "";
   return s.replace(/USDT$/i, "");
+}
+
+function hasWord(label: string | null | undefined, word: string) {
+  return new RegExp(word, "i").test(label || "");
+}
+
+function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label"> | null | undefined) {
+  if (!key) return false;
+  return key.exchange === "BYBIT" && hasWord(key.label, "demo");
+}
+
+function balanceSum(rows: BalanceRow[]) {
+  return rows.reduce((sum, row) => {
+    const free = Number(row.free || 0);
+    const locked = Number(row.locked || 0);
+    return sum + (Number.isFinite(free) ? free : 0) + (Number.isFinite(locked) ? locked : 0);
+  }, 0);
 }
 
 function ArrowLeftIcon() {
@@ -367,8 +271,9 @@ export default function BotPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [resp, setResp] = useState<AnyResp | null>(null);
   const [err, setErr] = useState("");
-  const [statusCode, setStatusCode] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState("");
 
   const [pagePaddingTop, setPagePaddingTop] = useState(
     "calc(env(safe-area-inset-top, 0px) + 15px)"
@@ -381,8 +286,9 @@ export default function BotPage() {
   const [stats, setStats] = useState<any>(null);
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [statsOpenPositions, setStatsOpenPositions] = useState<any[]>([]);
+  const [balanceData, setBalanceData] = useState<any>(null);
 
-  const [exchange, setExchange] = useState("BINANCE");
+  const [exchange, setExchange] = useState("BYBIT");
   const [keyId, setKeyId] = useState("");
   const [maxActiveSymbols, setMaxActiveSymbols] = useState("10");
   const [budgetPerSymbol, setBudgetPerSymbol] = useState("50");
@@ -400,6 +306,11 @@ export default function BotPage() {
     [keys, exchange]
   );
 
+  const activeKey = useMemo(
+    () => keys.find((k) => k.id === keyId) ?? null,
+    [keys, keyId]
+  );
+
   async function loadKeys() {
     const r = await api("/api/keys", { method: "GET" });
     if (r.json.ok) {
@@ -411,7 +322,6 @@ export default function BotPage() {
 
   async function loadBot() {
     const r = await api("/api/bot", { method: "GET" });
-    setStatusCode(r.status);
 
     if (!r.json.ok) {
       setErr(humanizeError(r.json));
@@ -427,7 +337,7 @@ export default function BotPage() {
     setPositions(p);
 
     if (c) {
-      setExchange(c.exchange ?? "BINANCE");
+      setExchange(c.exchange ?? "BYBIT");
       setKeyId(c.keyId ?? "");
       setMaxActiveSymbols(String(c.maxActiveSymbols ?? 10));
       setBudgetPerSymbol(String(c.budgetPerSymbol ?? "50"));
@@ -438,8 +348,19 @@ export default function BotPage() {
     return r;
   }
 
-  async function loadStats() {
-    const r = await api("/api/bot/stats", { method: "GET" });
+  async function loadStats(
+    preset = statsPreset,
+    fromValue = customFrom,
+    toValue = customTo
+  ) {
+    const range = getRangeDates(preset, fromValue, toValue);
+    const qs = new URLSearchParams();
+
+    if (range.from) qs.set("from", range.from.toISOString());
+    if (range.to) qs.set("to", range.to.toISOString());
+    qs.set("recentTake", "20");
+
+    const r = await api(`/api/bot/stats?${qs.toString()}`, { method: "GET" });
 
     if (r.json.ok) {
       setStats((r.json as any).stats ?? null);
@@ -448,6 +369,44 @@ export default function BotPage() {
     }
 
     return r;
+  }
+
+  async function loadBalance(currentKeyId?: string, currentKeys?: KeyRow[]) {
+    const targetKeyId = currentKeyId ?? keyId;
+    const keyRows = currentKeys ?? keys;
+
+    if (!targetKeyId) {
+      setBalanceData(null);
+      setBalanceError("");
+      return;
+    }
+
+    const targetKey = keyRows.find((k) => k.id === targetKeyId) ?? null;
+    if (!targetKey) {
+      setBalanceData(null);
+      setBalanceError("");
+      return;
+    }
+
+    setBalanceLoading(true);
+    setBalanceError("");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("keyId", targetKeyId);
+
+      const r = await api(`/api/balance?${params.toString()}`, { method: "GET" });
+
+      if (!r.json.ok) {
+        setBalanceData(null);
+        setBalanceError(humanizeError(r.json));
+        return;
+      }
+
+      setBalanceData(r.json);
+    } finally {
+      setBalanceLoading(false);
+    }
   }
 
   async function reloadAll(showGlobalLoader = false) {
@@ -471,6 +430,17 @@ export default function BotPage() {
 
       if (!keysRes.json.ok && !botRes.json.ok) {
         setErr(humanizeError(botRes.json));
+      }
+
+      const loadedKeys = keysRes.json.ok ? (((keysRes.json as any).keys ?? []) as KeyRow[]) : [];
+      const loadedConfig = botRes.json.ok ? (botRes.json as any).config ?? null : null;
+      const loadedKeyId = loadedConfig?.keyId ?? "";
+
+      if (loadedKeyId) {
+        await loadBalance(loadedKeyId, loadedKeys);
+      } else {
+        setBalanceData(null);
+        setBalanceError("");
       }
     } finally {
       if (showGlobalLoader) setPageLoading(false);
@@ -503,7 +473,6 @@ export default function BotPage() {
       });
 
       setResp(r.json);
-      setStatusCode(r.status);
 
       if (!r.json.ok) {
         setErr(humanizeError(r.json));
@@ -523,7 +492,6 @@ export default function BotPage() {
     try {
       const r = await api("/api/bot/start", { method: "POST" });
       setResp(r.json);
-      setStatusCode(r.status);
 
       if (!r.json.ok) {
         setErr(humanizeError(r.json));
@@ -543,7 +511,6 @@ export default function BotPage() {
     try {
       const r = await api("/api/bot/stop", { method: "POST" });
       setResp(r.json);
-      setStatusCode(r.status);
 
       if (!r.json.ok) {
         setErr(humanizeError(r.json));
@@ -557,7 +524,7 @@ export default function BotPage() {
   }
 
   function handleBack() {
-    window.location.replace("/");
+    router.replace("/home");
   }
 
   useEffect(() => {
@@ -597,6 +564,7 @@ export default function BotPage() {
         }
       } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -605,7 +573,15 @@ export default function BotPage() {
     }, 15000);
 
     return () => clearInterval(id);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsPreset, customFrom, customTo]);
+
+  useEffect(() => {
+    if (!pageLoading) {
+      loadStats(statsPreset, customFrom, customTo);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsPreset, customFrom, customTo]);
 
   useEffect(() => {
     if (!keyId && filteredKeys.length > 0) {
@@ -627,15 +603,9 @@ export default function BotPage() {
 
   const liveOpenPositions = statsOpenPositions.length ? statsOpenPositions : positions;
   const openPositionsCount = liveOpenPositions.length;
-  const openedToday = countOpenedToday(liveOpenPositions);
-  const capitalInWork = sumCapitalInWork(liveOpenPositions);
+  const openedToday = liveOpenPositions.filter((p) => isTodayGmtPlus3(p?.openedAt)).length;
+  const capitalInWork = Number(stats?.capitalInWork ?? 0);
   const pnlToday = Number(stats?.pnlToday ?? 0);
-
-  const range = getRangeDates(statsPreset, customFrom, customTo);
-  const filteredTradeHistory = recentTrades.filter((t) =>
-    inRange(t?.closedAt ?? t?.openedAt, range.from, range.to)
-  );
-  const derived = deriveStatsFromTrades(filteredTradeHistory);
 
   const shortOpenList = liveOpenPositions
     .slice()
@@ -647,28 +617,44 @@ export default function BotPage() {
     .slice(0, 3);
 
   const canSave = !loading && !!keyId;
+
   const botActive =
     !!config?.enabled &&
     String(state?.status ?? "").toUpperCase() !== "STOPPED" &&
     String(state?.status ?? "").toUpperCase() !== "IDLE";
 
+  const netPnlValue = Number(stats?.totalPnl ?? 0);
+  const grossProfit = Number(stats?.grossProfit ?? 0);
+  const grossLossAbs = Number(stats?.grossLossAbs ?? 0);
+
   const netPnlCirclePercent = Math.min(
     100,
     Math.max(
       0,
-      derived.grossProfit + derived.grossLossAbs > 0
-        ? (Math.abs(derived.totalPnl) / (derived.grossProfit + derived.grossLossAbs)) * 100
+      grossProfit + grossLossAbs > 0
+        ? (Math.abs(netPnlValue) / (grossProfit + grossLossAbs)) * 100
         : 0
     )
   );
 
-  const exchangeBalance =
-    Number(stats?.exchangeBalance ?? stats?.balance ?? stats?.equity ?? 0) || 0;
-  const collateralAmount =
-    Number(stats?.collateral ?? stats?.marginBalance ?? capitalInWork ?? 0) || 0;
-  const collateralPercent =
+  const raw = (balanceData as any)?.raw ?? {};
+  const balances = (((balanceData as any)?.balances ?? []) as BalanceRow[]) || [];
+  const isBybit = activeKey?.exchange === "BYBIT";
+  const bybitDemo = isBybitDemoKey(activeKey);
+
+  const totalEquity = Number(raw.totalEquity ?? raw.totalWalletBalance ?? 0);
+  const totalWalletBalance = Number(raw.totalWalletBalance ?? raw.totalEquity ?? 0);
+  const totalAvailableBalance = Number(raw.totalAvailableBalance ?? 0);
+
+  const spotAssetSum = balanceSum(balances);
+
+  const exchangeBalance = isBybit
+    ? totalEquity || totalWalletBalance || spotAssetSum
+    : spotAssetSum;
+
+  const accountUsagePercent =
     exchangeBalance > 0
-      ? Math.min(100, Math.max(0, (collateralAmount / exchangeBalance) * 100))
+      ? Math.min(100, Math.max(0, (capitalInWork / exchangeBalance) * 100))
       : 0;
 
   return (
@@ -731,8 +717,7 @@ export default function BotPage() {
 
           <section style={{ ...styles.botHero, ...reveal(1, mounted) }}>
             <div style={styles.botTopRow}>
-              <div style={styles.botEyebrow}>BOT CONTROL</div>
-
+              <div />
               <div
                 style={{
                   ...styles.statusPill,
@@ -766,21 +751,21 @@ export default function BotPage() {
               <MetricBox
                 label="Открыто сегодня"
                 value={String(openedToday)}
-                sub="Считаем по GMT+3"
+                sub="GMT+3"
                 valueColor={UI.yellow}
                 glowColor="rgba(243,215,9,0.14)"
               />
               <MetricBox
-                label="Используется маржи"
+                label="Маржа в работе"
                 value={formatUsd(capitalInWork)}
-                sub="Капитал в работе"
+                sub="Текущая загрузка"
                 valueColor={UI.blue}
                 glowColor="rgba(41,121,255,0.18)"
               />
               <MetricBox
                 label="PnL за день"
                 value={formatUsd(pnlToday)}
-                sub="Текущий день GMT+3"
+                sub="Текущий день"
                 valueColor={pnlColor(pnlToday)}
                 glowColor={
                   pnlToday >= 0
@@ -790,7 +775,7 @@ export default function BotPage() {
               />
             </div>
 
-            <div style={styles.botActionsRow}>
+            <div style={styles.botActionsGrid}>
               <button
                 type="button"
                 style={styles.primaryAction}
@@ -811,7 +796,7 @@ export default function BotPage() {
 
               <button
                 type="button"
-                style={styles.ghostAction}
+                style={styles.wideAction}
                 onClick={() => router.push("/bot/config")}
               >
                 Настройка бота
@@ -871,13 +856,14 @@ export default function BotPage() {
                 <div
                   style={{
                     ...styles.statsHeroValue,
-                    color: pnlColor(derived.totalPnl),
+                    color: pnlColor(netPnlValue),
                   }}
                 >
-                  {formatUsd(derived.totalPnl)}
+                  {formatUsd(netPnlValue)}
                 </div>
                 <div style={styles.statsHeroSub}>
-                  Сделок: {derived.closedTrades} · Win rate: {formatPct(derived.winRate)}
+                  Сделок: {Number(stats?.closedTrades ?? 0)} · Win rate:{" "}
+                  {formatPct(stats?.winRate ?? 0)}
                 </div>
               </div>
 
@@ -885,7 +871,7 @@ export default function BotPage() {
                 <div
                   style={ringStyle(
                     netPnlCirclePercent,
-                    derived.totalPnl >= 0 ? UI.green : UI.red
+                    netPnlValue >= 0 ? UI.green : UI.red
                   )}
                 />
                 <div style={styles.ringCenterLabel}>
@@ -895,7 +881,7 @@ export default function BotPage() {
                   <div
                     style={{
                       ...styles.ringCenterSub,
-                      color: derived.totalPnl >= 0 ? UI.green : UI.red,
+                      color: netPnlValue >= 0 ? UI.green : UI.red,
                     }}
                   >
                     PnL
@@ -907,25 +893,25 @@ export default function BotPage() {
             <div style={styles.statsUnifiedBlock}>
               <div style={styles.statsUnifiedTop}>
                 <div style={styles.statsUnifiedMini}>
-                  <span style={styles.statsUnifiedLabel}>Win Rate</span>
+                  <span style={styles.statsUnifiedLabel}>win rate</span>
                   <span style={{ ...styles.statsUnifiedValue, color: UI.yellow }}>
-                    {formatPct(derived.winRate)}
+                    {formatPct(stats?.winRate ?? 0)}
                   </span>
                 </div>
 
                 <div style={styles.statsUnifiedMini}>
-                  <span style={styles.statsUnifiedLabel}>Profit Factor</span>
+                  <span style={styles.statsUnifiedLabel}>profit factor</span>
                   <span style={{ ...styles.statsUnifiedValue, color: UI.blue }}>
-                    {Number(derived.profitFactor).toLocaleString("ru-RU", {
+                    {Number(stats?.profitFactor ?? 0).toLocaleString("ru-RU", {
                       maximumFractionDigits: 2,
                     })}
                   </span>
                 </div>
 
                 <div style={styles.statsUnifiedMini}>
-                  <span style={styles.statsUnifiedLabel}>Макс баланс</span>
+                  <span style={styles.statsUnifiedLabel}>max balance</span>
                   <span style={{ ...styles.statsUnifiedValue, color: UI.purple }}>
-                    {formatUsd(derived.maxBalanceSeen)}
+                    {formatUsd(stats?.maxBalanceSeen ?? 0)}
                   </span>
                 </div>
               </div>
@@ -945,21 +931,21 @@ export default function BotPage() {
 
                   <div style={styles.analyticsCompactRows}>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={styles.analyticsCompactLabel}>Макс</span>
+                      <span style={styles.analyticsCompactLabel}>max</span>
                       <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
-                        {formatUsd(derived.maxProfitTrade)}
+                        {formatUsd(stats?.maxProfitTrade ?? 0)}
                       </span>
                     </div>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={styles.analyticsCompactLabel}>Мин</span>
+                      <span style={styles.analyticsCompactLabel}>min</span>
                       <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
-                        {formatUsd(derived.minProfitTrade)}
+                        {formatUsd(stats?.minProfitTrade ?? 0)}
                       </span>
                     </div>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={styles.analyticsCompactLabel}>Средняя</span>
+                      <span style={styles.analyticsCompactLabel}>avg</span>
                       <span style={{ ...styles.analyticsCompactValue, color: UI.green }}>
-                        {formatUsd(derived.avgProfitTrade)}
+                        {formatUsd(stats?.avgProfitTrade ?? 0)}
                       </span>
                     </div>
                   </div>
@@ -979,23 +965,21 @@ export default function BotPage() {
 
                   <div style={styles.analyticsCompactRows}>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={styles.analyticsCompactLabel}>Макс</span>
+                      <span style={styles.analyticsCompactLabel}>max</span>
                       <span style={{ ...styles.analyticsCompactValue, color: UI.red }}>
-                        {formatUsd(Math.abs(derived.maxLossTrade))}
+                        {formatUsd(Math.abs(Number(stats?.maxLossTrade ?? 0)))}
                       </span>
                     </div>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={styles.analyticsCompactLabel}>Мин</span>
+                      <span style={styles.analyticsCompactLabel}>min</span>
                       <span style={{ ...styles.analyticsCompactValue, color: UI.red }}>
-                        {formatUsd(Math.abs(derived.minLossTrade))}
+                        {formatUsd(Math.abs(Number(stats?.minLossTrade ?? 0)))}
                       </span>
                     </div>
                     <div style={styles.analyticsCompactRow}>
-                      <span style={{ ...styles.analyticsCompactLabel, color: UI.cyan }}>
-                        Время
-                      </span>
-                      <span style={{ ...styles.analyticsCompactValue, color: UI.cyan }}>
-                        {formatDuration(derived.avgDuration)}
+                      <span style={styles.analyticsCompactLabel}>avg</span>
+                      <span style={{ ...styles.analyticsCompactValue, color: UI.red }}>
+                        {formatUsd(Math.abs(Number(stats?.avgLossTrade ?? 0)))}
                       </span>
                     </div>
                   </div>
@@ -1004,35 +988,44 @@ export default function BotPage() {
 
               <div style={styles.extremeStrip}>
                 <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Макс прибыль</div>
-                  <div style={styles.extremeValuesRow}>
-                    <span style={{ color: UI.green }}>{formatUsd(derived.maxProfitSeries)}</span>
-                    <span style={styles.extremeDivider}>•</span>
-                    <span style={{ color: UI.textSoft }}>
-                      Лучший трейд {formatUsd(derived.bestTradePnl)}
+                  <div style={styles.extremeTitle}>Экстремумы</div>
+                  <div style={styles.extremeValuesCol}>
+                    <span style={{ color: UI.green }}>
+                      max profit {formatUsd(stats?.bestTradePnl ?? 0)}
                     </span>
-                  </div>
-                </div>
-
-                <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Макс убыток</div>
-                  <div style={styles.extremeValuesRow}>
                     <span style={{ color: UI.red }}>
-                      {formatUsd(Math.abs(derived.maxLossSeries))}
-                    </span>
-                    <span style={styles.extremeDivider}>•</span>
-                    <span style={{ color: UI.textSoft }}>
-                      Худший трейд {formatUsd(Math.abs(derived.worstTradePnl))}
+                      max loss {formatUsd(Math.abs(Number(stats?.worstTradePnl ?? 0)))}
                     </span>
                   </div>
                 </div>
 
                 <div style={styles.extremeStripCard}>
-                  <div style={styles.extremeTitle}>Диапазон времени сделки</div>
-                  <div style={styles.extremeValuesRow}>
-                    <span style={{ color: UI.blue }}>{formatDuration(derived.minDuration)}</span>
-                    <span style={styles.extremeDivider}>—</span>
-                    <span style={{ color: UI.blue }}>{formatDuration(derived.maxDuration)}</span>
+                  <div style={styles.extremeTitle}>Время сделки</div>
+                  <div style={styles.extremeValuesCol}>
+                    <span style={{ color: UI.blue }}>
+                      min {formatDuration(Number(stats?.minDurationMs ?? 0))}
+                    </span>
+                    <span style={{ color: UI.blue }}>
+                      avg {formatDuration(Number(stats?.avgDurationMs ?? 0))}
+                    </span>
+                    <span style={{ color: UI.blue }}>
+                      max {formatDuration(Number(stats?.maxDurationMs ?? 0))}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={styles.extremeStripCard}>
+                  <div style={styles.extremeTitle}>Дополнительно</div>
+                  <div style={styles.extremeValuesCol}>
+                    <span style={{ color: UI.textSoft }}>
+                      Плюсовых: {Number(stats?.profitableTrades ?? 0)}
+                    </span>
+                    <span style={{ color: UI.textSoft }}>
+                      Минусовых: {Number(stats?.losingTrades ?? 0)}
+                    </span>
+                    <span style={{ color: UI.textSoft }}>
+                      Avg PnL: {formatUsd(stats?.avgTradePnl ?? 0)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1054,32 +1047,42 @@ export default function BotPage() {
                 </div>
 
                 <div style={styles.accountMetric}>
-                  <div style={styles.accountMetricLabel}>Сумма залога</div>
+                  <div style={styles.accountMetricLabel}>Сумма в работе</div>
                   <div style={{ ...styles.accountMetricValue, color: UI.blue }}>
-                    {formatUsd(collateralAmount)}
+                    {formatUsd(capitalInWork)}
                   </div>
+                </div>
+
+                <div style={styles.accountSubMeta}>
+                  <span>{isBybit ? (bybitDemo ? "BYBIT DEMO" : "BYBIT") : activeKey?.exchange || "—"}</span>
+                  <span>available {formatUsd(totalAvailableBalance)}</span>
                 </div>
               </div>
 
               <div style={styles.accountRingWrap}>
-                <div style={ringStyle(collateralPercent, UI.blue)} />
+                <div style={ringStyle(accountUsagePercent, UI.blue)} />
                 <div style={styles.ringCenterLabel}>
                   <div style={styles.ringCenterValueLarge}>
-                    {Math.round(collateralPercent)}%
+                    {Math.round(accountUsagePercent)}%
                   </div>
                   <div style={{ ...styles.ringCenterSub, color: UI.blue }}>
-                    Залог
+                    В работе
                   </div>
                 </div>
               </div>
             </div>
 
+            {balanceError ? (
+              <div style={styles.accountError}>{balanceError}</div>
+            ) : null}
+
             <button
               type="button"
-              style={styles.ghostAction}
+              style={styles.wideGhostAction}
               onClick={() => router.push("/bot/account-history")}
+              disabled={balanceLoading}
             >
-              История счета
+              {balanceLoading ? "..." : "История счета"}
             </button>
           </section>
 
@@ -1145,12 +1148,12 @@ export default function BotPage() {
                               color={UI.yellow}
                             />
                             <DetailChip
-                              label="Изменена"
+                              label="Изм."
                               value={formatDate(p.updatedAt ?? p.openedAt)}
                               color={UI.textSoft}
                             />
                             <DetailChip
-                              label="Усреднений"
+                              label="adds"
                               value={String(p.addsCount ?? 0)}
                               color={UI.purple}
                             />
@@ -1170,10 +1173,6 @@ export default function BotPage() {
           </section>
 
           <section style={{ ...styles.block, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Конфигурация бота</div>
-            </div>
-
             <div style={styles.formGrid}>
               <Field label="Биржа">
                 <select
@@ -1249,12 +1248,12 @@ export default function BotPage() {
                 disabled={!canSave}
                 onClick={saveConfig}
                 style={{
-                  ...styles.blockButtonBlue,
+                  ...styles.wideAction,
                   opacity: canSave ? 1 : 0.7,
                   cursor: canSave ? "pointer" : "not-allowed",
                 }}
               >
-                {loading ? "..." : "Сохранить конфиг"}
+                {loading ? "..." : "Сохранить"}
               </button>
             </div>
           </section>
@@ -1425,15 +1424,6 @@ const styles = {
     marginBottom: 14,
   } satisfies CSSProperties,
 
-  botEyebrow: {
-    fontSize: 11,
-    fontWeight: 800,
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: "rgba(100,217,123,0.72)",
-    marginTop: 6,
-  } satisfies CSSProperties,
-
   statusPill: {
     display: "inline-flex",
     alignItems: "center",
@@ -1457,10 +1447,10 @@ const styles = {
     gap: 12,
   } satisfies CSSProperties,
 
-  botActionsRow: {
+  botActionsGrid: {
     marginTop: 14,
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 10,
   } satisfies CSSProperties,
 
@@ -1487,7 +1477,20 @@ const styles = {
     cursor: "pointer",
   } satisfies CSSProperties,
 
-  ghostAction: {
+  wideAction: {
+    gridColumn: "1 / -1",
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  wideGhostAction: {
     width: "100%",
     height: 42,
     borderRadius: 14,
@@ -1779,17 +1782,11 @@ const styles = {
     marginBottom: 8,
   } satisfies CSSProperties,
 
-  extremeValuesRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
+  extremeValuesCol: {
+    display: "grid",
+    gap: 6,
     fontSize: 13,
     fontWeight: 800,
-  } satisfies CSSProperties,
-
-  extremeDivider: {
-    color: UI.textFaint,
   } satisfies CSSProperties,
 
   inlineActionGhost: {
@@ -1941,6 +1938,22 @@ const styles = {
     flexShrink: 0,
   } satisfies CSSProperties,
 
+  accountSubMeta: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    fontSize: 12,
+    color: UI.textMuted,
+    fontWeight: 600,
+  } satisfies CSSProperties,
+
+  accountError: {
+    marginTop: 10,
+    fontSize: 12,
+    color: UI.red,
+    lineHeight: 1.5,
+  } satisfies CSSProperties,
+
   emptyText: {
     fontSize: 12,
     color: UI.textMuted,
@@ -1981,20 +1994,6 @@ const styles = {
     lineHeight: 1.5,
     color: UI.textMuted,
     padding: "2px 2px 0",
-  } satisfies CSSProperties,
-
-  blockButtonBlue: {
-    width: "100%",
-    height: 42,
-    borderRadius: 14,
-    border: "none",
-    background: UI.brand,
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: 800,
-    cursor: "pointer",
-    marginTop: 2,
-    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
 
   errorCard: {
