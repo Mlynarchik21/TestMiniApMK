@@ -148,6 +148,39 @@ function formatUpdatedAt(iso?: string | null) {
   });
 }
 
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M12 4a4 4 0 0 0-4 4v2.1c0 .7-.2 1.4-.6 2L6 14.5c-.4.7.1 1.5.9 1.5h10.2c.8 0 1.3-.8.9-1.5l-1.4-2.4c-.4-.6-.6-1.3-.6-2V8a4 4 0 0 0-4-4Zm0 16a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 20Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M6 6.5h12a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 17.5H10l-4.2 3c-.7.5-1.8 0-1.8-.9v-2.1A2.5 2.5 0 0 1 3.5 15V9A2.5 2.5 0 0 1 6 6.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        d="M19.4 13a7.8 7.8 0 0 0 .1-1 7.8 7.8 0 0 0-.1-1l2-1.6a.6.6 0 0 0 .1-.8l-1.9-3.3a.6.6 0 0 0-.8-.2L16.4 6a7.8 7.8 0 0 0-1.7-1l-.4-2.6a.6.6 0 0 0-.6-.4H10.3a.6.6 0 0 0-.6.4L9.3 5a7.8 7.8 0 0 0-1.7 1L5.2 4.1a.6.6 0 0 0-.8.2L2.5 7.6a.6.6 0 0 0 .1.8l2 1.6a7.8 7.8 0 0 0-.1 1 7.8 7.8 0 0 0 .1 1l-2 1.6a.6.6 0 0 0-.1.8l1.9 3.3a.6.6 0 0 0 .8.2l2.4-1a7.8 7.8 0 0 0 1.7 1l.4 2.6a.6.6 0 0 0 .6.4h3.4a.6.6 0 0 0 .6-.4l.4-2.6a7.8 7.8 0 0 0 1.7-1l2.4 1a.6.6 0 0 0 .8-.2l1.9-3.3a.6.6 0 0 0-.1-.8l-2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -243,9 +276,13 @@ export default function HomePage() {
   }, []);
 
   const marketCapT = marketData?.ok ? marketData.market.totalMarketCapT : "—";
-  const marketChange24h = marketData?.ok ? marketData.market.marketCapChange24h : null;
+  const marketChange24h = marketData?.ok
+    ? marketData.market.marketCapChange24h
+    : null;
   const fearValue = marketData?.ok ? marketData.fearGreed.value : 0;
-  const fearText = marketData?.ok ? marketData.fearGreed.classification : "Нет данных";
+  const fearText = marketData?.ok
+    ? marketData.fearGreed.classification
+    : "Нет данных";
 
   const btcDominance = marketData?.ok ? marketData.market.btcDominance : null;
   const ethDominance = marketData?.ok ? marketData.market.ethDominance : null;
@@ -283,32 +320,37 @@ export default function HomePage() {
       <main style={styles.page}>
         <div style={styles.container}>
           <section style={{ ...styles.topRow, ...reveal(0, mounted) }}>
-            <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
+            <div style={styles.topRightStack}>
+              <div style={styles.updatedAt}>Обновлено: {updatedAt}</div>
 
-            <div style={styles.topActions}>
-              <button
-                type="button"
-                style={styles.iconButton}
-                onClick={() => router.replace("/notifications")}
-              >
-                🔔
-              </button>
+              <div style={styles.topActions}>
+                <button
+                  type="button"
+                  aria-label="Уведомления"
+                  style={styles.iconButton}
+                  onClick={() => router.replace("/notifications")}
+                >
+                  <BellIcon />
+                </button>
 
-              <button
-                type="button"
-                style={styles.iconButton}
-                onClick={() => router.replace("/support")}
-              >
-                💬
-              </button>
+                <button
+                  type="button"
+                  aria-label="Поддержка"
+                  style={styles.iconButton}
+                  onClick={() => router.replace("/support")}
+                >
+                  <ChatIcon />
+                </button>
 
-              <button
-                type="button"
-                style={styles.iconButton}
-                onClick={() => router.replace("/settings")}
-              >
-                ⚙️
-              </button>
+                <button
+                  type="button"
+                  aria-label="Настройки"
+                  style={styles.iconButton}
+                  onClick={() => router.replace("/settings")}
+                >
+                  <SettingsIcon />
+                </button>
+              </div>
             </div>
           </section>
 
@@ -404,18 +446,19 @@ export default function HomePage() {
                 <div
                   style={{
                     ...styles.multiRing,
-                    background:
-                      marketData?.ok
-                        ? `conic-gradient(
+                    background: marketData?.ok
+                      ? `conic-gradient(
                             ${UI.btc} 0 ${marketData.market.btcDominance}%,
                             ${UI.eth} ${marketData.market.btcDominance}% ${
-                            marketData.market.btcDominance + marketData.market.ethDominance
-                          }%,
+                          marketData.market.btcDominance +
+                          marketData.market.ethDominance
+                        }%,
                             ${UI.alt} ${
-                            marketData.market.btcDominance + marketData.market.ethDominance
-                          }% 100%
+                          marketData.market.btcDominance +
+                          marketData.market.ethDominance
+                        }% 100%
                           )`
-                        : styles.multiRing.background,
+                      : styles.multiRing.background,
                   }}
                 />
                 <div style={styles.ringCenterLabel}>
@@ -440,7 +483,9 @@ export default function HomePage() {
                   <div style={{ ...styles.statBigValue, color: UI.blue }}>
                     {altseasonValue != null ? altseasonValue : "—"}
                   </div>
-                  <div style={styles.statSubtitle}>{getAltseasonLabel(altseasonValue)}</div>
+                  <div style={styles.statSubtitle}>
+                    {getAltseasonLabel(altseasonValue)}
+                  </div>
                 </div>
 
                 <div style={styles.ringWrap}>
@@ -465,7 +510,9 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(1)}%`
+                    ? `BTC dominance ${marketData.market.btcDominance.toFixed(
+                        1
+                      )}%`
                     : "Нет данных"
                 }
                 valueColor={UI.btc}
@@ -482,7 +529,9 @@ export default function HomePage() {
                 }
                 sub={
                   marketData?.ok
-                    ? `Alt dominance ${marketData.market.altDominance.toFixed(1)}%`
+                    ? `Alt dominance ${marketData.market.altDominance.toFixed(
+                        1
+                      )}%`
                     : "Нет данных"
                 }
                 valueColor={UI.alt}
@@ -497,7 +546,9 @@ export default function HomePage() {
 
             <div style={styles.subBlock}>
               <div style={styles.subBlockTitleRow}>
-                <div style={styles.subBlockTitle}>Spot Activity / Perp Activity</div>
+                <div style={styles.subBlockTitle}>
+                  Spot Activity / Perp Activity
+                </div>
               </div>
 
               <div style={styles.splitBar}>
@@ -511,8 +562,8 @@ export default function HomePage() {
               </div>
 
               <div style={styles.bodyTextTight}>
-                Движение подтверждается в большей степени спотовым спросом, а не перегретым
-                деривативным потоком.
+                Движение подтверждается в большей степени спотовым спросом, а не
+                перегретым деривативным потоком.
               </div>
             </div>
 
@@ -539,8 +590,8 @@ export default function HomePage() {
             </div>
 
             <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет — BTC, ETH и
-              сильные альты с подтверждённым спросом.
+              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет —
+              BTC, ETH и сильные альты с подтверждённым спросом.
             </div>
 
             <button
@@ -608,7 +659,14 @@ export default function HomePage() {
                 <div style={styles.debugSub}>Сервисная информация</div>
               </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
                 <button
                   onClick={loadHomeMarket}
                   disabled={marketLoading}
@@ -643,7 +701,9 @@ export default function HomePage() {
               <div>
                 <span style={styles.debugMetaLabel}>fear & greed</span>
                 <div style={styles.debugMetaValue}>
-                  {marketData?.ok ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}` : "—"}
+                  {marketData?.ok
+                    ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}`
+                    : "—"}
                 </div>
               </div>
 
@@ -674,7 +734,9 @@ function MiniMetric(props: {
   return (
     <section style={styles.miniCard}>
       <div style={styles.cardLabel}>{props.label}</div>
-      <div style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}>
+      <div
+        style={{ ...styles.miniCardValue, color: props.valueColor || UI.textMain }}
+      >
         {props.value}
       </div>
       {props.sub ? <div style={styles.smallSub}>{props.sub}</div> : null}
@@ -693,11 +755,18 @@ function MetricBox(props: {
     <div
       style={{
         ...styles.metricItem,
-        boxShadow: props.glowColor ? `0 0 0 1px ${props.glowColor} inset` : undefined,
+        boxShadow: props.glowColor
+          ? `0 0 0 1px ${props.glowColor} inset`
+          : undefined,
       }}
     >
       <div style={styles.metricItemLabel}>{props.label}</div>
-      <div style={{ ...styles.metricItemValueLarge, color: props.valueColor || UI.textMain }}>
+      <div
+        style={{
+          ...styles.metricItemValueLarge,
+          color: props.valueColor || UI.textMain,
+        }}
+      >
         {props.value}
       </div>
       {props.sub ? <div style={styles.metricItemSubStrong}>{props.sub}</div> : null}
@@ -736,16 +805,23 @@ const styles = {
 
   topRow: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 14,
+    justifyContent: "flex-end",
+    marginBottom: 8,
+    marginTop: 6,
+  } satisfies CSSProperties,
+
+  topRightStack: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 8,
   } satisfies CSSProperties,
 
   updatedAt: {
     fontSize: 11,
     color: UI.textFaint,
     lineHeight: 1.2,
+    textAlign: "right",
   } satisfies CSSProperties,
 
   topActions: {
@@ -760,11 +836,15 @@ const styles = {
     height: 34,
     borderRadius: 999,
     border: `1px solid ${UI.border}`,
-    background: "transparent",
+    background: "rgba(255,255,255,0.04)",
     color: UI.textMain,
     fontSize: 15,
     cursor: "pointer",
     flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    WebkitTapHighlightColor: "transparent",
   } satisfies CSSProperties,
 
   heroCard: {
@@ -777,7 +857,7 @@ const styles = {
   metricLabel: {
     fontSize: 13,
     color: UI.textMuted,
-    marginBottom: 8,
+    marginBottom: 4,
     fontWeight: 500,
   } satisfies CSSProperties,
 
@@ -786,6 +866,7 @@ const styles = {
     alignItems: "baseline",
     gap: 0,
     flexWrap: "wrap",
+    marginBottom: 4,
   } satisfies CSSProperties,
 
   metricValue: {
@@ -816,7 +897,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    marginTop: 12,
+    marginTop: 0,
     marginBottom: 22,
     flexWrap: "wrap",
   } satisfies CSSProperties,
