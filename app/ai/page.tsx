@@ -39,8 +39,6 @@ const UI = {
   textSoft: "rgba(255,255,255,0.78)",
   textMuted: "rgba(255,255,255,0.60)",
   textFaint: "rgba(255,255,255,0.36)",
-  green: "#64d97b",
-  red: "#ff6a6a",
   blue: "#8eb2ff",
   brand: "#2979ff",
 };
@@ -154,20 +152,21 @@ export default function AiPage() {
   const chatRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const quickScrollRef = useRef<HTMLDivElement | null>(null);
   const initialViewportHeightRef = useRef<number | null>(null);
 
   const quickPrompts = [
-    "что произошло за 24 часа",
-    "solusdt уровни и новости",
-    "xrpusdt уровни и новости",
+    "Главное по рынку за сегодня",
+    "SOLUSDT: уровни, новости и сценарий",
+    "XRPUSDT: что важно прямо сейчас",
   ];
 
   const rotatingPlaceholders = useMemo(
     () => [
-      "Напиши вопрос по рынку",
+      "Спроси про рынок",
       "Загрузи скрин графика",
-      "Спроси про btc, sol или xrp",
-      "Попроси обзор новостей",
+      "Попроси обзор по BTC, SOL или XRP",
+      "Уточни ключевые уровни и риски",
     ],
     []
   );
@@ -289,7 +288,7 @@ export default function AiPage() {
       const el = chatRef.current;
       if (!el) return;
       el.scrollTo({
-        top: el.scrollHeight + 1000,
+        top: el.scrollHeight + 1200,
         behavior: "smooth",
       });
     });
@@ -459,6 +458,35 @@ export default function AiPage() {
     };
   }, [placeholderIndex, rotatingPlaceholders, input]);
 
+  useEffect(() => {
+    if (!showQuickPrompts || keyboardOpen) return;
+    const el = quickScrollRef.current;
+    if (!el) return;
+
+    let raf = 0;
+    let direction = 1;
+    let last = performance.now();
+
+    const animate = (now: number) => {
+      const dt = now - last;
+      last = now;
+
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      if (max > 0) {
+        el.scrollLeft += direction * dt * 0.03;
+
+        if (el.scrollLeft >= max) direction = -1;
+        if (el.scrollLeft <= 0) direction = 1;
+      }
+
+      raf = requestAnimationFrame(animate);
+    };
+
+    raf = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(raf);
+  }, [showQuickPrompts, keyboardOpen]);
+
   return (
     <>
       <style jsx global>{`
@@ -506,11 +534,21 @@ export default function AiPage() {
         @keyframes chipIn {
           from {
             opacity: 0;
-            transform: translate3d(0, 8px, 0);
+            transform: translate3d(0, 10px, 0) scale(0.985);
           }
           to {
             opacity: 1;
-            transform: translate3d(0, 0, 0);
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+        }
+
+        @keyframes chipFloat {
+          0%,
+          100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-2px);
           }
         }
       `}</style>
@@ -570,23 +608,34 @@ export default function AiPage() {
                 </div>
 
                 <div style={styles.greetingItem}>
-                  <span style={styles.greetingIcon}>📊</span>
+                  <span style={styles.greetingIcon}>📈</span>
                   <span>
-                    Помогаю быстро разобрать рынок, новости, уровни и общий контекст движения.
+                    Помогаю быстро понять рыночную ситуацию: что сейчас важно,
+                    где ключевые уровни и на что стоит обратить внимание.
+                  </span>
+                </div>
+
+                <div style={styles.greetingItem}>
+                  <span style={styles.greetingIcon}>🧭</span>
+                  <span>
+                    Могу дать краткий обзор по монете, новостям, настроению рынка
+                    и возможным сценариям движения.
                   </span>
                 </div>
 
                 <div style={styles.greetingItem}>
                   <span style={styles.greetingIcon}>🖼️</span>
                   <span>
-                    Можешь отправить скрин графика, и я помогу выделить структуру, зоны и ключевые ориентиры.
+                    Отправляй скрин графика — я помогу выделить структуру, зоны,
+                    уровни и общую логику движения цены.
                   </span>
                 </div>
 
                 <div style={styles.greetingItem}>
                   <span style={styles.greetingIcon}>⚠️</span>
                   <span>
-                    Все ответы носят информационный характер и не являются финансовой рекомендацией.
+                    Все ответы носят ознакомительный характер и не являются
+                    финансовой рекомендацией.
                   </span>
                 </div>
 
@@ -601,24 +650,30 @@ export default function AiPage() {
             ) : null}
 
             {!keyboardOpen && showQuickPrompts ? (
-              <div style={styles.quickStack}>
-                {quickPrompts.map((item, idx) => (
-                  <button
-                    key={item}
-                    type="button"
-                    style={{
-                      ...styles.quickInline,
-                      animationName: "chipIn",
-                      animationDuration: "320ms",
-                      animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
-                      animationFillMode: "both",
-                      animationDelay: `${idx * 70}ms`,
-                    }}
-                    onClick={() => sendMessage(item)}
-                  >
-                    {item}
-                  </button>
-                ))}
+              <div style={styles.quickWrap}>
+                <div ref={quickScrollRef} style={styles.quickScroller}>
+                  <div style={styles.quickTrack}>
+                    {quickPrompts.concat(quickPrompts).map((item, idx) => (
+                      <button
+                        key={`${item}_${idx}`}
+                        type="button"
+                        style={{
+                          ...styles.quickInline,
+                          animationName: "chipIn, chipFloat",
+                          animationDuration: "320ms, 3200ms",
+                          animationTimingFunction:
+                            "cubic-bezier(0.22, 1, 0.36, 1), ease-in-out",
+                          animationFillMode: "both, both",
+                          animationDelay: `${(idx % 3) * 90}ms, ${idx * 180}ms`,
+                          animationIterationCount: "1, infinite",
+                        }}
+                        onClick={() => sendMessage(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -626,7 +681,7 @@ export default function AiPage() {
               ref={chatRef}
               style={{
                 ...styles.chatList,
-                paddingBottom: keyboardOpen ? 52 : 18,
+                paddingBottom: keyboardOpen ? 58 : 18,
               }}
             >
               {messages.map((m) => (
@@ -701,9 +756,9 @@ export default function AiPage() {
             style={{
               ...styles.bottomBar,
               paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${
-                keyboardOpen ? 22 : 38
+                keyboardOpen ? 22 : 40
               }px)`,
-              marginBottom: keyboardOpen ? Math.max(18, keyboardInset - 6) : 0,
+              marginBottom: keyboardOpen ? Math.max(18, keyboardInset - 4) : 0,
             }}
           >
             {attachedPreview ? (
@@ -785,7 +840,8 @@ export default function AiPage() {
 
             {!keyboardOpen ? (
               <div style={styles.footerNote}>
-                Ответы ИИ носят информационный характер и не являются финансовой рекомендацией.
+                Ответы ИИ носят информационный характер и не являются финансовой
+                рекомендацией.
               </div>
             ) : null}
           </section>
@@ -966,27 +1022,38 @@ const styles = {
     boxShadow: "0 8px 18px rgba(41,121,255,0.35)",
   } satisfies CSSProperties,
 
-  quickStack: {
-    display: "grid",
-    gap: 6,
+  quickWrap: {
     marginBottom: 12,
   } satisfies CSSProperties,
 
+  quickScroller: {
+    overflowX: "auto",
+    overflowY: "hidden",
+    scrollbarWidth: "none",
+  } satisfies CSSProperties,
+
+  quickTrack: {
+    display: "flex",
+    gap: 8,
+    minWidth: "max-content",
+    paddingBottom: 2,
+    paddingRight: 30,
+  } satisfies CSSProperties,
+
   quickInline: {
-    width: "100%",
-    borderRadius: 12,
+    flexShrink: 0,
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.08)",
     background: "#050505",
-    color: "rgba(255,255,255,0.76)",
+    color: "rgba(255,255,255,0.78)",
     textAlign: "left",
-    padding: "10px 12px",
-    fontSize: 11.5,
+    padding: "11px 14px",
+    fontSize: 12,
     lineHeight: 1.1,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    transition: "transform 160ms ease, border-color 160ms ease, background 160ms ease",
+    transition:
+      "transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease",
   } satisfies CSSProperties,
 
   chatList: {
@@ -1104,7 +1171,7 @@ const styles = {
   } satisfies CSSProperties,
 
   bottomBar: {
-    paddingTop: 24,
+    paddingTop: 26,
     background:
       "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.84) 20%, rgba(0,0,0,0.98) 62%)",
   } satisfies CSSProperties,
