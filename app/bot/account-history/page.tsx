@@ -207,6 +207,7 @@ export default function BotAccountHistoryPage() {
   const [err, setErr] = useState("");
   const [resp, setResp] = useState<AnyResp | null>(null);
   const [trades, setTrades] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [statsPreset, setStatsPreset] = useState<StatsRangePreset>("1W");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -237,6 +238,7 @@ export default function BotAccountHistoryPage() {
       }
 
       setTrades((((r.json as any).recentTrades ?? []) as any[]) || []);
+      setStats((r.json as any).stats ?? null);
     } finally {
       setLoading(false);
     }
@@ -302,6 +304,18 @@ export default function BotAccountHistoryPage() {
         return bd - ad;
       });
   }, [trades]);
+
+  const manualClosed = useMemo(() => {
+    return sortedTrades.filter((t) => String(t?.closeReason || "").toUpperCase() === "MANUAL")
+      .length;
+  }, [sortedTrades]);
+
+  const tpClosed = useMemo(() => {
+    return sortedTrades.filter((t) => String(t?.closeReason || "").toUpperCase() === "TP")
+      .length;
+  }, [sortedTrades]);
+
+  const totalProfit = Number(stats?.totalPnl ?? 0);
 
   return (
     <>
@@ -405,7 +419,56 @@ export default function BotAccountHistoryPage() {
             ) : null}
           </section>
 
-          <section style={{ ...styles.block, ...reveal(2, mounted) }}>
+          <section style={{ ...styles.statsBlock, ...reveal(2, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Статистика периода</div>
+            </div>
+
+            <div style={styles.statsGrid}>
+              <StatCard
+                label="Сделок"
+                value={String(Number(stats?.closedTrades ?? 0))}
+                valueColor={UI.textMain}
+              />
+              <StatCard
+                label="Открытых"
+                value={String(Number(stats?.openPositions ?? 0))}
+                valueColor={UI.blue}
+              />
+              <StatCard
+                label="Закрытых"
+                value={String(Number(stats?.closedTrades ?? 0))}
+                valueColor={UI.textMain}
+              />
+              <StatCard
+                label="Прибыльных"
+                value={String(Number(stats?.profitableTrades ?? 0))}
+                valueColor={UI.green}
+              />
+              <StatCard
+                label="Убыточных"
+                value={String(Number(stats?.losingTrades ?? 0))}
+                valueColor={UI.red}
+              />
+              <StatCard
+                label="Вручную"
+                value={String(manualClosed)}
+                valueColor={UI.yellow}
+              />
+              <StatCard
+                label="По таргету"
+                value={String(tpClosed)}
+                valueColor={UI.green}
+              />
+              <StatCard
+                label="Прибыль"
+                value={formatUsd(totalProfit)}
+                valueColor={totalProfit >= 0 ? UI.green : UI.red}
+              />
+            </div>
+          </section>
+
+          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
             {!sortedTrades.length && !loading ? (
               <div style={styles.emptyText}>История пока пуста.</div>
             ) : (
@@ -530,14 +593,14 @@ export default function BotAccountHistoryPage() {
           </section>
 
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(3, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(4, mounted) }}>
               <div style={styles.sectionMainTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
           {loading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(4, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(5, mounted) }}>
               Загрузка истории...
             </section>
           ) : null}
@@ -567,6 +630,21 @@ function DetailChip(props: { label: string; value: string; color: string }) {
     >
       <div style={styles.detailChipLabel}>{props.label}</div>
       <div style={{ ...styles.detailChipValue, color: props.color }}>
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+function StatCard(props: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div style={styles.statCard}>
+      <div style={styles.statLabel}>{props.label}</div>
+      <div style={{ ...styles.statValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
     </div>
@@ -633,7 +711,26 @@ const styles = {
   } satisfies CSSProperties,
 
   filtersBlock: {
+    marginBottom: 16,
+  } satisfies CSSProperties,
+
+  statsBlock: {
     marginBottom: 20,
+  } satisfies CSSProperties,
+
+  sectionHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  sectionMainTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    letterSpacing: "-0.01em",
+    color: UI.textMain,
   } satisfies CSSProperties,
 
   rangeBar: {
@@ -689,6 +786,37 @@ const styles = {
     padding: "0 14px",
     WebkitAppearance: "none",
     appearance: "none",
+  } satisfies CSSProperties,
+
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  statCard: {
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    minWidth: 0,
+  } satisfies CSSProperties,
+
+  statLabel: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.textFaint,
+    fontWeight: 700,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  statValue: {
+    fontSize: 20,
+    fontWeight: 800,
+    lineHeight: 1.1,
+    letterSpacing: "-0.03em",
+    wordBreak: "break-word",
   } satisfies CSSProperties,
 
   block: {
@@ -839,13 +967,6 @@ const styles = {
     color: UI.textMuted,
     lineHeight: 1.55,
     padding: "4px 2px 0",
-  } satisfies CSSProperties,
-
-  sectionMainTitle: {
-    fontSize: 16,
-    fontWeight: 800,
-    letterSpacing: "-0.01em",
-    color: UI.textMain,
   } satisfies CSSProperties,
 
   errorCard: {
