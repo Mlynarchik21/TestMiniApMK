@@ -1,12 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 type AiResp =
-  | { ok: true; answer?: string; sessionId?: string; expired?: boolean; [k: string]: any }
-  | { ok: false; error?: string; message?: string; sessionId?: string; expired?: boolean; [k: string]: any };
+  | {
+      ok: true;
+      answer?: string;
+      sessionId?: string;
+      expired?: boolean;
+      [k: string]: any;
+    }
+  | {
+      ok: false;
+      error?: string;
+      message?: string;
+      sessionId?: string;
+      expired?: boolean;
+      [k: string]: any;
+    };
 
 type ChatItem = {
   id: string;
@@ -19,18 +32,20 @@ type ChatItem = {
 
 const UI = {
   border: "rgba(255,255,255,0.12)",
-  borderSoft: "rgba(255,255,255,0.09)",
+  borderSoft: "rgba(255,255,255,0.08)",
   borderHard: "rgba(255,255,255,0.16)",
   text: "#f3f3f3",
   textMain: "rgba(255,255,255,0.96)",
   textSoft: "rgba(255,255,255,0.78)",
   textMuted: "rgba(255,255,255,0.60)",
-  textFaint: "rgba(255,255,255,0.42)",
+  textFaint: "rgba(255,255,255,0.36)",
   green: "#64d97b",
   red: "#ff6a6a",
   blue: "#8eb2ff",
   brand: "#2979ff",
   yellow: "#f3d709",
+  panel: "#101010",
+  panelSoft: "#0a0a0a",
 };
 
 const CHAT_SESSION_KEY = "aiSessionId";
@@ -61,15 +76,15 @@ function reveal(index: number, mounted: boolean): CSSProperties {
     ? {
         opacity: 1,
         animationName: "fadeUp",
-        animationDuration: "560ms",
+        animationDuration: "480ms",
         animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
         animationFillMode: "both",
-        animationDelay: `${index * 60}ms`,
+        animationDelay: `${index * 45}ms`,
         willChange: "transform, opacity",
       }
     : {
         opacity: 0,
-        transform: "translate3d(0, 14px, 0)",
+        transform: "translate3d(0, 10px, 0)",
       };
 }
 
@@ -99,7 +114,7 @@ function PlusIcon() {
 
 function SendIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <path
         d="M5 19l14-7L5 5v5l8 2-8 2z"
         stroke="currentColor"
@@ -124,6 +139,7 @@ export default function AiPage() {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+
   const [showGreeting, setShowGreeting] = useState(true);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -132,27 +148,32 @@ export default function AiPage() {
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
 
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [placeholderVisibleText, setPlaceholderVisibleText] = useState("");
+
   const chatRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const initialViewportHeightRef = useRef<number | null>(null);
 
   const quickPrompts = [
-    {
-      title: "SOLUSDT",
-      sub: "Что произошло за 24 часа",
-      text: "Что произошло на крипторынке за последние 24 часа? Дай краткое резюме по SOLUSDT.",
-    },
-    {
-      title: "BTCUSDT",
-      sub: "Какие новости и уровни",
-      text: "Расскажи, какие важные новости и уровни сейчас по BTCUSDT.",
-    },
-    {
-      title: "BTC ликвидации",
-      sub: "Ключевые уровни на сутки",
-      text: "Покажи ключевые уровни ликвидаций по BTC на ближайшие сутки.",
-    },
+    "что произошло за 24 часа",
+    "solusdt уровни и новости",
+    "xrpusdt уровни и новости",
   ];
+
+  const rotatingPlaceholders = useMemo(
+    () => [
+      "Напиши вопрос по рынку",
+      "Загрузи скрин графика",
+      "Спроси про btc или sol",
+      "Попроси обзор новостей",
+    ],
+    []
+  );
 
   const pinnedMessages = messages.filter((m) => m.role === "ai" && m.pinned);
 
@@ -161,7 +182,7 @@ export default function AiPage() {
     setSessionId(null);
     setShowGreeting(true);
     setShowQuickPrompts(true);
-    setSystemNote("История AI-чата была обновлена. Начат новый диалог.");
+    setSystemNote("Прошло больше часа. Начат новый чат.");
 
     try {
       localStorage.removeItem(CHAT_SESSION_KEY);
@@ -202,8 +223,6 @@ export default function AiPage() {
     setSending(true);
 
     const currentFile = attachedFile;
-    const currentPreview = attachedPreview;
-
     setAttachedFile(null);
     setAttachedPreview(null);
 
@@ -266,7 +285,7 @@ export default function AiPage() {
       setMessages((prev) => [...prev, aiMessage]);
     } finally {
       setSending(false);
-      setTimeout(scrollToBottom, 60);
+      setTimeout(scrollToBottom, 80);
     }
   }
 
@@ -274,7 +293,10 @@ export default function AiPage() {
     requestAnimationFrame(() => {
       const el = chatRef.current;
       if (!el) return;
-      el.scrollTo({ top: el.scrollHeight + 300, behavior: "smooth" });
+      el.scrollTo({
+        top: el.scrollHeight + 800,
+        behavior: "smooth",
+      });
     });
   }
 
@@ -292,6 +314,14 @@ export default function AiPage() {
       setAttachedPreview(typeof reader.result === "string" ? reader.result : null);
     };
     reader.readAsDataURL(file);
+
+    setShowGreeting(false);
+    setShowQuickPrompts(false);
+
+    setTimeout(() => {
+      textAreaRef.current?.focus();
+      scrollToBottom();
+    }, 60);
   }
 
   function togglePin(id: string) {
@@ -351,13 +381,13 @@ export default function AiPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, sending]);
+  }, [messages, sending, keyboardOpen, keyboardInset]);
 
   useEffect(() => {
     const el = textAreaRef.current;
     if (!el) return;
     el.style.height = "24px";
-    el.style.height = `${Math.min(el.scrollHeight, 110)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 118)}px`;
   }, [input]);
 
   useEffect(() => {
@@ -379,6 +409,62 @@ export default function AiPage() {
       setSessionId(savedSession);
     } catch {}
   }, []);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+
+    const updateKeyboardState = () => {
+      const currentHeight = vv?.height ?? window.innerHeight;
+
+      if (initialViewportHeightRef.current == null) {
+        initialViewportHeightRef.current = currentHeight;
+      }
+
+      const baseHeight = initialViewportHeightRef.current ?? currentHeight;
+      const diff = baseHeight - currentHeight;
+
+      setKeyboardOpen(diff > 120);
+      setKeyboardInset(diff > 0 ? diff : 0);
+    };
+
+    updateKeyboardState();
+
+    vv?.addEventListener("resize", updateKeyboardState);
+    window.addEventListener("resize", updateKeyboardState);
+
+    return () => {
+      vv?.removeEventListener("resize", updateKeyboardState);
+      window.removeEventListener("resize", updateKeyboardState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (input.trim()) {
+      setPlaceholderVisibleText("");
+      return;
+    }
+
+    const phrase = rotatingPlaceholders[placeholderIndex];
+    let i = 0;
+    setPlaceholderVisibleText("");
+
+    const typeTimer = setInterval(() => {
+      i += 1;
+      setPlaceholderVisibleText(phrase.slice(0, i));
+      if (i >= phrase.length) {
+        clearInterval(typeTimer);
+      }
+    }, 42);
+
+    const swapTimer = setTimeout(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % rotatingPlaceholders.length);
+    }, 2600);
+
+    return () => {
+      clearInterval(typeTimer);
+      clearTimeout(swapTimer);
+    };
+  }, [placeholderIndex, rotatingPlaceholders, input]);
 
   return (
     <>
@@ -423,6 +509,16 @@ export default function AiPage() {
             transform: translateY(-3px);
           }
         }
+
+        @keyframes softGlow {
+          0%,
+          100% {
+            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
+          }
+          50% {
+            box-shadow: 0 0 20px rgba(41, 121, 255, 0.15);
+          }
+        }
       `}</style>
 
       <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
@@ -445,33 +541,40 @@ export default function AiPage() {
             <div style={styles.topSpacer} />
           </section>
 
-          <section style={{ ...styles.pinnedWrap, ...reveal(1, mounted) }}>
-            <div style={styles.pinnedTitle}>Закреплённые ответы</div>
+          {!keyboardOpen ? (
+            <section style={{ ...styles.pinnedWrap, ...reveal(1, mounted) }}>
+              <div style={styles.pinnedTitle}>Закреплённые ответы</div>
 
-            {!pinnedMessages.length ? (
-              <div style={styles.pinnedEmpty}>Пока ничего не закреплено.</div>
-            ) : (
-              <div style={styles.pinnedList}>
-                {pinnedMessages.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    style={styles.pinnedItem}
-                    onClick={() => jumpToMessage(m.id)}
-                  >
-                    {(m.text || "").length > 140
-                      ? `${m.text.slice(0, 137)}…`
-                      : m.text}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
+              {!pinnedMessages.length ? (
+                <div style={styles.pinnedEmpty}>Пока ничего не закреплено.</div>
+              ) : (
+                <div style={styles.pinnedList}>
+                  {pinnedMessages.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      style={styles.pinnedItem}
+                      onClick={() => jumpToMessage(m.id)}
+                    >
+                      {(m.text || "").length > 140
+                        ? `${m.text.slice(0, 137)}…`
+                        : m.text}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
 
-          <section style={styles.chatArea}>
+          <section
+            style={{
+              ...styles.chatArea,
+              paddingBottom: keyboardOpen ? 12 : 0,
+            }}
+          >
             {systemNote ? <div style={styles.systemNote}>{systemNote}</div> : null}
 
-            {showGreeting ? (
+            {!keyboardOpen && showGreeting ? (
               <div style={{ ...styles.greetingCard, ...reveal(2, mounted) }}>
                 <div style={styles.greetingHeading}>
                   Привет, я твой крипто ассистент.
@@ -511,23 +614,28 @@ export default function AiPage() {
               </div>
             ) : null}
 
-            {showQuickPrompts ? (
-              <div style={styles.quickGrid}>
+            {!keyboardOpen && showQuickPrompts ? (
+              <div style={styles.quickStack}>
                 {quickPrompts.map((item) => (
                   <button
-                    key={item.title}
+                    key={item}
                     type="button"
-                    style={styles.quickCard}
-                    onClick={() => sendMessage(item.text)}
+                    style={styles.quickInline}
+                    onClick={() => sendMessage(item)}
                   >
-                    <div style={styles.quickTitle}>{item.title}</div>
-                    <div style={styles.quickSub}>{item.sub}</div>
+                    {item}
                   </button>
                 ))}
               </div>
             ) : null}
 
-            <div ref={chatRef} style={styles.chatList}>
+            <div
+              ref={chatRef}
+              style={{
+                ...styles.chatList,
+                paddingBottom: keyboardOpen ? 26 : 10,
+              }}
+            >
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -596,7 +704,15 @@ export default function AiPage() {
             </div>
           </section>
 
-          <section style={styles.bottomBar}>
+          <section
+            style={{
+              ...styles.bottomBar,
+              paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${
+                keyboardOpen ? 10 : 18
+              }px)`,
+              marginBottom: keyboardOpen ? Math.max(0, keyboardInset - 6) : 0,
+            }}
+          >
             {attachedPreview ? (
               <div style={styles.attachPreviewWrap}>
                 <img
@@ -641,10 +757,17 @@ export default function AiPage() {
                 <textarea
                   ref={textAreaRef}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Напиши вопрос по рынку или загрузи скрин"
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                  }}
+                  placeholder={input ? "" : placeholderVisibleText}
                   style={styles.textarea}
                   rows={1}
+                  onFocus={() => {
+                    setShowGreeting(false);
+                    setShowQuickPrompts(false);
+                    setTimeout(scrollToBottom, 150);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -669,10 +792,12 @@ export default function AiPage() {
               </button>
             </div>
 
-            <div style={styles.footerNote}>
-              Ответы ИИ носят информационный характер и не являются финансовой
-              рекомендацией.
-            </div>
+            {!keyboardOpen ? (
+              <div style={styles.footerNote}>
+                Ответы ИИ носят информационный характер и не являются финансовой
+                рекомендацией.
+              </div>
+            ) : null}
           </section>
         </div>
       </main>
@@ -701,7 +826,7 @@ const styles = {
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
-    height: "calc(100vh - env(safe-area-inset-top, 0px))",
+    height: "100vh",
     display: "flex",
     flexDirection: "column",
   } satisfies CSSProperties,
@@ -737,7 +862,7 @@ const styles = {
     fontSize: 18,
     fontWeight: 800,
     color: UI.textMain,
-    lineHeight: 1.1,
+    lineHeight: 1.05,
   } satisfies CSSProperties,
 
   topTitleSub: {
@@ -783,8 +908,8 @@ const styles = {
     width: "100%",
     textAlign: "left",
     borderRadius: 14,
-    background: "#101010",
-    border: "1px solid rgba(255,255,255,0.14)",
+    background: "#0c0c0c",
+    border: "1px solid rgba(255,255,255,0.12)",
     color: UI.textSoft,
     padding: "8px 10px",
     fontSize: 12,
@@ -815,6 +940,7 @@ const styles = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.18)",
     background: "#000",
+    animation: "softGlow 3.6s ease-in-out infinite",
   } satisfies CSSProperties,
 
   greetingHeading: {
@@ -851,35 +977,26 @@ const styles = {
     boxShadow: "0 8px 18px rgba(41,121,255,0.35)",
   } satisfies CSSProperties,
 
-  quickGrid: {
+  quickStack: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
+    gap: 6,
     marginBottom: 12,
   } satisfies CSSProperties,
 
-  quickCard: {
-    minHeight: 68,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "#151515",
-    color: "#fff",
+  quickInline: {
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "#050505",
+    color: "rgba(255,255,255,0.74)",
     textAlign: "left",
-    padding: "11px 13px",
-    cursor: "pointer",
-  } satisfies CSSProperties,
-
-  quickTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  quickSub: {
-    marginTop: 4,
+    padding: "10px 12px",
     fontSize: 11.5,
-    color: "#b3b3b3",
-    lineHeight: 1.3,
+    lineHeight: 1.15,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   } satisfies CSSProperties,
 
   chatList: {
@@ -923,6 +1040,7 @@ const styles = {
     lineHeight: 1.45,
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
+    transition: "transform 180ms ease, box-shadow 180ms ease",
   } satisfies CSSProperties,
 
   userBubble: {
@@ -996,9 +1114,9 @@ const styles = {
   } satisfies CSSProperties,
 
   bottomBar: {
-    paddingTop: 8,
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
-    background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.92) 24%)",
+    paddingTop: 12,
+    background:
+      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.80) 18%, rgba(0,0,0,0.98) 58%)",
   } satisfies CSSProperties,
 
   attachPreviewWrap: {
@@ -1033,12 +1151,12 @@ const styles = {
   inputRow: {
     display: "flex",
     alignItems: "flex-end",
-    gap: 14,
+    gap: 12,
   } satisfies CSSProperties,
 
   circleBtn: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: 999,
     border: "none",
     background: "#151515",
@@ -1054,11 +1172,11 @@ const styles = {
     flex: 1,
     display: "flex",
     alignItems: "flex-end",
-    padding: "8px 18px",
+    padding: "9px 18px",
     borderRadius: 28,
     background: "#111111",
     border: "1px solid rgba(255,255,255,.18)",
-    minHeight: 46,
+    minHeight: 48,
   } satisfies CSSProperties,
 
   textarea: {
@@ -1069,15 +1187,15 @@ const styles = {
     background: "transparent",
     color: "#fff",
     fontSize: 16,
-    lineHeight: 1.45,
+    lineHeight: 1.42,
     minHeight: 24,
-    maxHeight: 110,
+    maxHeight: 118,
     padding: "4px 0",
   } satisfies CSSProperties,
 
   sendBtn: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: 999,
     border: "none",
     background: UI.brand,
