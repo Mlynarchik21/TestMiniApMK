@@ -124,6 +124,15 @@ function formatPct(n: number) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
+function formatUsd(v: unknown) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "$0";
+  return `$${n.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function formatTrillionsFromUsdAndPercent(totalUsd: number, percent: number) {
   if (!Number.isFinite(totalUsd) || !Number.isFinite(percent)) return "—";
   return `$${((totalUsd * percent) / 100 / 1_000_000_000_000).toFixed(2)}T`;
@@ -148,6 +157,14 @@ function formatUpdatedAt(iso?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function pnlColor(v: unknown) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return UI.textMain;
+  if (n > 0) return UI.green;
+  if (n < 0) return UI.red;
+  return UI.textMain;
 }
 
 function BellIcon() {
@@ -193,6 +210,14 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [marketData, setMarketData] = useState<HomeMarketResp | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
+
+  const [botWidgetLoading, setBotWidgetLoading] = useState(false);
+  const [botWidget, setBotWidget] = useState<{
+    active: boolean;
+    openPositions: number;
+    pnlToday: number;
+    capitalInWork: number;
+  } | null>(null);
 
   const [pagePaddingTop, setPagePaddingTop] = useState(
     "calc(env(safe-area-inset-top, 0px) + 5px)"
@@ -255,6 +280,75 @@ export default function HomePage() {
     }
   }
 
+  async function loadBotWidget() {
+    setBotWidgetLoading(true);
+
+    const token = getToken();
+
+    try {
+      const [botRes, statsRes] = await Promise.all([
+        fetch("/api/bot", {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }),
+        fetch("/api/bot/stats?recentTake=20", {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }),
+      ]);
+
+      const botJson = (await botRes.json().catch(() => ({
+        ok: false,
+      }))) as AnyResp;
+
+      const statsJson = (await statsRes.json().catch(() => ({
+        ok: false,
+      }))) as AnyResp;
+
+      const config = botJson.ok ? (botJson as any).config ?? null : null;
+      const state = botJson.ok ? (botJson as any).state ?? null : null;
+      const positions =
+        botJson.ok && Array.isArray((botJson as any).positions)
+          ? (botJson as any).positions
+          : [];
+
+      const active =
+        !!config?.enabled &&
+        String(state?.status ?? "").toUpperCase() !== "STOPPED" &&
+        String(state?.status ?? "").toUpperCase() !== "IDLE";
+
+      const openPositions =
+        statsJson.ok
+          ? Number((statsJson as any)?.stats?.openPositions ?? positions.length ?? 0)
+          : positions.length;
+
+      const pnlToday = statsJson.ok
+        ? Number((statsJson as any)?.stats?.pnlToday ?? 0)
+        : 0;
+
+      const capitalInWork = statsJson.ok
+        ? Number((statsJson as any)?.stats?.capitalInWork ?? 0)
+        : 0;
+
+      setBotWidget({
+        active,
+        openPositions,
+        pnlToday,
+        capitalInWork,
+      });
+    } catch {
+      setBotWidget(null);
+    } finally {
+      setBotWidgetLoading(false);
+    }
+  }
+
   const checkMe = () => run("/api/me", { method: "GET" });
 
   useEffect(() => {
@@ -265,6 +359,7 @@ export default function HomePage() {
 
     checkMe();
     loadHomeMarket();
+    loadBotWidget();
 
     const tg = (window as any)?.Telegram?.WebApp;
 
@@ -289,9 +384,14 @@ export default function HomePage() {
       }
     } catch {}
 
+    const pollId = setInterval(() => {
+      loadBotWidget();
+    }, 15000);
+
     const id = requestAnimationFrame(() => setMounted(true));
 
     return () => {
+      clearInterval(pollId);
       cancelAnimationFrame(id);
 
       try {
@@ -316,6 +416,11 @@ export default function HomePage() {
   const altDominance = marketData?.ok ? marketData.market.altDominance : null;
   const altseasonValue = marketData?.ok ? marketData.altseason.value : null;
   const updatedAt = marketData?.ok ? formatUpdatedAt(marketData.updatedAt) : "—";
+
+  const botActive = botWidget?.active ?? false;
+  const botOpenPositions = botWidget?.openPositions ?? 0;
+  const botPnlToday = botWidget?.pnlToday ?? 0;
+  const botCapitalInWork = botWidget?.capitalInWork ?? 0;
 
   return (
     <>
@@ -641,34 +746,60 @@ export default function HomePage() {
                 <div style={styles.botEyebrow}>TRADING SYSTEM</div>
                 <div style={styles.botTitle}>Состояние бота</div>
               </div>
-              <StatusDot text="Активен" />
+
+              <StatusDot
+                text={
+                  botWidgetLoading
+                    ? "Загрузка"
+                    : botActive
+                    ? "Активен"
+                    : "Не активен"
+                }
+                active={botActive}
+              />
             </div>
 
             <div style={styles.botMetricsGrid}>
               <MetricBox
                 label="Статус"
-                value="Активен"
-                sub="Runtime ok"
-                valueColor={UI.green}
-                glowColor="rgba(100,217,123,0.18)"
+                value={
+                  botWidgetLoading
+                    ? "..."
+                    : botActive
+                    ? "Активен"
+                    : "Остановлен"
+                }
+                sub={
+                  botWidgetLoading ? "Обновляем..." : botActive ? "Runtime ok" : "Бот выключен"
+                }
+                valueColor={botActive ? UI.green : UI.red}
+                glowColor={
+                  botActive
+                    ? "rgba(100,217,123,0.18)"
+                    : "rgba(255,106,106,0.18)"
+                }
               />
               <MetricBox
                 label="Позиции"
-                value="3"
+                value={botWidgetLoading ? "..." : String(botOpenPositions)}
                 sub="Открыто"
                 valueColor={UI.textMain}
                 glowColor="rgba(255,255,255,0.10)"
               />
               <MetricBox
                 label="PnL today"
-                value="+12.3"
+                value={botWidgetLoading ? "..." : formatUsd(botPnlToday)}
                 sub="USDT"
-                valueColor={UI.green}
-                glowColor="rgba(100,217,123,0.18)"
+                valueColor={pnlColor(botPnlToday)}
+                glowColor={
+                  botPnlToday >= 0
+                    ? "rgba(100,217,123,0.18)"
+                    : "rgba(255,106,106,0.18)"
+                }
               />
               <MetricBox
                 label="В работе"
-                value="45"
+                value={botWidgetLoading ? "..." : formatUsd(botCapitalInWork)}
                 sub="USDT"
                 valueColor={UI.blue}
                 glowColor="rgba(41,121,255,0.18)"
@@ -705,6 +836,14 @@ export default function HomePage() {
                   style={debugActionStyle(marketLoading)}
                 >
                   {marketLoading ? "..." : "Обновить рынок"}
+                </button>
+
+                <button
+                  onClick={loadBotWidget}
+                  disabled={botWidgetLoading}
+                  style={debugActionStyle(botWidgetLoading)}
+                >
+                  {botWidgetLoading ? "..." : "Обновить бота"}
                 </button>
 
                 <button
@@ -811,10 +950,28 @@ function MetricBox(props: {
   );
 }
 
-function StatusDot(props: { text: string }) {
+function StatusDot(props: { text: string; active?: boolean }) {
+  const active = !!props.active;
+
   return (
-    <div style={styles.statusPill}>
-      <span style={styles.statusDot} />
+    <div
+      style={{
+        ...styles.statusPill,
+        background: active
+          ? "rgba(100,217,123,0.08)"
+          : "rgba(255,106,106,0.08)",
+        border: active
+          ? "1px solid rgba(100,217,123,0.22)"
+          : "1px solid rgba(255,106,106,0.22)",
+        color: active ? UI.green : UI.red,
+      }}
+    >
+      <span
+        style={{
+          ...styles.statusDot,
+          background: active ? UI.green : UI.red,
+        }}
+      />
       <span>{props.text}</span>
     </div>
   );
