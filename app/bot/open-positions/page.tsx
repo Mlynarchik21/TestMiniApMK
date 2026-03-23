@@ -8,8 +8,6 @@ type AnyResp =
   | { ok: true; [k: string]: any }
   | { ok: false; error: string; message?: string; [k: string]: any };
 
-type StatsRangePreset = "1D" | "1W" | "1M" | "CUSTOM";
-
 const UI = {
   border: "rgba(255,255,255,0.12)",
   borderSoft: "rgba(255,255,255,0.09)",
@@ -132,41 +130,6 @@ function assetCodeFromSymbol(symbol: unknown) {
   return s.replace(/USDT$/i, "");
 }
 
-function getRangeDates(
-  preset: StatsRangePreset,
-  customFrom: string,
-  customTo: string
-) {
-  const now = new Date();
-
-  if (preset === "CUSTOM") {
-    const from = customFrom ? new Date(`${customFrom}T00:00:00`) : null;
-    const to = customTo ? new Date(`${customTo}T23:59:59.999`) : null;
-    return { from, to };
-  }
-
-  const to = now;
-  const from = new Date(now);
-
-  if (preset === "1D") {
-    from.setDate(now.getDate() - 1);
-  } else if (preset === "1W") {
-    from.setDate(now.getDate() - 7);
-  } else {
-    from.setMonth(now.getMonth() - 1);
-  }
-
-  return { from, to };
-}
-
-function inRange(dateLike: unknown, from: Date | null, to: Date | null) {
-  const d = safeDate(dateLike);
-  if (!d) return false;
-  if (from && d < from) return false;
-  if (to && d > to) return false;
-  return true;
-}
-
 function ratioWidth(part: number, total: number) {
   if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return "50%";
   const pct = Math.max(0, Math.min(100, (part / total) * 100));
@@ -205,9 +168,6 @@ export default function BotOpenPositionsPage() {
   const [err, setErr] = useState("");
   const [resp, setResp] = useState<AnyResp | null>(null);
   const [positions, setPositions] = useState<any[]>([]);
-  const [statsPreset, setStatsPreset] = useState<StatsRangePreset>("1W");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function loadPositions() {
@@ -274,26 +234,22 @@ export default function BotOpenPositionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const range = getRangeDates(statsPreset, customFrom, customTo);
-
   const filteredPositions = useMemo(() => {
     return positions
-      .filter((p) => inRange(p?.openedAt, range.from, range.to))
       .slice()
       .sort((a, b) => {
         const ad = safeDate(a?.updatedAt ?? a?.openedAt)?.getTime() ?? 0;
         const bd = safeDate(b?.updatedAt ?? b?.openedAt)?.getTime() ?? 0;
         return bd - ad;
       });
-  }, [positions, range.from, range.to]);
+  }, [positions]);
 
   const totalPositions = filteredPositions.length;
   const capitalInWork = filteredPositions.reduce(
     (sum, p) => sum + Number(p?.investedQuote ?? 0),
     0
   );
-  const avgCapital =
-    totalPositions > 0 ? capitalInWork / totalPositions : 0;
+  const avgCapital = totalPositions > 0 ? capitalInWork / totalPositions : 0;
 
   const noAddsCount = filteredPositions.filter(
     (p) => Number(p?.addsCount ?? 0) === 0
@@ -365,83 +321,52 @@ export default function BotOpenPositionsPage() {
             <div style={styles.topBarRightSpace} />
           </section>
 
-          <section style={{ ...styles.filtersBlock, ...reveal(1, mounted) }}>
-            <div style={styles.rangeBar}>
-              {(["1D", "1W", "1M", "CUSTOM"] as StatsRangePreset[]).map(
-                (preset) => {
-                  const active = statsPreset === preset;
-                  return (
-                    <button
-                      key={preset}
-                      type="button"
-                      style={{
-                        ...styles.rangeChip,
-                        ...(active ? styles.rangeChipActive : null),
-                      }}
-                      onClick={() => setStatsPreset(preset)}
-                    >
-                      {preset === "1D"
-                        ? "1 день"
-                        : preset === "1W"
-                          ? "1 неделя"
-                          : preset === "1M"
-                            ? "1 месяц"
-                            : "Свободный"}
-                    </button>
-                  );
-                }
-              )}
-            </div>
-
-            {statsPreset === "CUSTOM" ? (
-              <div style={styles.customRangeGrid}>
-                <Field label="Дата начала">
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    style={styles.input}
-                  />
-                </Field>
-
-                <Field label="Дата конца">
-                  <input
-                    type="date"
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    style={styles.input}
-                  />
-                </Field>
-              </div>
-            ) : null}
-          </section>
-
-          <section style={{ ...styles.statsBlock, ...reveal(2, mounted) }}>
+          <section style={{ ...styles.statsBlock, ...reveal(1, mounted) }}>
             <div style={styles.statsUnifiedCard}>
               <div style={styles.statsUnifiedTopRow}>
                 <div>
                   <div style={styles.statsBlockTitle}>Позиции в работе</div>
                   <div style={styles.statsBlockSub}>
-                    Открытые позиции и текущая загрузка
+                    Все текущие открытые позиции
                   </div>
                 </div>
 
-                <div style={styles.statsTopMetrics}>
-                  <div style={styles.metricBadge}>
-                    <span style={styles.metricBadgeLabel}>В работе</span>
-                    <span style={styles.metricBadgeValue}>{totalPositions}</span>
+                <div style={styles.statsTopMetricsColumn}>
+                  <div
+                    style={{
+                      ...styles.metricLine,
+                      borderColor: "rgba(100,217,123,0.20)",
+                      background: "rgba(100,217,123,0.07)",
+                    }}
+                  >
+                    <span style={styles.metricLineLabel}>В работе</span>
+                    <span style={{ ...styles.metricLineValue, color: UI.green }}>
+                      {totalPositions}
+                    </span>
                   </div>
 
-                  <div style={styles.metricBadge}>
-                    <span style={styles.metricBadgeLabel}>В работе, USDT</span>
-                    <span style={{ ...styles.metricBadgeValue, color: UI.blue }}>
+                  <div
+                    style={{
+                      ...styles.metricLine,
+                      borderColor: "rgba(41,121,255,0.20)",
+                      background: "rgba(41,121,255,0.07)",
+                    }}
+                  >
+                    <span style={styles.metricLineLabel}>В работе, USDT</span>
+                    <span style={{ ...styles.metricLineValue, color: UI.blue }}>
                       {formatUsd(capitalInWork)}
                     </span>
                   </div>
 
-                  <div style={styles.metricBadge}>
-                    <span style={styles.metricBadgeLabel}>Средняя загрузка</span>
-                    <span style={{ ...styles.metricBadgeValue, color: UI.yellow }}>
+                  <div
+                    style={{
+                      ...styles.metricLine,
+                      borderColor: "rgba(243,215,9,0.20)",
+                      background: "rgba(243,215,9,0.07)",
+                    }}
+                  >
+                    <span style={styles.metricLineLabel}>Средняя загрузка</span>
+                    <span style={{ ...styles.metricLineValue, color: UI.yellow }}>
                       {formatUsd(avgCapital)}
                     </span>
                   </div>
@@ -514,7 +439,7 @@ export default function BotOpenPositionsPage() {
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
+          <section style={{ ...styles.block, ...reveal(2, mounted) }}>
             {!filteredPositions.length && !loading ? (
               <div style={styles.emptyText}>Открытых ордеров нет.</div>
             ) : (
@@ -625,29 +550,20 @@ export default function BotOpenPositionsPage() {
           </section>
 
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(4, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(3, mounted) }}>
               <div style={styles.errorTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
           {loading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(5, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(4, mounted) }}>
               Загрузка открытых ордеров...
             </section>
           ) : null}
         </div>
       </main>
     </>
-  );
-}
-
-function Field(props: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={styles.fieldWrap}>
-      <span style={styles.fieldLabel}>{props.label}</span>
-      {props.children}
-    </label>
   );
 }
 
@@ -727,67 +643,8 @@ const styles = {
     height: 44,
   } satisfies CSSProperties,
 
-  filtersBlock: {
-    marginBottom: 16,
-  } satisfies CSSProperties,
-
   statsBlock: {
     marginBottom: 20,
-  } satisfies CSSProperties,
-
-  rangeBar: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  rangeChip: {
-    height: 36,
-    padding: "0 14px",
-    borderRadius: 999,
-    border: `1px solid ${UI.border}`,
-    background: "transparent",
-    color: UI.textMuted,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-  } satisfies CSSProperties,
-
-  rangeChipActive: {
-    background: "rgba(41,121,255,0.16)",
-    border: "1px solid rgba(41,121,255,0.30)",
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  customRangeGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  } satisfies CSSProperties,
-
-  fieldWrap: {
-    display: "grid",
-    gap: 8,
-  } satisfies CSSProperties,
-
-  fieldLabel: {
-    fontSize: 12,
-    color: UI.textMuted,
-    fontWeight: 600,
-  } satisfies CSSProperties,
-
-  input: {
-    width: "100%",
-    height: 46,
-    borderRadius: 14,
-    border: `1px solid ${UI.borderHard}`,
-    background: "rgba(255,255,255,0.03)",
-    color: UI.textMain,
-    outline: "none",
-    padding: "0 14px",
-    WebkitAppearance: "none",
-    appearance: "none",
   } satisfies CSSProperties,
 
   statsUnifiedCard: {
@@ -801,11 +658,8 @@ const styles = {
   } satisfies CSSProperties,
 
   statsUnifiedTopRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    flexWrap: "wrap",
+    display: "grid",
+    gap: 14,
   } satisfies CSSProperties,
 
   statsBlockTitle: {
@@ -822,36 +676,34 @@ const styles = {
     lineHeight: 1.4,
   } satisfies CSSProperties,
 
-  statsTopMetrics: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  } satisfies CSSProperties,
-
-  metricBadge: {
-    minWidth: 112,
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: `1px solid ${UI.borderSoft}`,
-    background: "rgba(255,255,255,0.02)",
+  statsTopMetricsColumn: {
     display: "grid",
-    gap: 5,
+    gap: 10,
   } satisfies CSSProperties,
 
-  metricBadgeLabel: {
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: UI.textFaint,
+  metricLine: {
+    border: "1px solid",
+    borderRadius: 16,
+    padding: "12px 14px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  metricLineLabel: {
+    fontSize: 12,
+    color: UI.textSoft,
     fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
   } satisfies CSSProperties,
 
-  metricBadgeValue: {
-    fontSize: 18,
+  metricLineValue: {
+    fontSize: 20,
     fontWeight: 800,
-    lineHeight: 1.1,
-    color: UI.textMain,
+    lineHeight: 1,
+    textAlign: "right",
   } satisfies CSSProperties,
 
   statLineBlock: {
