@@ -282,6 +282,12 @@ export default function BotPage() {
   const [balanceError, setBalanceError] = useState("");
   const [showPnlInfo, setShowPnlInfo] = useState(false);
 
+  const [testActionLoading, setTestActionLoading] = useState<
+    "" | "open" | "average" | "close"
+  >("");
+  const [testError, setTestError] = useState("");
+  const [testSymbol, setTestSymbol] = useState("BTCUSDT");
+
   const [pagePaddingTop, setPagePaddingTop] = useState(
     "calc(env(safe-area-inset-top, 0px) + 15px)"
   );
@@ -491,6 +497,103 @@ export default function BotPage() {
       await reloadAll();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openTestTrade() {
+    const symbol = testSymbol.trim().toUpperCase();
+    if (!symbol) {
+      setTestError("Укажи символ для тестовой сделки");
+      return;
+    }
+
+    setTestActionLoading("open");
+    setTestError("");
+
+    try {
+      const r = await api(
+        `/api/engine/test-open?symbol=${encodeURIComponent(symbol)}`,
+        { method: "POST" }
+      );
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setTestError(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setTestActionLoading("");
+    }
+  }
+
+  async function averageTestTrade() {
+    const symbol = testSymbol.trim().toUpperCase();
+    if (!symbol) {
+      setTestError("Укажи символ для усреднения");
+      return;
+    }
+
+    setTestActionLoading("average");
+    setTestError("");
+
+    try {
+      const r = await api(
+        `/api/engine/test-average?symbol=${encodeURIComponent(symbol)}`,
+        { method: "POST" }
+      );
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setTestError(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setTestActionLoading("");
+    }
+  }
+
+  async function closeTestTrade() {
+    const symbol = testSymbol.trim().toUpperCase();
+    if (!symbol) {
+      setTestError("Укажи символ для закрытия");
+      return;
+    }
+
+    setTestActionLoading("close");
+    setTestError("");
+
+    try {
+      const r = await api(
+        `/api/engine/test-close?symbol=${encodeURIComponent(symbol)}`,
+        { method: "POST" }
+      );
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        setTestError(humanizeError(r.json));
+        return;
+      }
+
+      await reloadAll();
+    } finally {
+      setTestActionLoading("");
+    }
+  }
+
+  async function copyTestError() {
+    if (!testError) return;
+
+    try {
+      await navigator.clipboard.writeText(testError);
+    } catch {
+      setTestError((prev) => prev);
     }
   }
 
@@ -1164,15 +1267,83 @@ export default function BotPage() {
             )}
           </section>
 
+          <section style={{ ...styles.debugCard, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>Тестовая панель</div>
+            </div>
+
+            <div style={styles.testHint}>
+              Временный блок для тестов. Позже его уберём.
+            </div>
+
+            <div style={styles.testPanelCard}>
+              <label style={styles.fieldWrap}>
+                <span style={styles.fieldLabel}>Тестовый символ</span>
+                <input
+                  value={testSymbol}
+                  onChange={(e) => setTestSymbol(e.target.value.toUpperCase())}
+                  placeholder="BTCUSDT"
+                  style={styles.input}
+                />
+              </label>
+
+              <div style={styles.testActionsGrid}>
+                <button
+                  type="button"
+                  style={styles.testPrimaryBtn}
+                  onClick={openTestTrade}
+                  disabled={testActionLoading !== ""}
+                >
+                  {testActionLoading === "open" ? "..." : "Открыть тест сделку"}
+                </button>
+
+                <button
+                  type="button"
+                  style={styles.testGhostBtn}
+                  onClick={averageTestTrade}
+                  disabled={testActionLoading !== ""}
+                >
+                  {testActionLoading === "average" ? "..." : "Усреднить тест сделку"}
+                </button>
+
+                <button
+                  type="button"
+                  style={styles.testDangerBtn}
+                  onClick={closeTestTrade}
+                  disabled={testActionLoading !== ""}
+                >
+                  {testActionLoading === "close" ? "..." : "Закрыть тест сделку"}
+                </button>
+              </div>
+            </div>
+
+            {testError ? (
+              <div style={styles.testErrorCard}>
+                <div style={styles.testErrorHead}>
+                  <div style={styles.testErrorTitle}>Ошибка тестового действия</div>
+                  <button
+                    type="button"
+                    style={styles.copyBtn}
+                    onClick={copyTestError}
+                  >
+                    Копировать
+                  </button>
+                </div>
+
+                <div style={styles.testErrorText}>{testError}</div>
+              </div>
+            ) : null}
+          </section>
+
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(5, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(6, mounted) }}>
               <div style={styles.sectionMainTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
           {pageLoading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(6, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(7, mounted) }}>
               Загрузка bot dashboard...
             </section>
           ) : null}
@@ -1438,6 +1609,13 @@ const styles = {
   } satisfies CSSProperties,
 
   accountBlock: {
+    paddingBottom: 20,
+    borderBottom: `1px solid ${UI.borderSoft}`,
+    marginBottom: 20,
+  } satisfies CSSProperties,
+
+  debugCard: {
+    marginTop: 0,
     paddingBottom: 20,
     borderBottom: `1px solid ${UI.borderSoft}`,
     marginBottom: 20,
@@ -1954,6 +2132,107 @@ const styles = {
     fontSize: 12,
     color: UI.textMuted,
     lineHeight: 1.55,
+  } satisfies CSSProperties,
+
+  testHint: {
+    fontSize: 12,
+    color: UI.textMuted,
+    marginBottom: 10,
+    lineHeight: 1.5,
+  } satisfies CSSProperties,
+
+  testPanelCard: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 18,
+    padding: 14,
+    background: "rgba(255,255,255,0.03)",
+    display: "grid",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  testActionsGrid: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  testPrimaryBtn: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+  } satisfies CSSProperties,
+
+  testGhostBtn: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  testDangerBtn: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: "1px solid rgba(255,106,106,0.22)",
+    background: "rgba(255,106,106,0.10)",
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  testErrorCard: {
+    marginTop: 12,
+    borderRadius: 16,
+    border: "1px solid rgba(255,106,106,0.22)",
+    background: "rgba(255,106,106,0.06)",
+    padding: 14,
+  } satisfies CSSProperties,
+
+  testErrorHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  testErrorTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  testErrorText: {
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: UI.textSoft,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  copyBtn: {
+    height: 34,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   errorCard: {
