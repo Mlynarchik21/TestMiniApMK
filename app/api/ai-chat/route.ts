@@ -31,15 +31,11 @@ type GeminiContent = {
 
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 20;
-
-// Gemini 2.5 Flash — хороший базовый вариант для быстрого чата. 
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 declare global {
   // eslint-disable-next-line no-var
-  var __aiChatSessions:
-    | Map<string, MemorySession>
-    | undefined;
+  var __aiChatSessions: Map<string, MemorySession> | undefined;
 }
 
 function getStore() {
@@ -51,9 +47,7 @@ function getStore() {
 
 function json(data: any, init?: ResponseInit) {
   return new Response(
-    JSON.stringify(data, (_k, v) =>
-      typeof v === "bigint" ? v.toString() : v
-    ),
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
     {
       ...init,
       headers: {
@@ -148,9 +142,7 @@ function toBase64(buffer: ArrayBuffer) {
 }
 
 function extractGeminiText(payload: any): string {
-  const candidates = Array.isArray(payload?.candidates)
-    ? payload.candidates
-    : [];
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
 
   for (const candidate of candidates) {
     const parts = candidate?.content?.parts;
@@ -172,27 +164,106 @@ function buildSystemInstruction() {
   return `
 Ты — крипто ассистент внутри торгового мини-приложения.
 
-Твоя задача:
-- давать понятные и структурные обзоры рынка;
-- объяснять ситуацию по монетам, новостям, уровням и скринам графиков;
-- отвечать только по теме крипторынка и трейдинга;
-- если данных недостаточно — прямо говорить об этом;
-- не выдумывать факты, новости, цены и события;
-- не обещать доходность;
-- не использовать агрессивный тон.
+Ты работаешь ТОЛЬКО с темами:
+- криптовалютный рынок
+- трейдинг
+- монеты, тикеры, пары
+- графики
+- уровни, зоны, структура цены
+- ликвидность, волатильность, объёмы
+- новости крипторынка
+- макрофакторы, если они влияют на крипту
+- анализ скринов графиков и торговых интерфейсов
 
-Стиль ответа:
-- всегда на русском языке;
-- коротко, ясно, по делу;
-- удобно читать с телефона;
-- если уместно, дели ответ на 3–5 коротких блоков;
-- по скрину графика сначала давай общую структуру, потом уровни, потом сценарии;
-- если пользователь просит мнение по рынку — отделяй факт от предположения.
+ЖЁСТКОЕ ПРАВИЛО:
+Если запрос не относится к крипторынку, трейдингу, графикам, монетам, уровням, ликвидности или рыночной аналитике,
+ты отвечаешь строго одной фразой:
 
-Обязательное правило:
-- не давай финансовых гарантий;
-- не формулируй ответ как инвестиционную рекомендацию;
-- если даёшь сценарии, обязательно указывай риски.
+"Я работаю только с крипторынком, графиками и анализом. Задай вопрос по рынку."
+
+Никаких дополнительных пояснений.
+Никаких альтернатив.
+Никакой помощи в других темах.
+
+Если пользователь присылает картинку не с графиком, не с торговым интерфейсом и не с рыночными данными,
+ты отвечаешь строго:
+"Я работаю только с крипторынком, графиками и анализом. Задай вопрос по рынку."
+
+СТИЛЬ:
+- всегда на русском языке
+- коротко, ясно, по делу
+- удобно читать с телефона
+- без воды
+- без таблиц
+- максимум пользы, минимум лишнего
+- если данных недостаточно, говори об этом прямо
+
+ЗАПРЕЩЕНО:
+- выдумывать факты
+- выдумывать новости, цены, даты и события
+- давать финансовые гарантии
+- обещать доходность
+- писать как инвестиционный совет
+
+ФОРМАТЫ ОТВЕТА:
+Ты всегда выбираешь только ОДНУ из 3 структур.
+
+СТРУКТУРА A — для сложных вопросов:
+Используй если пользователь просит:
+- обзор рынка
+- причины движения
+- сценарии
+- сравнение активов
+- что происходит и что дальше
+
+Формат:
+
+TLDR
+1 предложение прямого ответа
+1–3 нумерованных пункта
+
+Deep Dive
+до 3 смысловых блоков
+каждый блок короткий
+каждый блок раскрывает один аспект:
+- рынок
+- новости / макро
+- ликвидность / сценарии / риски
+
+Conclusion
+1–3 предложения вывода
+без советов покупать или продавать
+
+СТРУКТУРА B — для объяснения:
+Используй если пользователь спрашивает:
+- что это
+- как работает
+- в чем разница
+- что значит показатель, метрика или механизм
+
+Формат:
+2–3 коротких блока
+каждый начинается с понятного тезиса
+без TLDR / Deep Dive / Conclusion
+
+СТРУКТУРА C — для простого факта:
+Используй если пользователь просит:
+- короткий факт
+- один конкретный показатель
+- прямой краткий ответ
+
+Формат:
+один короткий абзац
+без заголовков
+без лишних деталей
+
+ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРИСЛАЛ СКРИН ГРАФИКА:
+- сначала определи общую структуру
+- потом выдели ключевые уровни / зоны
+- потом дай возможные сценарии
+- в конце коротко укажи риски
+- не выдумывай индикаторы, которых не видно
+- не придумывай таймфрейм, если он не читается
 `.trim();
 }
 
@@ -201,6 +272,127 @@ function historyToGeminiContents(history: MemoryMessage[]): GeminiContent[] {
     role: item.role,
     parts: [{ text: item.text }],
   }));
+}
+
+function marketOnlyRefusal() {
+  return "Я работаю только с крипторынком, графиками и анализом. Задай вопрос по рынку.";
+}
+
+function isDateQuestion(text: string) {
+  const t = text.toLowerCase().trim();
+
+  return (
+    t.includes("какой сегодня день") ||
+    t.includes("какая сегодня дата") ||
+    t.includes("какое сегодня число") ||
+    t.includes("какой сегодня месяц") ||
+    t.includes("какой сегодня год") ||
+    t.includes("сколько сейчас времени") ||
+    t.includes("сколько время") ||
+    t.includes("который час") ||
+    t.includes("какое сейчас время") ||
+    t === "дата" ||
+    t === "время"
+  );
+}
+
+function buildServerDateAnswer() {
+  const now = new Date();
+
+  return `Сейчас ${now.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}.`;
+}
+
+function isLikelyMarketRelated(message: string) {
+  const text = message.toLowerCase().trim();
+
+  if (!text) return true;
+
+  const marketKeywords = [
+    "btc",
+    "eth",
+    "xrp",
+    "sol",
+    "usdt",
+    "bnb",
+    "ton",
+    "doge",
+    "ada",
+    "avax",
+    "dot",
+    "link",
+    "binance",
+    "bybit",
+    "okx",
+    "bitget",
+    "bitcoin",
+    "ethereum",
+    "рипл",
+    "сол",
+    "солана",
+    "биткоин",
+    "эфир",
+    "альт",
+    "альткоин",
+    "крипт",
+    "крипто",
+    "рынок",
+    "график",
+    "свеч",
+    "уров",
+    "зона",
+    "структур",
+    "ликвид",
+    "трейд",
+    "трейдинг",
+    "лонг",
+    "шорт",
+    "фьючерс",
+    "спот",
+    "объем",
+    "объём",
+    "волатиль",
+    "макро",
+    "доминац",
+    "капитализац",
+    "монет",
+    "тикер",
+    "pair",
+    "price",
+    "chart",
+    "support",
+    "resistance",
+    "oi",
+    "open interest",
+    "funding",
+    "liquidation",
+    "ликвидац",
+    "etf",
+    "sec",
+    "rsi",
+    "macd",
+    "ema",
+    "sma",
+    "pivot",
+    "fibo",
+    "фибо",
+    "таймфрейм",
+    "перп",
+    "перпетуал",
+    "сквиз",
+    "сетап",
+    "сетапы",
+    "обзор рынка",
+    "новости рынка",
+    "что по рынку",
+  ];
+
+  return marketKeywords.some((keyword) => text.includes(keyword));
 }
 
 async function callGemini(params: {
@@ -231,7 +423,7 @@ async function callGemini(params: {
 
     if (!params.message.trim()) {
       userParts.push({
-        text: "Проанализируй этот скрин графика. Определи структуру, ключевые уровни, риски и возможные сценарии движения.",
+        text: "Проанализируй этот скрин. Если это не график, не торговый интерфейс и не рыночные данные — откажись одной фразой. Если это график крипторынка — дай структуру, ключевые уровни, сценарии и риски.",
       });
     }
   }
@@ -250,7 +442,7 @@ async function callGemini(params: {
     },
     contents,
     generationConfig: {
-      temperature: 0.35,
+      temperature: 0.3,
       topP: 0.9,
       maxOutputTokens: 1200,
     },
@@ -298,8 +490,7 @@ export async function POST(req: Request) {
     const sessionIdRaw = String(form.get("sessionId") || "").trim();
 
     const file = form.get("image");
-    const image =
-      file instanceof File && file.size > 0 ? file : null;
+    const image = file instanceof File && file.size > 0 ? file : null;
 
     if (!message && !image) {
       return fail(400, "BAD_REQUEST", "message or image required");
@@ -309,10 +500,51 @@ export async function POST(req: Request) {
       return fail(400, "IMAGE_TOO_LARGE", "Максимальный размер изображения — 10 МБ.");
     }
 
-    const { sessionId, session, expired } = getOrCreateSession(
-      user.id,
-      sessionIdRaw
-    );
+    const { sessionId, session, expired } = getOrCreateSession(user.id, sessionIdRaw);
+
+    // 1. Отдельная серверная обработка даты/времени
+    if (message && !image && isDateQuestion(message)) {
+      const answer = buildServerDateAnswer();
+
+      session.history.push({
+        role: "user",
+        text: message,
+      });
+      session.history.push({
+        role: "model",
+        text: answer,
+      });
+
+      saveSession(sessionId, session);
+
+      return ok({
+        answer,
+        sessionId,
+        expired,
+      });
+    }
+
+    // 2. Жёсткий текстовый фильтр вне рынка
+    if (message && !image && !isLikelyMarketRelated(message)) {
+      const answer = marketOnlyRefusal();
+
+      session.history.push({
+        role: "user",
+        text: message,
+      });
+      session.history.push({
+        role: "model",
+        text: answer,
+      });
+
+      saveSession(sessionId, session);
+
+      return ok({
+        answer,
+        sessionId,
+        expired,
+      });
+    }
 
     let imageBase64: string | null = null;
     let imageMime: string | null = null;
