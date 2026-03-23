@@ -5,8 +5,8 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 type AiResp =
-  | { ok: true; answer?: string; sessionId?: string; [k: string]: any }
-  | { ok: false; error?: string; message?: string; sessionId?: string; [k: string]: any };
+  | { ok: true; answer?: string; sessionId?: string; expired?: boolean; [k: string]: any }
+  | { ok: false; error?: string; message?: string; sessionId?: string; expired?: boolean; [k: string]: any };
 
 type ChatItem = {
   id: string;
@@ -32,6 +32,10 @@ const UI = {
   brand: "#2979ff",
   yellow: "#f3d709",
 };
+
+const CHAT_SESSION_KEY = "aiSessionId";
+const CHAT_LAST_ACTIVITY_KEY = "aiLastActivityAt";
+const CHAT_EXPIRE_MS = 60 * 60 * 1000;
 
 function getToken() {
   try {
@@ -123,6 +127,7 @@ export default function AiPage() {
   const [showGreeting, setShowGreeting] = useState(true);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [systemNote, setSystemNote] = useState("");
 
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
@@ -151,6 +156,27 @@ export default function AiPage() {
 
   const pinnedMessages = messages.filter((m) => m.role === "ai" && m.pinned);
 
+  function clearExpiredChatLocally() {
+    setMessages([]);
+    setSessionId(null);
+    setShowGreeting(true);
+    setShowQuickPrompts(true);
+    setSystemNote("История AI-чата была обновлена. Начат новый диалог.");
+
+    try {
+      localStorage.removeItem(CHAT_SESSION_KEY);
+      localStorage.removeItem(CHAT_LAST_ACTIVITY_KEY);
+    } catch {}
+  }
+
+  function markActivity(nextSessionId?: string | null) {
+    try {
+      const sid = nextSessionId ?? sessionId;
+      if (sid) localStorage.setItem(CHAT_SESSION_KEY, sid);
+      localStorage.setItem(CHAT_LAST_ACTIVITY_KEY, String(Date.now()));
+    } catch {}
+  }
+
   async function sendMessage(presetText?: string) {
     const text = (presetText ?? input).trim();
 
@@ -161,6 +187,7 @@ export default function AiPage() {
 
     if (showGreeting) setShowGreeting(false);
     if (showQuickPrompts) setShowQuickPrompts(false);
+    setSystemNote("");
 
     const userMessage: ChatItem = {
       id: makeId(),
@@ -205,6 +232,10 @@ export default function AiPage() {
         data = (await res.json()) as AiResp;
       } catch {}
 
+      if (data?.expired) {
+        clearExpiredChatLocally();
+      }
+
       const answer =
         data?.ok && data.answer
           ? data.answer
@@ -212,6 +243,9 @@ export default function AiPage() {
 
       if (data?.sessionId) {
         setSessionId(data.sessionId);
+        markActivity(data.sessionId);
+      } else {
+        markActivity();
       }
 
       const aiMessage: ChatItem = {
@@ -323,8 +357,28 @@ export default function AiPage() {
     const el = textAreaRef.current;
     if (!el) return;
     el.style.height = "24px";
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 110)}px`;
   }, [input]);
+
+  useEffect(() => {
+    try {
+      const savedSession = localStorage.getItem(CHAT_SESSION_KEY);
+      const savedLastActivity = Number(localStorage.getItem(CHAT_LAST_ACTIVITY_KEY) || "0");
+
+      if (!savedSession || !savedLastActivity) return;
+
+      const expired = Date.now() - savedLastActivity > CHAT_EXPIRE_MS;
+
+      if (expired) {
+        localStorage.removeItem(CHAT_SESSION_KEY);
+        localStorage.removeItem(CHAT_LAST_ACTIVITY_KEY);
+        setSystemNote("Прошло больше часа после последнего сообщения. Начат новый чат.");
+        return;
+      }
+
+      setSessionId(savedSession);
+    } catch {}
+  }, []);
 
   return (
     <>
@@ -384,8 +438,8 @@ export default function AiPage() {
             </button>
 
             <div style={styles.topTitleWrap}>
-              <div style={styles.topTitle}>AI ассистент</div>
-              <div style={styles.topTitleSub}>на базе Trader’s Map</div>
+              <div style={styles.topTitle}>Крипто ассистент</div>
+              <div style={styles.topTitleSub}>AI для обзора рынка и скринов</div>
             </div>
 
             <div style={styles.topSpacer} />
@@ -415,10 +469,12 @@ export default function AiPage() {
           </section>
 
           <section style={styles.chatArea}>
+            {systemNote ? <div style={styles.systemNote}>{systemNote}</div> : null}
+
             {showGreeting ? (
               <div style={{ ...styles.greetingCard, ...reveal(2, mounted) }}>
                 <div style={styles.greetingHeading}>
-                  Привет, я твой крипто-ассистент Trader’s Map.
+                  Привет, я твой крипто ассистент.
                 </div>
 
                 <div style={styles.greetingItem}>
@@ -432,8 +488,8 @@ export default function AiPage() {
                 <div style={styles.greetingItem}>
                   <span style={styles.greetingIcon}>⚠️</span>
                   <span>
-                    Команда продолжает обучать меня, поэтому я работаю в тестовом
-                    режиме.
+                    Я работаю в тестовом режиме и могу ошибаться, особенно в
+                    быстро меняющемся рынке.
                   </span>
                 </div>
 
@@ -529,7 +585,7 @@ export default function AiPage() {
 
               {sending ? (
                 <div style={styles.typingRow}>
-                  <span>AI-ассистент думает</span>
+                  <span>AI анализирует запрос</span>
                   <div style={styles.typingDots}>
                     <span style={{ ...styles.typingDot, animationDelay: "0ms" }} />
                     <span style={{ ...styles.typingDot, animationDelay: "140ms" }} />
@@ -586,7 +642,7 @@ export default function AiPage() {
                   ref={textAreaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Спросите что-нибудь"
+                  placeholder="Напиши вопрос по рынку или загрузи скрин"
                   style={styles.textarea}
                   rows={1}
                   onKeyDown={(e) => {
@@ -678,7 +734,7 @@ const styles = {
   } satisfies CSSProperties,
 
   topTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 800,
     color: UI.textMain,
     lineHeight: 1.1,
@@ -740,6 +796,17 @@ const styles = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
+  } satisfies CSSProperties,
+
+  systemNote: {
+    marginBottom: 10,
+    border: `1px solid ${UI.border}`,
+    background: "rgba(41,121,255,0.10)",
+    color: UI.textSoft,
+    borderRadius: 14,
+    padding: "10px 12px",
+    fontSize: 12,
+    lineHeight: 1.45,
   } satisfies CSSProperties,
 
   greetingCard: {
@@ -965,7 +1032,7 @@ const styles = {
 
   inputRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 14,
   } satisfies CSSProperties,
 
@@ -986,11 +1053,12 @@ const styles = {
   inputShell: {
     flex: 1,
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-end",
     padding: "8px 18px",
     borderRadius: 28,
     background: "#111111",
     border: "1px solid rgba(255,255,255,.18)",
+    minHeight: 46,
   } satisfies CSSProperties,
 
   textarea: {
@@ -1003,7 +1071,7 @@ const styles = {
     fontSize: 16,
     lineHeight: 1.45,
     minHeight: 24,
-    maxHeight: 96,
+    maxHeight: 110,
     padding: "4px 0",
   } satisfies CSSProperties,
 
