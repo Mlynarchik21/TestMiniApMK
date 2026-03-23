@@ -21,7 +21,6 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
-    // 🔹 1. получаем все открытые позиции
     const openPositions = await prisma.botPosition.findMany({
       where: {
         userId: user.id,
@@ -30,10 +29,9 @@ export async function POST(req: Request) {
     });
 
     if (!openPositions.length) {
-      return ok({ closed: 0 });
+      return ok({ closed: 0, deletedTrades: 0 });
     }
 
-    // 🔹 2. закрываем их
     for (const p of openPositions) {
       const exitValue = Number(p.investedQuote ?? 0);
 
@@ -55,7 +53,7 @@ export async function POST(req: Request) {
           pnlPercent: 0,
 
           addsCount: p.addsCount ?? 0,
-          closeReason: "FORCE_CLOSE",
+          closeReason: "MANUAL",
 
           openedAt: p.openedAt,
           closedAt: now,
@@ -71,7 +69,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // 🔥 3. после закрытия — чистим историю
     const deletedTrades = await prisma.botTrade.deleteMany({
       where: { userId: user.id },
     });
@@ -81,10 +78,6 @@ export async function POST(req: Request) {
       deletedTrades: deletedTrades.count,
     });
   } catch (e: any) {
-    return fail(
-      500,
-      "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+    return fail(500, "SERVER_ERROR", e?.message ?? String(e));
   }
 }
