@@ -43,9 +43,6 @@ const UI = {
   red: "#ff6a6a",
   blue: "#8eb2ff",
   brand: "#2979ff",
-  yellow: "#f3d709",
-  panel: "#101010",
-  panelSoft: "#0a0a0a",
 };
 
 const CHAT_SESSION_KEY = "aiSessionId";
@@ -76,7 +73,7 @@ function reveal(index: number, mounted: boolean): CSSProperties {
     ? {
         opacity: 1,
         animationName: "fadeUp",
-        animationDuration: "480ms",
+        animationDuration: "420ms",
         animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
         animationFillMode: "both",
         animationDelay: `${index * 45}ms`,
@@ -169,7 +166,7 @@ export default function AiPage() {
     () => [
       "Напиши вопрос по рынку",
       "Загрузи скрин графика",
-      "Спроси про btc или sol",
+      "Спроси про btc, sol или xrp",
       "Попроси обзор новостей",
     ],
     []
@@ -200,7 +197,6 @@ export default function AiPage() {
 
   async function sendMessage(presetText?: string) {
     const text = (presetText ?? input).trim();
-
     if (!text && !attachedFile) return;
     if (sending) return;
 
@@ -246,7 +242,6 @@ export default function AiPage() {
       });
 
       let data: AiResp = { ok: false, error: "BAD_RESPONSE" };
-
       try {
         data = (await res.json()) as AiResp;
       } catch {}
@@ -294,7 +289,7 @@ export default function AiPage() {
       const el = chatRef.current;
       if (!el) return;
       el.scrollTo({
-        top: el.scrollHeight + 800,
+        top: el.scrollHeight + 1000,
         behavior: "smooth",
       });
     });
@@ -451,9 +446,7 @@ export default function AiPage() {
     const typeTimer = setInterval(() => {
       i += 1;
       setPlaceholderVisibleText(phrase.slice(0, i));
-      if (i >= phrase.length) {
-        clearInterval(typeTimer);
-      }
+      if (i >= phrase.length) clearInterval(typeTimer);
     }, 42);
 
     const swapTimer = setTimeout(() => {
@@ -510,13 +503,14 @@ export default function AiPage() {
           }
         }
 
-        @keyframes softGlow {
-          0%,
-          100% {
-            box-shadow: 0 0 0 rgba(41, 121, 255, 0);
+        @keyframes chipIn {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 8px, 0);
           }
-          50% {
-            box-shadow: 0 0 20px rgba(41, 121, 255, 0.15);
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
           }
         }
       `}</style>
@@ -535,7 +529,7 @@ export default function AiPage() {
 
             <div style={styles.topTitleWrap}>
               <div style={styles.topTitle}>Крипто ассистент</div>
-              <div style={styles.topTitleSub}>AI для обзора рынка и скринов</div>
+              <div style={styles.topTitleSub}>AI ассистент для обзора рынка</div>
             </div>
 
             <div style={styles.topSpacer} />
@@ -566,12 +560,7 @@ export default function AiPage() {
             </section>
           ) : null}
 
-          <section
-            style={{
-              ...styles.chatArea,
-              paddingBottom: keyboardOpen ? 12 : 0,
-            }}
-          >
+          <section style={styles.chatArea}>
             {systemNote ? <div style={styles.systemNote}>{systemNote}</div> : null}
 
             {!keyboardOpen && showGreeting ? (
@@ -581,26 +570,23 @@ export default function AiPage() {
                 </div>
 
                 <div style={styles.greetingItem}>
-                  <span style={styles.greetingIcon}>🛠️</span>
+                  <span style={styles.greetingIcon}>📊</span>
                   <span>
-                    Сейчас я в активной разработке и могу опираться на неполные
-                    данные.
+                    Помогаю быстро разобрать рынок, новости, уровни и общий контекст движения.
+                  </span>
+                </div>
+
+                <div style={styles.greetingItem}>
+                  <span style={styles.greetingIcon}>🖼️</span>
+                  <span>
+                    Можешь отправить скрин графика, и я помогу выделить структуру, зоны и ключевые ориентиры.
                   </span>
                 </div>
 
                 <div style={styles.greetingItem}>
                   <span style={styles.greetingIcon}>⚠️</span>
                   <span>
-                    Я работаю в тестовом режиме и могу ошибаться, особенно в
-                    быстро меняющемся рынке.
-                  </span>
-                </div>
-
-                <div style={styles.greetingItem}>
-                  <span style={styles.greetingIcon}>💡</span>
-                  <span>
-                    Все ответы носят исключительно информационный характер и не
-                    являются финансовой рекомендацией.
+                    Все ответы носят информационный характер и не являются финансовой рекомендацией.
                   </span>
                 </div>
 
@@ -616,11 +602,18 @@ export default function AiPage() {
 
             {!keyboardOpen && showQuickPrompts ? (
               <div style={styles.quickStack}>
-                {quickPrompts.map((item) => (
+                {quickPrompts.map((item, idx) => (
                   <button
                     key={item}
                     type="button"
-                    style={styles.quickInline}
+                    style={{
+                      ...styles.quickInline,
+                      animationName: "chipIn",
+                      animationDuration: "320ms",
+                      animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+                      animationFillMode: "both",
+                      animationDelay: `${idx * 70}ms`,
+                    }}
                     onClick={() => sendMessage(item)}
                   >
                     {item}
@@ -633,7 +626,7 @@ export default function AiPage() {
               ref={chatRef}
               style={{
                 ...styles.chatList,
-                paddingBottom: keyboardOpen ? 26 : 10,
+                paddingBottom: keyboardOpen ? 52 : 18,
               }}
             >
               {messages.map((m) => (
@@ -708,9 +701,9 @@ export default function AiPage() {
             style={{
               ...styles.bottomBar,
               paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${
-                keyboardOpen ? 10 : 18
+                keyboardOpen ? 22 : 38
               }px)`,
-              marginBottom: keyboardOpen ? Math.max(0, keyboardInset - 6) : 0,
+              marginBottom: keyboardOpen ? Math.max(18, keyboardInset - 6) : 0,
             }}
           >
             {attachedPreview ? (
@@ -757,9 +750,7 @@ export default function AiPage() {
                 <textarea
                   ref={textAreaRef}
                   value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                  }}
+                  onChange={(e) => setInput(e.target.value)}
                   placeholder={input ? "" : placeholderVisibleText}
                   style={styles.textarea}
                   rows={1}
@@ -794,8 +785,7 @@ export default function AiPage() {
 
             {!keyboardOpen ? (
               <div style={styles.footerNote}>
-                Ответы ИИ носят информационный характер и не являются финансовой
-                рекомендацией.
+                Ответы ИИ носят информационный характер и не являются финансовой рекомендацией.
               </div>
             ) : null}
           </section>
@@ -940,7 +930,6 @@ const styles = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.18)",
     background: "#000",
-    animation: "softGlow 3.6s ease-in-out infinite",
   } satisfies CSSProperties,
 
   greetingHeading: {
@@ -988,15 +977,16 @@ const styles = {
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.08)",
     background: "#050505",
-    color: "rgba(255,255,255,0.74)",
+    color: "rgba(255,255,255,0.76)",
     textAlign: "left",
     padding: "10px 12px",
     fontSize: 11.5,
-    lineHeight: 1.15,
+    lineHeight: 1.1,
     cursor: "pointer",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    transition: "transform 160ms ease, border-color 160ms ease, background 160ms ease",
   } satisfies CSSProperties,
 
   chatList: {
@@ -1114,9 +1104,9 @@ const styles = {
   } satisfies CSSProperties,
 
   bottomBar: {
-    paddingTop: 12,
+    paddingTop: 24,
     background:
-      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.80) 18%, rgba(0,0,0,0.98) 58%)",
+      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.84) 20%, rgba(0,0,0,0.98) 62%)",
   } satisfies CSSProperties,
 
   attachPreviewWrap: {
@@ -1172,11 +1162,11 @@ const styles = {
     flex: 1,
     display: "flex",
     alignItems: "flex-end",
-    padding: "9px 18px",
+    padding: "10px 18px",
     borderRadius: 28,
     background: "#111111",
     border: "1px solid rgba(255,255,255,.18)",
-    minHeight: 48,
+    minHeight: 52,
   } satisfies CSSProperties,
 
   textarea: {
