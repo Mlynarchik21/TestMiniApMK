@@ -149,11 +149,13 @@ export default function AiPage() {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [placeholderVisibleText, setPlaceholderVisibleText] = useState("");
 
+  const [composerHeight, setComposerHeight] = useState(118);
+
   const chatRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const quickScrollRef = useRef<HTMLDivElement | null>(null);
-  const initialViewportHeightRef = useRef<number | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
 
   const quickPrompts = [
     "Главное по рынку за сегодня",
@@ -194,6 +196,17 @@ export default function AiPage() {
     } catch {}
   }
 
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
+    requestAnimationFrame(() => {
+      const el = chatRef.current;
+      if (!el) return;
+      el.scrollTo({
+        top: el.scrollHeight + 1200,
+        behavior,
+      });
+    });
+  }
+
   async function sendMessage(presetText?: string) {
     const text = (presetText ?? input).trim();
     if (!text && !attachedFile) return;
@@ -224,6 +237,8 @@ export default function AiPage() {
     if (textAreaRef.current) {
       textAreaRef.current.style.height = "24px";
     }
+
+    setTimeout(() => scrollToBottom("smooth"), 40);
 
     try {
       const token = getToken();
@@ -279,19 +294,8 @@ export default function AiPage() {
       setMessages((prev) => [...prev, aiMessage]);
     } finally {
       setSending(false);
-      setTimeout(scrollToBottom, 80);
+      setTimeout(() => scrollToBottom("smooth"), 80);
     }
-  }
-
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      const el = chatRef.current;
-      if (!el) return;
-      el.scrollTo({
-        top: el.scrollHeight + 1200,
-        behavior: "smooth",
-      });
-    });
   }
 
   function onPickFile(file: File | null) {
@@ -314,7 +318,7 @@ export default function AiPage() {
 
     setTimeout(() => {
       textAreaRef.current?.focus();
-      scrollToBottom();
+      scrollToBottom("smooth");
     }, 60);
   }
 
@@ -374,10 +378,6 @@ export default function AiPage() {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, sending, keyboardOpen, keyboardInset]);
-
-  useEffect(() => {
     const el = textAreaRef.current;
     if (!el) return;
     el.style.height = "24px";
@@ -405,29 +405,33 @@ export default function AiPage() {
   }, []);
 
   useEffect(() => {
-    const vv = window.visualViewport;
-
     const updateKeyboardState = () => {
-      const currentHeight = vv?.height ?? window.innerHeight;
+      const vv = window.visualViewport;
+      const layoutViewportHeight = window.innerHeight;
+      const visualViewportHeight = vv?.height ?? layoutViewportHeight;
+      const visualViewportOffsetTop = vv?.offsetTop ?? 0;
 
-      if (initialViewportHeightRef.current == null) {
-        initialViewportHeightRef.current = currentHeight;
-      }
+      const inset = Math.max(
+        0,
+        Math.round(layoutViewportHeight - visualViewportHeight - visualViewportOffsetTop)
+      );
 
-      const baseHeight = initialViewportHeightRef.current ?? currentHeight;
-      const diff = baseHeight - currentHeight;
+      const isOpen = inset > 80;
 
-      setKeyboardOpen(diff > 120);
-      setKeyboardInset(diff > 0 ? diff : 0);
+      setKeyboardOpen(isOpen);
+      setKeyboardInset(isOpen ? inset : 0);
     };
 
     updateKeyboardState();
 
+    const vv = window.visualViewport;
     vv?.addEventListener("resize", updateKeyboardState);
+    vv?.addEventListener("scroll", updateKeyboardState);
     window.addEventListener("resize", updateKeyboardState);
 
     return () => {
       vv?.removeEventListener("resize", updateKeyboardState);
+      vv?.removeEventListener("scroll", updateKeyboardState);
       window.removeEventListener("resize", updateKeyboardState);
     };
   }, []);
@@ -487,6 +491,27 @@ export default function AiPage() {
     return () => cancelAnimationFrame(raf);
   }, [showQuickPrompts, keyboardOpen]);
 
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h > 0) setComposerHeight(h);
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [attachedPreview, keyboardOpen, input]);
+
+  useEffect(() => {
+    scrollToBottom("auto");
+  }, [messages.length, sending, composerHeight, keyboardInset]);
+
   return (
     <>
       <style jsx global>{`
@@ -495,17 +520,25 @@ export default function AiPage() {
         }
 
         html,
-        body {
+        body,
+        #__next {
           margin: 0;
           padding: 0;
           background: #000;
           overflow: hidden;
+          height: 100%;
         }
 
         textarea,
         input,
         button {
           font: inherit;
+        }
+
+        body {
+          overscroll-behavior: none;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
         }
 
         @keyframes fadeUp {
@@ -550,6 +583,10 @@ export default function AiPage() {
           50% {
             transform: translateY(-2px);
           }
+        }
+
+        ::-webkit-scrollbar {
+          display: none;
         }
       `}</style>
 
@@ -681,7 +718,7 @@ export default function AiPage() {
               ref={chatRef}
               style={{
                 ...styles.chatList,
-                paddingBottom: keyboardOpen ? 58 : 18,
+                paddingBottom: composerHeight + keyboardInset + 16,
               }}
             >
               {messages.map((m) => (
@@ -750,100 +787,100 @@ export default function AiPage() {
                 </div>
               ) : null}
             </div>
-          </section>
 
-          <section
-            style={{
-              ...styles.bottomBar,
-              paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${
-                keyboardOpen ? 22 : 40
-              }px)`,
-              marginBottom: keyboardOpen ? Math.max(18, keyboardInset - 4) : 0,
-            }}
-          >
-            {attachedPreview ? (
-              <div style={styles.attachPreviewWrap}>
-                <img
-                  src={attachedPreview}
-                  alt="preview"
-                  style={styles.attachPreview}
-                  onClick={() => setLightboxSrc(attachedPreview)}
-                />
+            <section
+              ref={composerRef}
+              style={{
+                ...styles.bottomBar,
+                transform: keyboardOpen
+                  ? `translate3d(0, -${keyboardInset}px, 0)`
+                  : "translate3d(0, 0, 0)",
+              }}
+            >
+              {attachedPreview ? (
+                <div style={styles.attachPreviewWrap}>
+                  <img
+                    src={attachedPreview}
+                    alt="preview"
+                    style={styles.attachPreview}
+                    onClick={() => setLightboxSrc(attachedPreview)}
+                  />
+                  <button
+                    type="button"
+                    style={styles.removeAttachBtn}
+                    onClick={() => {
+                      setAttachedFile(null);
+                      setAttachedPreview(null);
+                      if (fileRef.current) fileRef.current.value = "";
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
+
+              <div style={styles.inputRow}>
                 <button
                   type="button"
-                  style={styles.removeAttachBtn}
-                  onClick={() => {
-                    setAttachedFile(null);
-                    setAttachedPreview(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
+                  style={styles.circleBtn}
+                  onClick={() => fileRef.current?.click()}
+                  aria-label="Прикрепить"
                 >
-                  ✕
+                  <PlusIcon />
+                </button>
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+                />
+
+                <div style={styles.inputShell}>
+                  <textarea
+                    ref={textAreaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={input ? "" : placeholderVisibleText}
+                    style={styles.textarea}
+                    rows={1}
+                    onFocus={() => {
+                      setShowGreeting(false);
+                      setShowQuickPrompts(false);
+                      setTimeout(() => scrollToBottom("smooth"), 120);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.sendBtn,
+                    ...((!input.trim() && !attachedFile) || sending
+                      ? styles.sendBtnDisabled
+                      : null),
+                  }}
+                  onClick={() => sendMessage()}
+                  aria-label="Отправить"
+                >
+                  <SendIcon />
                 </button>
               </div>
-            ) : null}
 
-            <div style={styles.inputRow}>
-              <button
-                type="button"
-                style={styles.circleBtn}
-                onClick={() => fileRef.current?.click()}
-                aria-label="Прикрепить"
-              >
-                <PlusIcon />
-              </button>
-
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
-              />
-
-              <div style={styles.inputShell}>
-                <textarea
-                  ref={textAreaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={input ? "" : placeholderVisibleText}
-                  style={styles.textarea}
-                  rows={1}
-                  onFocus={() => {
-                    setShowGreeting(false);
-                    setShowQuickPrompts(false);
-                    setTimeout(scrollToBottom, 150);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                />
-              </div>
-
-              <button
-                type="button"
-                style={{
-                  ...styles.sendBtn,
-                  ...((!input.trim() && !attachedFile) || sending
-                    ? styles.sendBtnDisabled
-                    : null),
-                }}
-                onClick={() => sendMessage()}
-                aria-label="Отправить"
-              >
-                <SendIcon />
-              </button>
-            </div>
-
-            {!keyboardOpen ? (
-              <div style={styles.footerNote}>
-                Ответы ИИ носят информационный характер и не являются финансовой
-                рекомендацией.
-              </div>
-            ) : null}
+              {!keyboardOpen ? (
+                <div style={styles.footerNote}>
+                  Ответы ИИ носят информационный характер и не являются финансовой
+                  рекомендацией.
+                </div>
+              ) : null}
+            </section>
           </section>
         </div>
       </main>
@@ -859,7 +896,8 @@ export default function AiPage() {
 
 const styles = {
   page: {
-    minHeight: "100vh",
+    position: "fixed",
+    inset: 0,
     background: "#000",
     color: UI.text,
     fontFamily:
@@ -872,9 +910,10 @@ const styles = {
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
-    height: "100vh",
+    height: "100%",
     display: "flex",
     flexDirection: "column",
+    minHeight: 0,
   } satisfies CSSProperties,
 
   topBar: {
@@ -884,6 +923,7 @@ const styles = {
     gridTemplateColumns: "44px 1fr 44px",
     alignItems: "center",
     gap: 12,
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   backButton: {
@@ -927,6 +967,7 @@ const styles = {
     marginBottom: 10,
     paddingLeft: 8,
     borderLeft: "2px solid rgba(255,255,255,0.08)",
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   pinnedTitle: {
@@ -967,6 +1008,8 @@ const styles = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
+    position: "relative",
+    overflow: "hidden",
   } satisfies CSSProperties,
 
   systemNote: {
@@ -978,6 +1021,7 @@ const styles = {
     padding: "10px 12px",
     fontSize: 12,
     lineHeight: 1.45,
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   greetingCard: {
@@ -986,6 +1030,7 @@ const styles = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.18)",
     background: "#000",
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   greetingHeading: {
@@ -1024,6 +1069,7 @@ const styles = {
 
   quickWrap: {
     marginBottom: 12,
+    flexShrink: 0,
   } satisfies CSSProperties,
 
   quickScroller: {
@@ -1060,8 +1106,8 @@ const styles = {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    paddingBottom: 8,
     scrollbarWidth: "none",
+    WebkitOverflowScrolling: "touch",
   } satisfies CSSProperties,
 
   row: {
@@ -1171,9 +1217,13 @@ const styles = {
   } satisfies CSSProperties,
 
   bottomBar: {
-    paddingTop: 26,
+    flexShrink: 0,
+    paddingTop: 18,
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
     background:
       "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.84) 20%, rgba(0,0,0,0.98) 62%)",
+    transition: "transform 220ms ease",
+    willChange: "transform",
   } satisfies CSSProperties,
 
   attachPreviewWrap: {
