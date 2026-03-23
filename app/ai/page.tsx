@@ -41,6 +41,8 @@ const UI = {
   textFaint: "rgba(255,255,255,0.36)",
   blue: "#8eb2ff",
   brand: "#2979ff",
+  green: "#64d97b",
+  yellow: "#f3d709",
 };
 
 const CHAT_SESSION_KEY = "aiSessionId";
@@ -122,6 +124,73 @@ function SendIcon() {
   );
 }
 
+function normalizeLineBreaks(text: string) {
+  return String(text || "").replace(/\r\n/g, "\n").trim();
+}
+
+function parseAIAnswer(raw: string) {
+  const text = normalizeLineBreaks(raw);
+
+  const tldrMatch = text.match(/TLDR[:\s]*([\s\S]*?)(?:Deep Dive|##\s*Conclusion|Conclusion|$)/i);
+  const deepDiveMatch = text.match(/Deep Dive[:\s]*([\s\S]*?)(?:##\s*Conclusion|Conclusion|$)/i);
+  const conclusionMatch = text.match(/(?:##\s*Conclusion|Conclusion)[:\s]*([\s\S]*)$/i);
+
+  const tldr = tldrMatch?.[1]?.trim() || "";
+  const deep = deepDiveMatch?.[1]?.trim() || "";
+  const conclusion = conclusionMatch?.[1]?.trim() || "";
+
+  const hasStructuredBlocks = !!(tldr || deep || conclusion);
+
+  return {
+    text,
+    tldr,
+    deep,
+    conclusion,
+    hasStructuredBlocks,
+  };
+}
+
+function AIMessage({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const parsed = parseAIAnswer(text);
+
+  if (!parsed.hasStructuredBlocks) {
+    return <div style={styles.aiPlainText}>{parsed.text}</div>;
+  }
+
+  return (
+    <div style={styles.aiStructuredWrap}>
+      {parsed.tldr ? (
+        <div style={styles.aiTldrCard}>
+          <div style={styles.aiTldrTitle}>TLDR</div>
+          <div style={styles.aiTldrText}>{parsed.tldr}</div>
+        </div>
+      ) : null}
+
+      {parsed.deep ? (
+        <div style={styles.aiDeepWrap}>
+          <button
+            type="button"
+            style={styles.aiToggleBtn}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "Скрыть разбор" : "Показать разбор"}
+          </button>
+
+          {expanded ? <div style={styles.aiDeepText}>{parsed.deep}</div> : null}
+        </div>
+      ) : null}
+
+      {parsed.conclusion ? (
+        <div style={styles.aiConclusionCard}>
+          <div style={styles.aiConclusionTitle}>Вывод</div>
+          <div style={styles.aiConclusionText}>{parsed.conclusion}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AiPage() {
   const router = useRouter();
 
@@ -158,8 +227,8 @@ export default function AiPage() {
   const composerRef = useRef<HTMLDivElement | null>(null);
 
   const quickPrompts = [
-    "Главное по рынку за сегодня",
-    "SOLUSDT: уровни, новости и сценарий",
+    "Что сейчас главное на крипторынке",
+    "SOLUSDT: уровни, новости и сценарии",
     "XRPUSDT: что важно прямо сейчас",
   ];
 
@@ -744,7 +813,7 @@ export default function AiPage() {
                         ...(m.role === "user" ? styles.userBubble : styles.aiBubble),
                       }}
                     >
-                      {m.text}
+                      {m.role === "ai" ? <AIMessage text={m.text} /> : m.text}
 
                       {m.imageUrl ? (
                         <img
@@ -1344,5 +1413,91 @@ const styles = {
     maxWidth: "100%",
     maxHeight: "100%",
     borderRadius: 12,
+  } satisfies CSSProperties,
+
+  aiStructuredWrap: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  aiPlainText: {
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.5,
+    color: "#f5f5f5",
+  } satisfies CSSProperties,
+
+  aiTldrCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(142,178,255,0.18)",
+    background: "rgba(41,121,255,0.10)",
+    padding: "10px 12px",
+  } satisfies CSSProperties,
+
+  aiTldrTitle: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.blue,
+    fontWeight: 800,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  aiTldrText: {
+    fontSize: 13.5,
+    lineHeight: 1.5,
+    color: UI.textMain,
+    whiteSpace: "pre-wrap",
+  } satisfies CSSProperties,
+
+  aiDeepWrap: {
+    display: "grid",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  aiToggleBtn: {
+    height: 34,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    color: UI.blue,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    justifySelf: "start",
+    padding: "0 12px",
+  } satisfies CSSProperties,
+
+  aiDeepText: {
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${UI.borderSoft}`,
+    padding: "10px 12px",
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.55,
+    color: UI.textSoft,
+    fontSize: 13,
+  } satisfies CSSProperties,
+
+  aiConclusionCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(100,217,123,0.16)",
+    background: "rgba(100,217,123,0.08)",
+    padding: "10px 12px",
+  } satisfies CSSProperties,
+
+  aiConclusionTitle: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.green,
+    fontWeight: 800,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  aiConclusionText: {
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.5,
+    color: UI.textMain,
+    fontSize: 13,
   } satisfies CSSProperties,
 };
