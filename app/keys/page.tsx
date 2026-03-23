@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import type { Exchange } from "@prisma/client";
@@ -95,7 +95,6 @@ const UI = {
   blue: "#8eb2ff",
   brand: "#2979ff",
   yellow: "#f3d709",
-  purple: "#9b8cff",
   cyan: "#6fdcff",
 };
 
@@ -158,12 +157,25 @@ function hasWord(label: string | null | undefined, word: string) {
   return new RegExp(word, "i").test(label || "");
 }
 
-function isBybitDemoKey(key: Pick<KeyRow, "exchange" | "label">) {
+function isBybitDemoKey(
+  key: Pick<KeyRow, "exchange" | "label"> | null | undefined
+) {
+  if (!key) return false;
   return key.exchange === "BYBIT" && hasWord(key.label, "demo");
 }
 
 function getNetworkName(key: Pick<KeyRow, "exchange" | "label">): "DEMO" | "MAINNET" {
   return isBybitDemoKey(key) ? "DEMO" : "MAINNET";
+}
+
+function cleanDisplayLabel(label: string | null | undefined) {
+  const raw = String(label || "").trim();
+  if (!raw) return "Без названия";
+  return raw
+    .replace(/\[DEMO\]/gi, "")
+    .replace(/\bDEMO\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function buildStoredLabel(
@@ -200,29 +212,9 @@ function ArrowLeftIcon() {
   );
 }
 
-function PlusIcon() {
+function ChevronDownIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M11 5a1 1 0 1 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function ChevronIcon(props: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      aria-hidden="true"
-      style={{
-        transform: props.open ? "rotate(180deg)" : "rotate(0deg)",
-        transition: "transform 180ms ease",
-      }}
-    >
       <path
         d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.87a1 1 0 1 1 1.4 1.42l-4.6 4.55a1 1 0 0 1-1.4 0L6.7 10.72a1 1 0 0 1 0-1.42Z"
         fill="currentColor"
@@ -253,10 +245,7 @@ export default function KeysPage() {
   const [apiSecret, setApiSecret] = useState("");
   const [isDemo, setIsDemo] = useState(false);
 
-  const canSave = useMemo(() => {
-    if (exchange !== "BYBIT") return false;
-    return !!apiKey.trim() && !!apiSecret.trim() && !loading;
-  }, [exchange, apiKey, apiSecret, loading]);
+  const canSave = exchange === "BYBIT" && !!apiKey.trim() && !!apiSecret.trim() && !loading;
 
   async function reload() {
     setLoading(true);
@@ -418,12 +407,6 @@ export default function KeysPage() {
     }
   }
 
-  async function refreshAll() {
-    for (const key of keys) {
-      await refreshBalance(key);
-    }
-  }
-
   function handleBack() {
     router.replace("/home");
   }
@@ -515,25 +498,7 @@ export default function KeysPage() {
 
             <div style={styles.pageTitle}>API Keys</div>
 
-            <div style={styles.topBarActions}>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={reload}
-                style={styles.topActionButton}
-              >
-                {loading ? "..." : "Обновить"}
-              </button>
-
-              <button
-                type="button"
-                disabled={loading || keys.length === 0}
-                onClick={refreshAll}
-                style={styles.topActionButton}
-              >
-                Баланс
-              </button>
-            </div>
+            <div style={styles.topBarRightSpace} />
           </section>
 
           <section style={{ ...styles.formBlock, ...reveal(1, mounted) }}>
@@ -543,15 +508,20 @@ export default function KeysPage() {
 
             <div style={styles.formGrid}>
               <Field label="Биржа">
-                <select
-                  value={exchange}
-                  onChange={(e) => setExchange(e.target.value as ExchangeOption)}
-                  style={styles.input}
-                >
-                  <option value="NONE">Нет</option>
-                  <option value="BYBIT">Bybit</option>
-                  <option value="BINGX">BingX</option>
-                </select>
+                <div style={styles.selectWrap}>
+                  <select
+                    value={exchange}
+                    onChange={(e) => setExchange(e.target.value as ExchangeOption)}
+                    style={styles.inputSelect}
+                  >
+                    <option value="NONE">Нет</option>
+                    <option value="BYBIT">Bybit</option>
+                    <option value="BINGX">BingX</option>
+                  </select>
+                  <span style={styles.selectIcon}>
+                    <ChevronDownIcon />
+                  </span>
+                </div>
               </Field>
 
               <label style={styles.checkboxRow}>
@@ -560,15 +530,16 @@ export default function KeysPage() {
                   checked={isDemo}
                   onChange={(e) => setIsDemo(e.target.checked)}
                   disabled={exchange !== "BYBIT"}
+                  style={styles.checkbox}
                 />
-                <span>Демо</span>
+                <span style={styles.checkboxText}>Демо</span>
               </label>
 
               <Field label="Label">
                 <input
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Например: Main account"
+                  placeholder="Например: TestByBitapi"
                   style={styles.input}
                 />
               </Field>
@@ -596,7 +567,7 @@ export default function KeysPage() {
 
               {exchange !== "BYBIT" ? (
                 <div style={styles.inlineHint}>
-                  Сейчас страница подключена только под Bybit. Пункты «Нет» и «BingX» оставлены
+                  Сейчас подключение доступно только для Bybit. Пункты «Нет» и «BingX» оставлены
                   под будущее расширение.
                 </div>
               ) : null}
@@ -628,37 +599,42 @@ export default function KeysPage() {
                 {keys.map((key) => {
                   const meta = metaByKey[key.id];
                   const open = expandedKeyId === key.id;
-                  const working = meta?.loaded ? meta.ok : false;
                   const statusText = meta?.loaded
                     ? meta.ok
                       ? "Активный"
                       : "Не активный"
                     : "Не проверен";
 
-                  const totalEquity = Number(meta?.raw?.totalEquity ?? 0);
-                  const totalWalletBalance = Number(meta?.raw?.totalWalletBalance ?? 0);
-                  const totalAvailableBalance = Number(
-                    meta?.raw?.totalAvailableBalance ?? 0
-                  );
-
                   const balanceValue =
-                    totalEquity || totalWalletBalance
-                      ? formatUsd(totalEquity || totalWalletBalance)
-                      : meta?.loaded && meta.ok
+                    meta?.loaded && meta.ok
+                      ? meta.balances.length
                         ? `${meta.balances.length} монет`
-                        : "—";
+                        : "0"
+                      : "—";
 
                   return (
                     <div key={key.id} style={styles.keyCard}>
                       <button
                         type="button"
                         style={styles.keyCardHead}
-                        onClick={() => setExpandedKeyId(open ? null : key.id)}
+                        onClick={() => {
+                          const nextOpen = !open;
+                          setExpandedKeyId(nextOpen ? key.id : null);
+                          if (nextOpen && !meta?.loaded && !meta?.loading) {
+                            refreshBalance(key);
+                          }
+                        }}
                       >
                         <div style={styles.keyCardMain}>
-                          <div style={styles.keyCardTitleRow}>
-                            <div style={styles.keyCardTitle}>
-                              {getExchangeUiLabel(key.exchange)}
+                          <div style={styles.keyCardTopLine}>
+                            <div style={styles.keyCardTitleGroup}>
+                              <div style={styles.keyCardTitle}>
+                                {getExchangeUiLabel(key.exchange)}
+                              </div>
+
+                              {getNetworkName(key) === "DEMO" ? (
+                                <span style={styles.networkPill}>DEMO</span>
+                              ) : null}
                             </div>
 
                             <div
@@ -699,18 +675,9 @@ export default function KeysPage() {
                             </div>
                           </div>
 
-                          <div style={styles.keyCardSubRow}>
-                            <span style={styles.keyCardLabel}>
-                              {key.label || "Без названия"}
-                            </span>
-                            <span style={styles.networkPill}>
-                              {getNetworkName(key)}
-                            </span>
+                          <div style={styles.keyCardLabel}>
+                            {cleanDisplayLabel(key.label)}
                           </div>
-                        </div>
-
-                        <div style={styles.chevronWrap}>
-                          <ChevronIcon open={open} />
                         </div>
                       </button>
 
@@ -729,8 +696,8 @@ export default function KeysPage() {
                             />
                             <MiniInfo
                               label="Статус ключа"
-                              value={working ? "Рабочий" : "Не подтвержден"}
-                              color={working ? UI.green : UI.red}
+                              value={meta?.loaded ? (meta.ok ? "Рабочий" : "Не рабочий") : "Проверка..."}
+                              color={meta?.loaded ? (meta.ok ? UI.green : UI.red) : UI.textMuted}
                             />
                             <MiniInfo
                               label="ID ключа"
@@ -760,9 +727,8 @@ export default function KeysPage() {
                             </div>
 
                             <div style={styles.permissionHint}>
-                              Сейчас точно определяется только факт успешного чтения баланса.
-                              Отдельную автоматическую проверку торговых и withdrawal permissions
-                              добавим следующим этапом.
+                              Сейчас точно определяется только успешное чтение баланса.
+                              Проверку торговых и withdrawal permissions добавим следующим этапом.
                             </div>
                           </div>
 
@@ -794,26 +760,6 @@ export default function KeysPage() {
                               {meta.balances.length > 12 ? (
                                 <div style={styles.moreText}>
                                   Показано 12 из {meta.balances.length}
-                                </div>
-                              ) : null}
-
-                              {(totalEquity || totalWalletBalance || totalAvailableBalance) ? (
-                                <div style={styles.balanceTotals}>
-                                  <MiniInfo
-                                    label="Total equity"
-                                    value={formatUsd(totalEquity)}
-                                    color={UI.green}
-                                  />
-                                  <MiniInfo
-                                    label="Wallet balance"
-                                    value={formatUsd(totalWalletBalance)}
-                                    color={UI.blue}
-                                  />
-                                  <MiniInfo
-                                    label="Available"
-                                    value={formatUsd(totalAvailableBalance)}
-                                    color={UI.yellow}
-                                  />
                                 </div>
                               ) : null}
                             </div>
@@ -943,7 +889,7 @@ const styles = {
     marginTop: 8,
     marginBottom: 18,
     display: "grid",
-    gridTemplateColumns: "44px 1fr auto",
+    gridTemplateColumns: "44px 1fr 44px",
     alignItems: "center",
     gap: 12,
   } satisfies CSSProperties,
@@ -974,23 +920,9 @@ const styles = {
     textAlign: "center",
   } satisfies CSSProperties,
 
-  topBarActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  } satisfies CSSProperties,
-
-  topActionButton: {
-    height: 38,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.borderHard}`,
-    background: "rgba(255,255,255,0.03)",
-    color: UI.textMain,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
+  topBarRightSpace: {
+    width: 44,
+    height: 44,
   } satisfies CSSProperties,
 
   formBlock: {
@@ -1038,6 +970,36 @@ const styles = {
     fontWeight: 600,
   } satisfies CSSProperties,
 
+  selectWrap: {
+    position: "relative",
+    width: "100%",
+  } satisfies CSSProperties,
+
+  selectIcon: {
+    position: "absolute",
+    right: 14,
+    top: "50%",
+    transform: "translateY(-50%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: UI.textMuted,
+    pointerEvents: "none",
+  } satisfies CSSProperties,
+
+  inputSelect: {
+    width: "100%",
+    height: 46,
+    borderRadius: 14,
+    border: `1px solid ${UI.borderHard}`,
+    background: "rgba(255,255,255,0.03)",
+    color: UI.textMain,
+    outline: "none",
+    padding: "0 42px 0 14px",
+    WebkitAppearance: "none",
+    appearance: "none",
+  } satisfies CSSProperties,
+
   input: {
     width: "100%",
     height: 46,
@@ -1054,11 +1016,23 @@ const styles = {
   checkboxRow: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    fontSize: 14,
+    gap: 12,
+    fontSize: 16,
     color: UI.textSoft,
-    fontWeight: 600,
+    fontWeight: 700,
     padding: "2px 2px 0",
+  } satisfies CSSProperties,
+
+  checkbox: {
+    width: 20,
+    height: 20,
+    accentColor: UI.brand,
+  } satisfies CSSProperties,
+
+  checkboxText: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: UI.textMain,
   } satisfies CSSProperties,
 
   inlineHint: {
@@ -1099,24 +1073,30 @@ const styles = {
     background: "transparent",
     color: UI.textMain,
     padding: 14,
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    alignItems: "center",
-    gap: 12,
+    display: "block",
     cursor: "pointer",
     textAlign: "left",
   } satisfies CSSProperties,
 
   keyCardMain: {
     minWidth: 0,
+    display: "grid",
+    gap: 8,
   } satisfies CSSProperties,
 
-  keyCardTitleRow: {
+  keyCardTopLine: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
-    marginBottom: 8,
+  } satisfies CSSProperties,
+
+  keyCardTitleGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+    flexWrap: "wrap",
   } satisfies CSSProperties,
 
   keyCardTitle: {
@@ -1126,17 +1106,10 @@ const styles = {
     color: UI.textMain,
   } satisfies CSSProperties,
 
-  keyCardSubRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-
   keyCardLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: UI.textSoft,
-    fontWeight: 600,
+    fontWeight: 700,
     wordBreak: "break-word",
   } satisfies CSSProperties,
 
@@ -1165,22 +1138,13 @@ const styles = {
     fontSize: 11,
     fontWeight: 700,
     flexShrink: 0,
+    whiteSpace: "nowrap",
   } satisfies CSSProperties,
 
   statusDot: {
     width: 6,
     height: 6,
     borderRadius: "50%",
-  } satisfies CSSProperties,
-
-  chevronWrap: {
-    width: 24,
-    height: 24,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: UI.textMuted,
-    flexShrink: 0,
   } satisfies CSSProperties,
 
   keyCardBody: {
@@ -1327,13 +1291,6 @@ const styles = {
     fontWeight: 600,
     color: UI.textSoft,
     textAlign: "right",
-  } satisfies CSSProperties,
-
-  balanceTotals: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 8,
-    marginTop: 10,
   } satisfies CSSProperties,
 
   moreText: {
