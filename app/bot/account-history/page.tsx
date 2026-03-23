@@ -121,7 +121,7 @@ function formatPct(v: unknown) {
   if (!Number.isFinite(n)) return "0%";
   return `${n.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 1,
   })}%`;
 }
 
@@ -182,6 +182,12 @@ function reasonColor(reason: unknown) {
   if (value === "MANUAL") return UI.yellow;
   if (value === "STOP") return UI.red;
   return UI.textSoft;
+}
+
+function ratioWidth(part: number, total: number) {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return "50%";
+  const pct = Math.max(0, Math.min(100, (part / total) * 100));
+  return `${pct}%`;
 }
 
 function ArrowLeftIcon() {
@@ -305,6 +311,9 @@ export default function BotAccountHistoryPage() {
       });
   }, [trades]);
 
+  const profitableCount = Number(stats?.profitableTrades ?? 0);
+  const losingCount = Number(stats?.losingTrades ?? 0);
+  const closedCount = Number(stats?.closedTrades ?? 0);
   const manualClosed = useMemo(() => {
     return sortedTrades.filter((t) => String(t?.closeReason || "").toUpperCase() === "MANUAL")
       .length;
@@ -316,6 +325,8 @@ export default function BotAccountHistoryPage() {
   }, [sortedTrades]);
 
   const totalProfit = Number(stats?.totalPnl ?? 0);
+  const winLoseTotal = profitableCount + losingCount;
+  const closeReasonTotal = manualClosed + tpClosed;
 
   return (
     <>
@@ -420,51 +431,96 @@ export default function BotAccountHistoryPage() {
           </section>
 
           <section style={{ ...styles.statsBlock, ...reveal(2, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Статистика периода</div>
-            </div>
+            <div style={styles.statsUnifiedCard}>
+              <div style={styles.statsUnifiedTopRow}>
+                <div>
+                  <div style={styles.statsBlockTitle}>Статистика периода</div>
+                  <div style={styles.statsBlockSub}>Закрытые сделки и результат</div>
+                </div>
 
-            <div style={styles.statsGrid}>
-              <StatCard
-                label="Сделок"
-                value={String(Number(stats?.closedTrades ?? 0))}
-                valueColor={UI.textMain}
-              />
-              <StatCard
-                label="Открытых"
-                value={String(Number(stats?.openPositions ?? 0))}
-                valueColor={UI.blue}
-              />
-              <StatCard
-                label="Закрытых"
-                value={String(Number(stats?.closedTrades ?? 0))}
-                valueColor={UI.textMain}
-              />
-              <StatCard
-                label="Прибыльных"
-                value={String(Number(stats?.profitableTrades ?? 0))}
-                valueColor={UI.green}
-              />
-              <StatCard
-                label="Убыточных"
-                value={String(Number(stats?.losingTrades ?? 0))}
-                valueColor={UI.red}
-              />
-              <StatCard
-                label="Вручную"
-                value={String(manualClosed)}
-                valueColor={UI.yellow}
-              />
-              <StatCard
-                label="По таргету"
-                value={String(tpClosed)}
-                valueColor={UI.green}
-              />
-              <StatCard
-                label="Прибыль"
-                value={formatUsd(totalProfit)}
-                valueColor={totalProfit >= 0 ? UI.green : UI.red}
-              />
+                <div style={styles.statsTopMetrics}>
+                  <div style={styles.metricBadge}>
+                    <span style={styles.metricBadgeLabel}>Закрытые</span>
+                    <span style={styles.metricBadgeValue}>{closedCount}</span>
+                  </div>
+
+                  <div style={styles.metricBadge}>
+                    <span style={styles.metricBadgeLabel}>Total PnL</span>
+                    <span
+                      style={{
+                        ...styles.metricBadgeValue,
+                        color: totalProfit >= 0 ? UI.green : UI.red,
+                      }}
+                    >
+                      {formatUsd(totalProfit)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.statLineBlock}>
+                <div style={styles.statLineHeader}>
+                  <div style={styles.statLineTitle}>Прибыльные / Убыточные</div>
+                </div>
+
+                <div style={styles.splitBar}>
+                  <div
+                    style={{
+                      ...styles.splitBarGreen,
+                      width: ratioWidth(profitableCount, winLoseTotal || 1),
+                    }}
+                  />
+                  <div
+                    style={{
+                      ...styles.splitBarRed,
+                      width: ratioWidth(losingCount, winLoseTotal || 1),
+                    }}
+                  />
+                </div>
+
+                <div style={styles.splitMeta}>
+                  <span style={{ color: UI.green }}>
+                    {formatPct(winLoseTotal ? (profitableCount / winLoseTotal) * 100 : 0)} ·{" "}
+                    {profitableCount} прибыльных
+                  </span>
+                  <span style={{ color: UI.red }}>
+                    {formatPct(winLoseTotal ? (losingCount / winLoseTotal) * 100 : 0)} ·{" "}
+                    {losingCount} убыточных
+                  </span>
+                </div>
+              </div>
+
+              <div style={styles.statLineBlock}>
+                <div style={styles.statLineHeader}>
+                  <div style={styles.statLineTitle}>Вручную / По таргету</div>
+                </div>
+
+                <div style={styles.splitBar}>
+                  <div
+                    style={{
+                      ...styles.splitBarYellow,
+                      width: ratioWidth(manualClosed, closeReasonTotal || 1),
+                    }}
+                  />
+                  <div
+                    style={{
+                      ...styles.splitBarBlue,
+                      width: ratioWidth(tpClosed, closeReasonTotal || 1),
+                    }}
+                  />
+                </div>
+
+                <div style={styles.splitMeta}>
+                  <span style={{ color: UI.yellow }}>
+                    {formatPct(closeReasonTotal ? (manualClosed / closeReasonTotal) * 100 : 0)} ·{" "}
+                    {manualClosed} вручную
+                  </span>
+                  <span style={{ color: UI.blue }}>
+                    {formatPct(closeReasonTotal ? (tpClosed / closeReasonTotal) * 100 : 0)} ·{" "}
+                    {tpClosed} по таргету
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -594,7 +650,7 @@ export default function BotAccountHistoryPage() {
 
           {err ? (
             <section style={{ ...styles.errorCard, ...reveal(4, mounted) }}>
-              <div style={styles.sectionMainTitle}>Ошибка</div>
+              <div style={styles.errorTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
@@ -630,21 +686,6 @@ function DetailChip(props: { label: string; value: string; color: string }) {
     >
       <div style={styles.detailChipLabel}>{props.label}</div>
       <div style={{ ...styles.detailChipValue, color: props.color }}>
-        {props.value}
-      </div>
-    </div>
-  );
-}
-
-function StatCard(props: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <div style={styles.statCard}>
-      <div style={styles.statLabel}>{props.label}</div>
-      <div style={{ ...styles.statValue, color: props.valueColor || UI.textMain }}>
         {props.value}
       </div>
     </div>
@@ -718,21 +759,6 @@ const styles = {
     marginBottom: 20,
   } satisfies CSSProperties,
 
-  sectionHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  sectionMainTitle: {
-    fontSize: 16,
-    fontWeight: 800,
-    letterSpacing: "-0.01em",
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
   rangeBar: {
     display: "flex",
     gap: 8,
@@ -788,35 +814,121 @@ const styles = {
     appearance: "none",
   } satisfies CSSProperties,
 
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
-  } satisfies CSSProperties,
-
-  statCard: {
-    background: "rgba(255,255,255,0.03)",
+  statsUnifiedCard: {
     border: `1px solid ${UI.border}`,
-    borderRadius: 16,
-    padding: 12,
-    minWidth: 0,
+    borderRadius: 22,
+    padding: 16,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+    display: "grid",
+    gap: 16,
   } satisfies CSSProperties,
 
-  statLabel: {
+  statsUnifiedTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
+  statsBlockTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  statsBlockSub: {
+    marginTop: 6,
+    fontSize: 12,
+    color: UI.textMuted,
+    lineHeight: 1.4,
+  } satisfies CSSProperties,
+
+  statsTopMetrics: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  } satisfies CSSProperties,
+
+  metricBadge: {
+    minWidth: 112,
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: `1px solid ${UI.borderSoft}`,
+    background: "rgba(255,255,255,0.02)",
+    display: "grid",
+    gap: 5,
+  } satisfies CSSProperties,
+
+  metricBadgeLabel: {
     fontSize: 10,
     textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: UI.textFaint,
     fontWeight: 700,
-    marginBottom: 6,
   } satisfies CSSProperties,
 
-  statValue: {
-    fontSize: 20,
+  metricBadgeValue: {
+    fontSize: 18,
     fontWeight: 800,
     lineHeight: 1.1,
-    letterSpacing: "-0.03em",
-    wordBreak: "break-word",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  statLineBlock: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  statLineHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  statLineTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  splitBar: {
+    width: "100%",
+    height: 14,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    display: "flex",
+  } satisfies CSSProperties,
+
+  splitBarGreen: {
+    background: UI.green,
+  } satisfies CSSProperties,
+
+  splitBarRed: {
+    background: UI.red,
+  } satisfies CSSProperties,
+
+  splitBarYellow: {
+    background: UI.yellow,
+  } satisfies CSSProperties,
+
+  splitBarBlue: {
+    background: UI.blue,
+  } satisfies CSSProperties,
+
+  splitMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: 700,
+    flexWrap: "wrap",
   } satisfies CSSProperties,
 
   block: {
@@ -975,6 +1087,13 @@ const styles = {
     borderRadius: 16,
     border: "1px solid rgba(255,106,106,0.22)",
     background: "rgba(255,106,106,0.06)",
+  } satisfies CSSProperties,
+
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    letterSpacing: "-0.01em",
+    color: UI.textMain,
   } satisfies CSSProperties,
 
   errorText: {
