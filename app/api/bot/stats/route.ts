@@ -41,7 +41,9 @@ function startOfUtcDay(d = new Date()) {
 }
 
 function endOfUtcDay(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999)
+  );
 }
 
 function iso(v: Date | null | undefined) {
@@ -80,12 +82,18 @@ export async function GET(req: Request) {
     const fromParam = url.searchParams.get("from");
     const toParam = url.searchParams.get("to");
     const recentTakeRaw = Number(url.searchParams.get("recentTake") || "20");
-    const recentTake = Math.max(1, Math.min(50, Number.isFinite(recentTakeRaw) ? recentTakeRaw : 20));
+    const recentTake = Math.max(
+      1,
+      Math.min(200, Number.isFinite(recentTakeRaw) ? recentTakeRaw : 20)
+    );
 
-    const from = parseDateOrNull(fromParam) ?? startOfUtcDay(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+    const from =
+      parseDateOrNull(fromParam) ??
+      startOfUtcDay(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+
     const to = parseDateOrNull(toParam) ?? endOfUtcDay(now);
 
-    const [openPositions, rangedTrades, recentTrades, allTrades] = await Promise.all([
+    const [openPositions, rangedTrades, allTrades] = await Promise.all([
       prisma.botPosition.findMany({
         where: { userId: user.id, status: "OPEN" },
         orderBy: { updatedAt: "desc" },
@@ -104,14 +112,10 @@ export async function GET(req: Request) {
 
       prisma.botTrade.findMany({
         where: { userId: user.id },
-        orderBy: { closedAt: "desc" },
-        take: recentTake,
-      }),
-
-      prisma.botTrade.findMany({
-        where: { userId: user.id },
       }),
     ]);
+
+    const recentTrades = rangedTrades.slice(0, recentTake);
 
     const capitalInWork = openPositions.reduce((s, p) => s + toNum(p.investedQuote), 0);
 
@@ -147,7 +151,8 @@ export async function GET(req: Request) {
 
     const grossProfit = wins.reduce((a, b) => a + b, 0);
     const grossLossAbs = Math.abs(losses.reduce((a, b) => a + b, 0));
-    const profitFactor = grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
+    const profitFactor =
+      grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? 999 : 0;
 
     const winningTrades = rangedTrades.filter((t) => toNum(t.pnl) > 0);
     const losingTradesRows = rangedTrades.filter((t) => toNum(t.pnl) < 0);
@@ -155,9 +160,11 @@ export async function GET(req: Request) {
     const maxProfitTrade = winningTrades.length
       ? Math.max(...winningTrades.map((t) => toNum(t.pnl)))
       : 0;
+
     const minProfitTrade = winningTrades.length
       ? Math.min(...winningTrades.map((t) => toNum(t.pnl)))
       : 0;
+
     const avgProfitTrade = winningTrades.length
       ? winningTrades.reduce((sum, t) => sum + toNum(t.pnl), 0) / winningTrades.length
       : 0;
@@ -165,11 +172,14 @@ export async function GET(req: Request) {
     const maxLossTrade = losingTradesRows.length
       ? Math.min(...losingTradesRows.map((t) => toNum(t.pnl)))
       : 0;
+
     const minLossTrade = losingTradesRows.length
       ? Math.max(...losingTradesRows.map((t) => toNum(t.pnl)))
       : 0;
+
     const avgLossTrade = losingTradesRows.length
-      ? losingTradesRows.reduce((sum, t) => sum + Math.abs(toNum(t.pnl)), 0) / losingTradesRows.length
+      ? losingTradesRows.reduce((sum, t) => sum + Math.abs(toNum(t.pnl)), 0) /
+        losingTradesRows.length
       : 0;
 
     const durations = rangedTrades
@@ -184,6 +194,7 @@ export async function GET(req: Request) {
     const avgDurationMs = durations.length
       ? durations.reduce((a, b) => a + b, 0) / durations.length
       : 0;
+
     const minDurationMs = durations.length ? Math.min(...durations) : 0;
     const maxDurationMs = durations.length ? Math.max(...durations) : 0;
 
@@ -193,7 +204,9 @@ export async function GET(req: Request) {
 
     for (const t of rangedTrades) {
       const pnl = toNum(t.pnl);
-      const balance = toNum((t as any).maxBalance ?? (t as any).balanceAfter ?? (t as any).equityAfter ?? 0);
+      const balance = toNum(
+        (t as any).maxBalance ?? (t as any).balanceAfter ?? (t as any).equityAfter ?? 0
+      );
 
       if (balance > maxBalanceSeen) maxBalanceSeen = balance;
       if (pnl > maxProfitSeries) maxProfitSeries = pnl;
