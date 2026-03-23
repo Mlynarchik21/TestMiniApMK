@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
-type AiScenarioKey = "today" | "week" | "month";
-type PortfolioModeKey = "balanced" | "defensive" | "aggressive";
+type AiResp =
+  | { ok: true; answer?: string; sessionId?: string; [k: string]: any }
+  | { ok: false; error?: string; message?: string; sessionId?: string; [k: string]: any };
+
+type ChatItem = {
+  id: string;
+  role: "user" | "ai";
+  text: string;
+  time: string;
+  imageUrl?: string | null;
+  pinned?: boolean;
+};
 
 const UI = {
   border: "rgba(255,255,255,0.12)",
@@ -21,9 +31,26 @@ const UI = {
   blue: "#8eb2ff",
   brand: "#2979ff",
   yellow: "#f3d709",
-  purple: "#9b8cff",
-  cyan: "#6fdcff",
 };
+
+function getToken() {
+  try {
+    return localStorage.getItem("sessionToken") || "";
+  } catch {
+    return "";
+  }
+}
+
+function formatNowTime() {
+  return new Date().toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function makeId() {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function reveal(index: number, mounted: boolean): CSSProperties {
   return mounted
@@ -42,19 +69,6 @@ function reveal(index: number, mounted: boolean): CSSProperties {
       };
 }
 
-function ringStyle(percent: number, color: string): CSSProperties {
-  const safePercent = Math.max(0, Math.min(100, percent));
-  return {
-    position: "absolute",
-    inset: 0,
-    borderRadius: "50%",
-    background: `conic-gradient(${color} 0 ${safePercent}%, rgba(255,255,255,0.10) ${safePercent}% 100%)`,
-    WebkitMask:
-      "radial-gradient(circle at center, transparent 58%, #000 59%)",
-    mask: "radial-gradient(circle at center, transparent 58%, #000 59%)",
-  };
-}
-
 function ArrowLeftIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -66,15 +80,210 @@ function ArrowLeftIcon() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path
+        d="M5 19l14-7L5 5v5l8 2-8 2z"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        fill="none"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function AiPage() {
   const router = useRouter();
+
   const [mounted, setMounted] = useState(false);
   const [pagePaddingTop, setPagePaddingTop] = useState(
     "calc(env(safe-area-inset-top, 0px) + 15px)"
   );
 
-  const [scenario, setScenario] = useState<AiScenarioKey>("today");
-  const [portfolioMode, setPortfolioMode] = useState<PortfolioModeKey>("balanced");
+  const [messages, setMessages] = useState<ChatItem[]>([]);
+  const [input, setInput] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [showGreeting, setShowGreeting] = useState(true);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+
+  const chatRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const quickPrompts = [
+    {
+      title: "SOLUSDT",
+      sub: "Что произошло за 24 часа",
+      text: "Что произошло на крипторынке за последние 24 часа? Дай краткое резюме по SOLUSDT.",
+    },
+    {
+      title: "BTCUSDT",
+      sub: "Какие новости и уровни",
+      text: "Расскажи, какие важные новости и уровни сейчас по BTCUSDT.",
+    },
+    {
+      title: "BTC ликвидации",
+      sub: "Ключевые уровни на сутки",
+      text: "Покажи ключевые уровни ликвидаций по BTC на ближайшие сутки.",
+    },
+  ];
+
+  const pinnedMessages = messages.filter((m) => m.role === "ai" && m.pinned);
+
+  async function sendMessage(presetText?: string) {
+    const text = (presetText ?? input).trim();
+
+    if (!text && !attachedFile) return;
+    if (sending) return;
+
+    const imageUrl = attachedPreview || null;
+
+    if (showGreeting) setShowGreeting(false);
+    if (showQuickPrompts) setShowQuickPrompts(false);
+
+    const userMessage: ChatItem = {
+      id: makeId(),
+      role: "user",
+      text,
+      time: formatNowTime(),
+      imageUrl,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setSending(true);
+
+    const currentFile = attachedFile;
+    const currentPreview = attachedPreview;
+
+    setAttachedFile(null);
+    setAttachedPreview(null);
+
+    if (textAreaRef.current) {
+      textAreaRef.current.style.height = "24px";
+    }
+
+    try {
+      const token = getToken();
+      const form = new FormData();
+
+      form.append("message", text || "");
+      if (sessionId) form.append("sessionId", sessionId);
+      if (currentFile) form.append("image", currentFile);
+
+      const res = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+        cache: "no-store",
+      });
+
+      let data: AiResp = { ok: false, error: "BAD_RESPONSE" };
+
+      try {
+        data = (await res.json()) as AiResp;
+      } catch {}
+
+      const answer =
+        data?.ok && data.answer
+          ? data.answer
+          : "Не удалось получить ответ от AI. Попробуй ещё раз.";
+
+      if (data?.sessionId) {
+        setSessionId(data.sessionId);
+      }
+
+      const aiMessage: ChatItem = {
+        id: makeId(),
+        role: "ai",
+        text: answer,
+        time: formatNowTime(),
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch {
+      const aiMessage: ChatItem = {
+        id: makeId(),
+        role: "ai",
+        text: "Ошибка соединения с сервером. Попробуй ещё раз позже.",
+        time: formatNowTime(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
+      setSending(false);
+      setTimeout(scrollToBottom, 60);
+    }
+  }
+
+  function scrollToBottom() {
+    requestAnimationFrame(() => {
+      const el = chatRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight + 300, behavior: "smooth" });
+    });
+  }
+
+  function onPickFile(file: File | null) {
+    if (!file) {
+      setAttachedFile(null);
+      setAttachedPreview(null);
+      return;
+    }
+
+    setAttachedFile(file);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachedPreview(typeof reader.result === "string" ? reader.result : null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function togglePin(id: string) {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, pinned: !m.pinned } : m))
+    );
+  }
+
+  function jumpToMessage(id: string) {
+    const el = document.getElementById(`msg_${id}`);
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.animate(
+      [
+        { boxShadow: "0 0 0 0 rgba(41,121,255,0)" },
+        { boxShadow: "0 0 0 1px rgba(41,121,255,0.9)" },
+        { boxShadow: "0 0 0 0 rgba(41,121,255,0)" },
+      ],
+      { duration: 900, easing: "ease" }
+    );
+  }
+
+  function handleBack() {
+    router.replace("/home");
+  }
 
   useEffect(() => {
     const tg = (window as any)?.Telegram?.WebApp;
@@ -106,208 +315,16 @@ export default function AiPage() {
     };
   }, []);
 
-  const scenarioConfig = useMemo(() => {
-    const map = {
-      today: {
-        bar1: 62,
-        bar2: 0,
-        bar3: 0,
-        detail:
-          "Сегодня AI рекомендует частично фиксировать прибыль, не увеличивать плечо и держать дневной риск под жёстким контролем.",
-        rows: [
-          { focus: "Фиксация части профита", pnl: "+0.5…+2%", risk: "контроль" },
-          { focus: "Снижение плеча", pnl: "нейтрально", risk: "ниже риск" },
-          { focus: "Рост доли стейблов", pnl: "нейтрально", risk: "защита" },
-        ],
-      },
-      week: {
-        bar1: 0,
-        bar2: 78,
-        bar3: 0,
-        detail:
-          "На неделю приоритет — выровнять риск, убрать перегруз в одной монете и закрывать сильные импульсные позиции поэтапно.",
-        rows: [
-          { focus: "Снижение концентрации", pnl: "+2…+4%", risk: "умеренный" },
-          { focus: "Ротация в стейблы", pnl: "нейтрально", risk: "мягче просадка" },
-          { focus: "Меньше сделок в день", pnl: "по рынку", risk: "ниже хаос" },
-        ],
-      },
-      month: {
-        bar1: 0,
-        bar2: 0,
-        bar3: 54,
-        detail:
-          "На месяц AI советует заранее собрать сценарии роста, флэта и падения, а также прописать уровни докупки и фиксации.",
-        rows: [
-          { focus: "План уровней", pnl: "по сценарию", risk: "структурно" },
-          { focus: "Сдвиг в защиту", pnl: "+3…+6%", risk: "ниже вола" },
-          { focus: "Ограничить high-beta", pnl: "умеренный", risk: "контроль хвоста" },
-        ],
-      },
-    } satisfies Record<
-      AiScenarioKey,
-      {
-        bar1: number;
-        bar2: number;
-        bar3: number;
-        detail: string;
-        rows: { focus: string; pnl: string; risk: string }[];
-      }
-    >;
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, sending]);
 
-    return map[scenario];
-  }, [scenario]);
-
-  const allocationConfig = useMemo(() => {
-    const map = {
-      balanced: {
-        text:
-          "Сбалансированный режим: основа в BTC/ETH, часть в альтах и обязательный запас стейблкоинов для манёвра.",
-        rows: [
-          {
-            title: "Стейблкоины",
-            sub: "кэш на докупки и покрытие маржи",
-            target: "25–30%",
-            current: "~18%",
-            targetColor: UI.green,
-          },
-          {
-            title: "BTC / ETH",
-            sub: "ядро портфеля",
-            target: "45–55%",
-            current: "~60%",
-            targetColor: UI.textMain,
-          },
-          {
-            title: "Крупные альты",
-            sub: "SOL и ликвидные монеты",
-            target: "15–20%",
-            current: "~15%",
-            targetColor: UI.textMain,
-          },
-          {
-            title: "Агрессивный сегмент",
-            sub: "high-beta идеи",
-            target: "<5%",
-            current: "~7%",
-            targetColor: UI.red,
-          },
-        ],
-      },
-      defensive: {
-        text:
-          "Защитный режим: упор на сохранение капитала, больше стейблкоинов и минимальный агрессивный риск.",
-        rows: [
-          {
-            title: "Стейблкоины",
-            sub: "главный буфер ликвидности",
-            target: "35–45%",
-            current: "~18%",
-            targetColor: UI.green,
-          },
-          {
-            title: "BTC / ETH",
-            sub: "база участия в рынке",
-            target: "30–40%",
-            current: "~60%",
-            targetColor: UI.textMain,
-          },
-          {
-            title: "Крупные альты",
-            sub: "только сильные монеты",
-            target: "10–15%",
-            current: "~15%",
-            targetColor: UI.textMain,
-          },
-          {
-            title: "Агрессивный сегмент",
-            sub: "тестовые суммы",
-            target: "0–3%",
-            current: "~7%",
-            targetColor: UI.red,
-          },
-        ],
-      },
-      aggressive: {
-        text:
-          "Агрессивный режим: фокус на доходности, но даже здесь AI оставляет обязательный резерв в стейблкоинах.",
-        rows: [
-          {
-            title: "Стейблкоины",
-            sub: "минимальный буфер",
-            target: "10–15%",
-            current: "~18%",
-            targetColor: UI.yellow,
-          },
-          {
-            title: "BTC / ETH",
-            sub: "основа с рабочим риском",
-            target: "45–55%",
-            current: "~60%",
-            targetColor: UI.textMain,
-          },
-          {
-            title: "Крупные альты",
-            sub: "основной драйвер доходности",
-            target: "20–30%",
-            current: "~15%",
-            targetColor: UI.green,
-          },
-          {
-            title: "Агрессивный сегмент",
-            sub: "высокий бета-риск",
-            target: "5–10%",
-            current: "~7%",
-            targetColor: UI.red,
-          },
-        ],
-      },
-    } satisfies Record<
-      PortfolioModeKey,
-      {
-        text: string;
-        rows: {
-          title: string;
-          sub: string;
-          target: string;
-          current: string;
-          targetColor: string;
-        }[];
-      }
-    >;
-
-    return map[portfolioMode];
-  }, [portfolioMode]);
-
-  const checklist = useMemo(() => {
-    if (portfolioMode === "defensive") {
-      return [
-        { text: "Увеличить долю стейблкоинов до защитного диапазона.", tone: "ok" },
-        { text: "Снизить плечо по фьючерсным позициям до комфортного уровня.", tone: "ok" },
-        { text: "Не открывать новые high-risk сделки без подтверждения.", tone: "warn" },
-        { text: "Фиксировать прибыль ступенчато, а не одной точкой.", tone: "ok" },
-        { text: "Исключить перегруженные и перекупленные монеты.", tone: "bad" },
-      ];
-    }
-
-    if (portfolioMode === "aggressive") {
-      return [
-        { text: "Держать минимальный, но обязательный резерв в стейблкоинах.", tone: "warn" },
-        { text: "Работать только с заранее заданным лимитом убытка на день.", tone: "ok" },
-        { text: "Не увеличивать риск после серии убыточных сделок.", tone: "bad" },
-        { text: "Оставлять часть прибыли в кэше после сильных импульсов.", tone: "ok" },
-        { text: "Следить за концентрацией в одной монете и одном секторе.", tone: "warn" },
-      ];
-    }
-
-    return [
-      { text: "Зафиксировать часть прибыли по самым перегретым позициям.", tone: "ok" },
-      { text: "Снизить плечо по BTC/ETH до безопасного уровня.", tone: "ok" },
-      { text: "Подтянуть дневной лимит убытка и не превышать его.", tone: "warn" },
-      { text: "Довести долю стейблкоинов до целевого диапазона.", tone: "ok" },
-      { text: "Избегать новых входов в перекупленных активах без отката.", tone: "bad" },
-    ];
-  }, [portfolioMode]);
+  useEffect(() => {
+    const el = textAreaRef.current;
+    if (!el) return;
+    el.style.height = "24px";
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }, [input]);
 
   return (
     <>
@@ -321,13 +338,12 @@ export default function AiPage() {
           margin: 0;
           padding: 0;
           background: #000;
-          overflow-x: hidden;
+          overflow: hidden;
         }
 
-        button,
-        input,
         textarea,
-        select {
+        input,
+        button {
           font: inherit;
         }
 
@@ -341,6 +357,18 @@ export default function AiPage() {
             transform: translate3d(0, 0, 0);
           }
         }
+
+        @keyframes pulseDots {
+          0%,
+          100% {
+            opacity: 0.25;
+            transform: translateY(0);
+          }
+          50% {
+            opacity: 1;
+            transform: translateY(-3px);
+          }
+        }
       `}</style>
 
       <main style={{ ...styles.page, paddingTop: pagePaddingTop }}>
@@ -350,329 +378,255 @@ export default function AiPage() {
               type="button"
               aria-label="Назад"
               style={styles.backButton}
-              onClick={() => router.replace("/home")}
+              onClick={handleBack}
             >
               <ArrowLeftIcon />
             </button>
 
-            <div style={styles.pageTitle}>AI-аналитика</div>
+            <div style={styles.topTitleWrap}>
+              <div style={styles.topTitle}>AI ассистент</div>
+              <div style={styles.topTitleSub}>на базе Trader’s Map</div>
+            </div>
 
             <div style={styles.topSpacer} />
           </section>
 
-          <section style={{ ...styles.heroCard, ...reveal(1, mounted) }}>
-            <div style={styles.sectionMainTitle}>Режим аккаунта и индекс здоровья</div>
-            <div style={styles.sectionSubText}>
-              Сводный взгляд AI на состояние счёта: риск, концентрация и рабочий режим.
-            </div>
+          <section style={{ ...styles.pinnedWrap, ...reveal(1, mounted) }}>
+            <div style={styles.pinnedTitle}>Закреплённые ответы</div>
 
-            <div style={styles.summaryGrid}>
-              <div style={styles.summaryRow}>
-                <div style={styles.summaryLeft}>
-                  <div style={styles.summaryMain}>Текущий режим</div>
-                  <div style={styles.summarySub}>
-                    баланс между риском и доходностью
-                  </div>
-                </div>
-                <div style={styles.summaryRight}>
-                  <div style={{ ...styles.summaryValue, color: UI.green }}>
-                    сбалансированный
-                  </div>
-                  <div style={styles.summaryHint}>
-                    aggressive / balanced / defensive
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.summaryRow}>
-                <div style={styles.summaryLeft}>
-                  <div style={styles.summaryMain}>Основной источник риска</div>
-                  <div style={styles.summarySub}>
-                    фьючерсы и перегруз в BTC/ETH
-                  </div>
-                </div>
-                <div style={styles.summaryRight}>
-                  <div style={styles.summaryValue}>BTC / ETH</div>
-                  <div style={styles.summaryHint}>часть позиций с плечом</div>
-                </div>
-              </div>
-
-              <div style={styles.summaryRow}>
-                <div style={styles.summaryLeft}>
-                  <div style={styles.summaryMain}>Буфер стейблкоинов</div>
-                  <div style={styles.summarySub}>
-                    запас на покрытие и докупки
-                  </div>
-                </div>
-                <div style={styles.summaryRight}>
-                  <div style={styles.summaryValue}>~18%</div>
-                  <div style={{ ...styles.summaryHint, color: UI.yellow }}>
-                    ниже комфортного уровня
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.healthRow}>
-              <span style={styles.healthLabel}>Индекс здоровья AI</span>
-              <div style={styles.healthTrack}>
-                <div style={styles.healthFill} />
-              </div>
-              <span style={styles.healthValue}>82/100</span>
-            </div>
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(2, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Сценарии управления риском</div>
-            </div>
-
-            <div style={styles.card}>
-              <div style={styles.sectionSubText}>
-                Как действовать сегодня, на неделе и в горизонте месяца.
-              </div>
-
-              <div style={styles.aiProgressList}>
-                <div style={styles.aiProgressItem}>
-                  <div style={styles.aiProgressTitle}>Сегодня</div>
-                  <div style={styles.aiProgressLine}>
-                    <div
-                      style={{
-                        ...styles.aiProgressFill,
-                        width: `${scenarioConfig.bar1}%`,
-                        background:
-                          "linear-gradient(90deg, rgba(100,217,123,0.95), rgba(100,217,123,0.30))",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={styles.aiProgressItem}>
-                  <div style={styles.aiProgressTitle}>Неделя</div>
-                  <div style={styles.aiProgressLine}>
-                    <div
-                      style={{
-                        ...styles.aiProgressFill,
-                        width: `${scenarioConfig.bar2}%`,
-                        background:
-                          "linear-gradient(90deg, rgba(41,121,255,0.95), rgba(41,121,255,0.30))",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={styles.aiProgressItem}>
-                  <div style={styles.aiProgressTitle}>Месяц</div>
-                  <div style={styles.aiProgressLine}>
-                    <div
-                      style={{
-                        ...styles.aiProgressFill,
-                        width: `${scenarioConfig.bar3}%`,
-                        background:
-                          "linear-gradient(90deg, rgba(155,140,255,0.95), rgba(155,140,255,0.30))",
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.chipsRow}>
-                <Chip
-                  text="Сегодня"
-                  active={scenario === "today"}
-                  onClick={() => setScenario("today")}
-                />
-                <Chip
-                  text="Неделя"
-                  active={scenario === "week"}
-                  onClick={() => setScenario("week")}
-                />
-                <Chip
-                  text="Месяц"
-                  active={scenario === "month"}
-                  onClick={() => setScenario("month")}
-                />
-              </div>
-
-              <div style={styles.aiDetailText}>{scenarioConfig.detail}</div>
-
-              <div style={styles.tableWrap}>
-                <div style={styles.tableHeader}>
-                  <span>Фокус</span>
-                  <span>PnL</span>
-                  <span>Риск</span>
-                </div>
-
-                {scenarioConfig.rows.map((row) => (
-                  <div key={row.focus} style={styles.tableRow}>
-                    <span>{row.focus}</span>
-                    <span>{row.pnl}</span>
-                    <span>{row.risk}</span>
-                  </div>
+            {!pinnedMessages.length ? (
+              <div style={styles.pinnedEmpty}>Пока ничего не закреплено.</div>
+            ) : (
+              <div style={styles.pinnedList}>
+                {pinnedMessages.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    style={styles.pinnedItem}
+                    onClick={() => jumpToMessage(m.id)}
+                  >
+                    {(m.text || "").length > 140
+                      ? `${m.text.slice(0, 137)}…`
+                      : m.text}
+                  </button>
                 ))}
               </div>
-            </div>
+            )}
           </section>
 
-          <section style={{ ...styles.block, ...reveal(3, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Распределение капитала</div>
-            </div>
+          <section style={styles.chatArea}>
+            {showGreeting ? (
+              <div style={{ ...styles.greetingCard, ...reveal(2, mounted) }}>
+                <div style={styles.greetingHeading}>
+                  Привет, я твой крипто-ассистент Trader’s Map.
+                </div>
 
-            <div style={styles.card}>
-              <div style={styles.sectionSubText}>
-                Целевые доли по группам активов с точки зрения AI.
+                <div style={styles.greetingItem}>
+                  <span style={styles.greetingIcon}>🛠️</span>
+                  <span>
+                    Сейчас я в активной разработке и могу опираться на неполные
+                    данные.
+                  </span>
+                </div>
+
+                <div style={styles.greetingItem}>
+                  <span style={styles.greetingIcon}>⚠️</span>
+                  <span>
+                    Команда продолжает обучать меня, поэтому я работаю в тестовом
+                    режиме.
+                  </span>
+                </div>
+
+                <div style={styles.greetingItem}>
+                  <span style={styles.greetingIcon}>💡</span>
+                  <span>
+                    Все ответы носят исключительно информационный характер и не
+                    являются финансовой рекомендацией.
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  style={styles.greetingCta}
+                  onClick={() => setShowQuickPrompts((v) => !v)}
+                >
+                  {showQuickPrompts ? "Скрыть примеры запросов" : "Показать примеры запросов"}
+                </button>
               </div>
+            ) : null}
 
-              <div style={styles.chipsRow}>
-                <Chip
-                  text="Сбалансированный"
-                  active={portfolioMode === "balanced"}
-                  onClick={() => setPortfolioMode("balanced")}
-                />
-                <Chip
-                  text="Защитный"
-                  active={portfolioMode === "defensive"}
-                  onClick={() => setPortfolioMode("defensive")}
-                />
-                <Chip
-                  text="Агрессивный"
-                  active={portfolioMode === "aggressive"}
-                  onClick={() => setPortfolioMode("aggressive")}
-                />
+            {showQuickPrompts ? (
+              <div style={styles.quickGrid}>
+                {quickPrompts.map((item) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    style={styles.quickCard}
+                    onClick={() => sendMessage(item.text)}
+                  >
+                    <div style={styles.quickTitle}>{item.title}</div>
+                    <div style={styles.quickSub}>{item.sub}</div>
+                  </button>
+                ))}
               </div>
+            ) : null}
 
-              <div style={styles.allocList}>
-                {allocationConfig.rows.map((row) => (
-                  <div key={row.title} style={styles.allocRow}>
-                    <div style={styles.allocLeft}>
-                      <div style={styles.allocMain}>{row.title}</div>
-                      <div style={styles.allocSub}>{row.sub}</div>
+            <div ref={chatRef} style={styles.chatList}>
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  id={`msg_${m.id}`}
+                  style={{
+                    ...styles.row,
+                    justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                  }}
+                >
+                  {m.role === "ai" ? <div style={styles.aiAvatar}>AI</div> : null}
+
+                  <div
+                    style={{
+                      ...styles.bubbleWrap,
+                      marginLeft: m.role === "user" ? "auto" : 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        ...styles.bubble,
+                        ...(m.role === "user" ? styles.userBubble : styles.aiBubble),
+                      }}
+                    >
+                      {m.text}
+
+                      {m.imageUrl ? (
+                        <img
+                          src={m.imageUrl}
+                          alt="attachment"
+                          style={styles.bubbleImage}
+                          onClick={() => setLightboxSrc(m.imageUrl || null)}
+                        />
+                      ) : null}
                     </div>
 
-                    <div style={styles.allocRight}>
-                      <div style={styles.allocValue}>
-                        цель:{" "}
-                        <span style={{ color: row.targetColor }}>{row.target}</span>
-                      </div>
-                      <div style={styles.allocHint}>сейчас {row.current}</div>
+                    <div style={styles.metaRow}>
+                      <span>{m.time}</span>
+
+                      {m.role === "ai" ? (
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.pinBtn,
+                            ...(m.pinned ? styles.pinBtnActive : null),
+                          }}
+                          onClick={() => togglePin(m.id)}
+                        >
+                          📌 {m.pinned ? "закреплён" : "закрепить"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
 
-              <div style={styles.aiDetailText}>{allocationConfig.text}</div>
-            </div>
-          </section>
-
-          <section style={{ ...styles.block, ...reveal(4, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Чек-лист AI</div>
-            </div>
-
-            <div style={styles.card}>
-              <div style={styles.sectionSubText}>
-                Шаги на ближайшее время для выравнивания риска и удержания профита.
-              </div>
-
-              <div style={styles.checkList}>
-                {checklist.map((item, index) => (
-                  <div key={`${item.text}-${index}`} style={styles.checkItem}>
-                    <span
-                      style={{
-                        ...styles.checkDot,
-                        background:
-                          item.tone === "ok"
-                            ? UI.green
-                            : item.tone === "warn"
-                            ? UI.yellow
-                            : UI.red,
-                      }}
-                    />
-                    <span style={styles.checkText}>{item.text}</span>
+              {sending ? (
+                <div style={styles.typingRow}>
+                  <span>AI-ассистент думает</span>
+                  <div style={styles.typingDots}>
+                    <span style={{ ...styles.typingDot, animationDelay: "0ms" }} />
+                    <span style={{ ...styles.typingDot, animationDelay: "140ms" }} />
+                    <span style={{ ...styles.typingDot, animationDelay: "280ms" }} />
                   </div>
-                ))}
-              </div>
-
-              <div style={styles.aiDetailText}>
-                Чек-лист будет обновляться от реальных данных аккаунта после подключения AI API.
-              </div>
+                </div>
+              ) : null}
             </div>
           </section>
 
-          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Базовая настройка AI</div>
-            </div>
+          <section style={styles.bottomBar}>
+            {attachedPreview ? (
+              <div style={styles.attachPreviewWrap}>
+                <img
+                  src={attachedPreview}
+                  alt="preview"
+                  style={styles.attachPreview}
+                  onClick={() => setLightboxSrc(attachedPreview)}
+                />
+                <button
+                  type="button"
+                  style={styles.removeAttachBtn}
+                  onClick={() => {
+                    setAttachedFile(null);
+                    setAttachedPreview(null);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
 
-            <div style={styles.card}>
-              <div style={styles.configGrid}>
-                <ConfigItem
-                  label="Статус подключения"
-                  value="Подготовка"
-                  color={UI.yellow}
-                  sub="Дизайн готов, API подключим следующим этапом"
-                />
-                <ConfigItem
-                  label="AI provider"
-                  value="Gemini"
-                  color={UI.blue}
-                  sub="Можно подключить ваш платный API"
-                />
-                <ConfigItem
-                  label="Режим ответа"
-                  value="Консервативный"
-                  color={UI.green}
-                  sub="Только практичные и понятные рекомендации"
+            <div style={styles.inputRow}>
+              <button
+                type="button"
+                style={styles.circleBtn}
+                onClick={() => fileRef.current?.click()}
+                aria-label="Прикрепить"
+              >
+                <PlusIcon />
+              </button>
+
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+              />
+
+              <div style={styles.inputShell}>
+                <textarea
+                  ref={textAreaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Спросите что-нибудь"
+                  style={styles.textarea}
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
                 />
               </div>
 
               <button
                 type="button"
-                style={styles.primaryButton}
-                onClick={() => router.replace("/home")}
+                style={{
+                  ...styles.sendBtn,
+                  ...((!input.trim() && !attachedFile) || sending
+                    ? styles.sendBtnDisabled
+                    : null),
+                }}
+                onClick={() => sendMessage()}
+                aria-label="Отправить"
               >
-                Вернуться на home
+                <SendIcon />
               </button>
+            </div>
+
+            <div style={styles.footerNote}>
+              Ответы ИИ носят информационный характер и не являются финансовой
+              рекомендацией.
             </div>
           </section>
         </div>
       </main>
+
+      {lightboxSrc ? (
+        <div style={styles.lightbox} onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} alt="full" style={styles.lightboxImage} />
+        </div>
+      ) : null}
     </>
-  );
-}
-
-function Chip(props: {
-  text: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      style={{
-        ...styles.chip,
-        ...(props.active ? styles.chipActive : null),
-      }}
-    >
-      {props.text}
-    </button>
-  );
-}
-
-function ConfigItem(props: {
-  label: string;
-  value: string;
-  color: string;
-  sub: string;
-}) {
-  return (
-    <div style={styles.configItem}>
-      <div style={styles.configLabel}>{props.label}</div>
-      <div style={{ ...styles.configValue, color: props.color }}>{props.value}</div>
-      <div style={styles.configSub}>{props.sub}</div>
-    </div>
   );
 }
 
@@ -683,8 +637,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
-    overflowX: "hidden",
+    overflow: "hidden",
   } satisfies CSSProperties,
 
   container: {
@@ -692,12 +645,14 @@ const styles = {
     maxWidth: 560,
     margin: "0 auto",
     padding: "0 16px",
-    overflowX: "hidden",
+    height: "calc(100vh - env(safe-area-inset-top, 0px))",
+    display: "flex",
+    flexDirection: "column",
   } satisfies CSSProperties,
 
   topBar: {
     marginTop: 8,
-    marginBottom: 18,
+    marginBottom: 14,
     display: "grid",
     gridTemplateColumns: "44px 1fr 44px",
     alignItems: "center",
@@ -718,12 +673,22 @@ const styles = {
     WebkitTapHighlightColor: "transparent",
   } satisfies CSSProperties,
 
-  pageTitle: {
+  topTitleWrap: {
     textAlign: "center",
-    fontSize: 18,
+  } satisfies CSSProperties,
+
+  topTitle: {
+    fontSize: 16,
     fontWeight: 800,
     color: UI.textMain,
-    letterSpacing: "-0.02em",
+    lineHeight: 1.1,
+  } satisfies CSSProperties,
+
+  topTitleSub: {
+    marginTop: 3,
+    fontSize: 10,
+    color: UI.textFaint,
+    lineHeight: 1.1,
   } satisfies CSSProperties,
 
   topSpacer: {
@@ -731,344 +696,360 @@ const styles = {
     height: 44,
   } satisfies CSSProperties,
 
-  heroCard: {
-    marginBottom: 20,
-    padding: 16,
-    borderRadius: 22,
-    border: `1px solid ${UI.borderHard}`,
-    background:
-      "linear-gradient(180deg, rgba(41,121,255,0.09) 0%, rgba(255,255,255,0.025) 100%)",
+  pinnedWrap: {
+    marginBottom: 10,
+    paddingLeft: 8,
+    borderLeft: "2px solid rgba(255,255,255,0.08)",
   } satisfies CSSProperties,
 
-  block: {
-    paddingBottom: 20,
-    borderBottom: `1px solid ${UI.borderSoft}`,
-    marginBottom: 20,
-  } satisfies CSSProperties,
-
-  card: {
-    border: `1px solid ${UI.border}`,
-    borderRadius: 18,
-    padding: 14,
-    background: "rgba(255,255,255,0.03)",
-  } satisfies CSSProperties,
-
-  sectionHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  sectionMainTitle: {
-    fontSize: 16,
-    fontWeight: 800,
-    letterSpacing: "-0.01em",
-    color: UI.textMain,
-    marginBottom: 8,
-  } satisfies CSSProperties,
-
-  sectionSubText: {
-    fontSize: 12,
-    lineHeight: 1.6,
-    color: UI.textMuted,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  summaryGrid: {
-    display: "grid",
-    gap: 10,
-  } satisfies CSSProperties,
-
-  summaryRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "flex-start",
-    padding: "10px 0",
-    borderBottom: `1px solid ${UI.borderSoft}`,
-  } satisfies CSSProperties,
-
-  summaryLeft: {
-    minWidth: 0,
-    flex: 1,
-  } satisfies CSSProperties,
-
-  summaryRight: {
-    textAlign: "right",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-
-  summaryMain: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  summarySub: {
-    marginTop: 3,
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.4,
-  } satisfies CSSProperties,
-
-  summaryValue: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  summaryHint: {
-    marginTop: 3,
-    fontSize: 11,
+  pinnedTitle: {
+    fontSize: 10,
     color: UI.textFaint,
-  } satisfies CSSProperties,
-
-  healthRow: {
-    marginTop: 14,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  } satisfies CSSProperties,
-
-  healthLabel: {
-    fontSize: 11,
-    color: UI.textSoft,
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  healthTrack: {
-    flex: 1,
-    height: 7,
-    borderRadius: 999,
-    overflow: "hidden",
-    background: "rgba(255,255,255,0.08)",
-  } satisfies CSSProperties,
-
-  healthFill: {
-    width: "82%",
-    height: "100%",
-    background:
-      "linear-gradient(90deg, rgba(41,121,255,0.35) 0%, rgba(41,121,255,1) 100%)",
-  } satisfies CSSProperties,
-
-  healthValue: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: UI.textMain,
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-
-  aiProgressList: {
-    display: "grid",
-    gap: 10,
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  aiProgressItem: {
-    display: "grid",
-    gap: 5,
-  } satisfies CSSProperties,
-
-  aiProgressTitle: {
-    fontSize: 11,
-    color: UI.textSoft,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
     fontWeight: 700,
+    marginBottom: 6,
+    marginLeft: 4,
   } satisfies CSSProperties,
 
-  aiProgressLine: {
+  pinnedEmpty: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.34)",
+    marginLeft: 4,
+  } satisfies CSSProperties,
+
+  pinnedList: {
+    display: "grid",
+    gap: 6,
+  } satisfies CSSProperties,
+
+  pinnedItem: {
     width: "100%",
-    height: 10,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.06)",
-    overflow: "hidden",
-  } satisfies CSSProperties,
-
-  aiProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-  } satisfies CSSProperties,
-
-  chipsRow: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    marginBottom: 12,
-  } satisfies CSSProperties,
-
-  chip: {
-    height: 34,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.03)",
+    textAlign: "left",
+    borderRadius: 14,
+    background: "#101010",
+    border: "1px solid rgba(255,255,255,0.14)",
     color: UI.textSoft,
+    padding: "8px 10px",
     fontSize: 12,
-    fontWeight: 700,
     cursor: "pointer",
   } satisfies CSSProperties,
 
-  chipActive: {
-    background: "#fff",
-    color: "#000",
-    border: "1px solid #fff",
-  } satisfies CSSProperties,
-
-  aiDetailText: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 1.6,
-    color: UI.textSoft,
-  } satisfies CSSProperties,
-
-  tableWrap: {
-    marginTop: 12,
-    borderRadius: 14,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.025)",
-    overflow: "hidden",
-  } satisfies CSSProperties,
-
-  tableHeader: {
-    display: "grid",
-    gridTemplateColumns: "1.7fr 0.7fr 0.7fr",
-    gap: 8,
-    padding: "10px 12px",
-    fontSize: 11,
-    fontWeight: 800,
-    color: UI.textMain,
-    background: "rgba(255,255,255,0.04)",
-  } satisfies CSSProperties,
-
-  tableRow: {
-    display: "grid",
-    gridTemplateColumns: "1.7fr 0.7fr 0.7fr",
-    gap: 8,
-    padding: "10px 12px",
-    fontSize: 11,
-    color: UI.textSoft,
-    borderTop: `1px solid ${UI.borderSoft}`,
-  } satisfies CSSProperties,
-
-  allocList: {
-    display: "grid",
-    gap: 8,
-    marginTop: 2,
-  } satisfies CSSProperties,
-
-  allocRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    borderRadius: 14,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.02)",
-    padding: 12,
-  } satisfies CSSProperties,
-
-  allocLeft: {
-    minWidth: 0,
+  chatArea: {
     flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
   } satisfies CSSProperties,
 
-  allocRight: {
-    flexShrink: 0,
-    textAlign: "right",
+  greetingCard: {
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "#000",
   } satisfies CSSProperties,
 
-  allocMain: {
-    fontSize: 13,
+  greetingHeading: {
+    fontSize: 14,
     fontWeight: 700,
     color: UI.textMain,
+    marginBottom: 10,
   } satisfies CSSProperties,
 
-  allocSub: {
-    marginTop: 3,
-    fontSize: 11,
-    color: UI.textMuted,
-    lineHeight: 1.4,
-  } satisfies CSSProperties,
-
-  allocValue: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: UI.textMain,
-  } satisfies CSSProperties,
-
-  allocHint: {
-    marginTop: 3,
-    fontSize: 11,
-    color: UI.textFaint,
-  } satisfies CSSProperties,
-
-  checkList: {
-    display: "grid",
-    gap: 9,
-  } satisfies CSSProperties,
-
-  checkItem: {
+  greetingItem: {
     display: "flex",
-    alignItems: "flex-start",
     gap: 8,
-  } satisfies CSSProperties,
-
-  checkDot: {
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    marginTop: 6,
-    flexShrink: 0,
-  } satisfies CSSProperties,
-
-  checkText: {
-    fontSize: 12,
-    lineHeight: 1.55,
+    alignItems: "flex-start",
+    fontSize: 13,
     color: UI.textSoft,
-  } satisfies CSSProperties,
-
-  configGrid: {
-    display: "grid",
-    gap: 10,
-  } satisfies CSSProperties,
-
-  configItem: {
-    borderRadius: 14,
-    border: `1px solid ${UI.border}`,
-    background: "rgba(255,255,255,0.02)",
-    padding: 12,
-  } satisfies CSSProperties,
-
-  configLabel: {
-    fontSize: 11,
-    color: UI.textMuted,
+    lineHeight: 1.5,
     marginBottom: 6,
   } satisfies CSSProperties,
 
-  configValue: {
-    fontSize: 15,
-    fontWeight: 800,
+  greetingIcon: {
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  greetingCta: {
+    marginTop: 8,
+    border: "none",
+    borderRadius: 999,
+    padding: "9px 14px",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(41,121,255,0.35)",
+  } satisfies CSSProperties,
+
+  quickGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+
+  quickCard: {
+    minHeight: 68,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "#151515",
+    color: "#fff",
+    textAlign: "left",
+    padding: "11px 13px",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  quickTitle: {
+    fontSize: 14,
+    fontWeight: 700,
     color: UI.textMain,
   } satisfies CSSProperties,
 
-  configSub: {
-    marginTop: 6,
-    fontSize: 11,
-    color: UI.textFaint,
-    lineHeight: 1.4,
+  quickSub: {
+    marginTop: 4,
+    fontSize: 11.5,
+    color: "#b3b3b3",
+    lineHeight: 1.3,
   } satisfies CSSProperties,
 
-  primaryButton: {
-    marginTop: 14,
+  chatList: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingBottom: 8,
+    scrollbarWidth: "none",
+  } satisfies CSSProperties,
+
+  row: {
+    display: "flex",
+    margin: "6px 0",
+  } satisfies CSSProperties,
+
+  aiAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    background: "linear-gradient(135deg, #2d7dff, #5f9bff)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#fff",
+    marginRight: 6,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  bubbleWrap: {
+    display: "flex",
+    flexDirection: "column",
+    maxWidth: "78%",
+  } satisfies CSSProperties,
+
+  bubble: {
+    padding: "10px 12px",
+    borderRadius: 18,
+    fontSize: 14,
+    lineHeight: 1.45,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  userBubble: {
+    background: UI.brand,
+    color: "#fff",
+    borderBottomRightRadius: 5,
+  } satisfies CSSProperties,
+
+  aiBubble: {
+    background: "#161616",
+    color: "#f5f5f5",
+  } satisfies CSSProperties,
+
+  bubbleImage: {
+    display: "block",
+    marginTop: 8,
     width: "100%",
-    height: 44,
+    maxWidth: 260,
     borderRadius: 14,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  metaRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+    fontSize: 10,
+    color: "#707070",
+  } satisfies CSSProperties,
+
+  pinBtn: {
+    border: "none",
+    background: "transparent",
+    color: "#8a8a8a",
+    borderRadius: 999,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  pinBtnActive: {
+    background: "rgba(45,125,255,.10)",
+    color: "#c8dcff",
+  } satisfies CSSProperties,
+
+  typingRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: UI.textMuted,
+    fontSize: 12,
+    padding: "6px 4px 8px",
+  } satisfies CSSProperties,
+
+  typingDots: {
+    display: "inline-flex",
+    gap: 4,
+  } satisfies CSSProperties,
+
+  typingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: "50%",
+    background: UI.textMuted,
+    opacity: 0.3,
+    animationName: "pulseDots",
+    animationDuration: "1100ms",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
+  } satisfies CSSProperties,
+
+  bottomBar: {
+    paddingTop: 8,
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
+    background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.92) 24%)",
+  } satisfies CSSProperties,
+
+  attachPreviewWrap: {
+    position: "relative",
+    width: 74,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  attachPreview: {
+    width: 74,
+    height: 74,
+    objectFit: "cover",
+    borderRadius: 14,
+    border: `1px solid ${UI.border}`,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  removeAttachBtn: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "#101010",
+    color: "#fff",
+    fontSize: 11,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  inputRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  } satisfies CSSProperties,
+
+  circleBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    border: "none",
+    background: "#151515",
+    color: "#e0e0e0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+
+  inputShell: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    padding: "8px 18px",
+    borderRadius: 28,
+    background: "#111111",
+    border: "1px solid rgba(255,255,255,.18)",
+  } satisfies CSSProperties,
+
+  textarea: {
+    flex: 1,
+    border: "none",
+    outline: "none",
+    resize: "none",
+    background: "transparent",
+    color: "#fff",
+    fontSize: 16,
+    lineHeight: 1.45,
+    minHeight: 24,
+    maxHeight: 96,
+    padding: "4px 0",
+  } satisfies CSSProperties,
+
+  sendBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 999,
     border: "none",
     background: UI.brand,
     color: "#fff",
-    fontSize: 13,
-    fontWeight: 800,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+    flexShrink: 0,
+    boxShadow: "0 8px 18px rgba(41,121,255,0.35)",
+  } satisfies CSSProperties,
+
+  sendBtnDisabled: {
+    opacity: 0.45,
+    pointerEvents: "none",
+    boxShadow: "none",
+  } satisfies CSSProperties,
+
+  footerNote: {
+    marginTop: 8,
+    textAlign: "center",
+    fontSize: 10,
+    color: "#555",
+    padding: "0 10px",
+  } satisfies CSSProperties,
+
+  lightbox: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.92)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    padding: 16,
+  } satisfies CSSProperties,
+
+  lightboxImage: {
+    maxWidth: "100%",
+    maxHeight: "100%",
+    borderRadius: 12,
   } satisfies CSSProperties,
 };
