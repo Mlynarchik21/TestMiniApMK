@@ -63,6 +63,25 @@ function isTerminalBotOrderStatus(status: string) {
   return ["FILLED", "CANCELED", "REJECTED", "EXPIRED"].includes(upper(status));
 }
 
+async function markBotManaged(userId: string) {
+  await prisma.botState.updateMany({
+    where: { userId },
+    data: {
+      lastSyncAt: new Date(),
+      lastError: null,
+    },
+  });
+}
+
+async function markBotManageError(userId: string, error: unknown) {
+  await prisma.botState.updateMany({
+    where: { userId },
+    data: {
+      lastError: String((error as any)?.message || error),
+    },
+  });
+}
+
 async function getPositionOrders(positionId: string) {
   const rows = await prisma.$queryRaw<RawBotOrder[]>(Prisma.sql`
     SELECT
@@ -732,4 +751,4 @@ export async function runManage() {
     ok: true,
     managed,
   };
-}
+}  исправь и дай код целиком  
