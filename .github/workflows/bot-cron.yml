@@ -2,25 +2,14 @@ name: Bot Cron
 
 on:
   schedule:
-    - cron: "*/1 * * * *"
-    - cron: "*/5 * * * *"
+    - cron: "*/5 * * * *" # каждые 5 минут
   workflow_dispatch:
 
 jobs:
-  manage:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/1 * * * *'
+  run-bot:
     runs-on: ubuntu-latest
-    steps:
-      - name: Call manage
-        run: |
-          curl -X POST --fail --silent --show-error \
-            https://test-mini-ap-mk.vercel.app/api/engine/manage
 
-  tick:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *'
-    runs-on: ubuntu-latest
     steps:
-      - name: Call tick
+      - name: Call bot
         run: |
-          curl -X POST --fail --silent --show-error \
-            https://test-mini-ap-mk.vercel.app/api/engine/tick
+          curl "https://test-mini-ap-mk.vercel.app/api/cron/run?secret=123456"
