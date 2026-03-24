@@ -657,93 +657,116 @@ export async function runManage() {
   const managed: AnyJson[] = [];
 
   for (const bot of bots) {
-    if (!bot.keyId) {
-      managed.push({
-        userId: bot.userId,
-        exchange: bot.exchange,
-        status: "SKIPPED",
-        message: "API key not selected",
-      });
-      continue;
-    }
+    let botHadError = false;
 
-    const key = await prisma.userKey.findFirst({
-      where: {
-        id: bot.keyId,
-        userId: bot.userId,
-      },
-      select: {
-        apiKey: true,
-        secretEnc: true,
-      },
-    });
-
-    if (!key) {
-      managed.push({
-        userId: bot.userId,
-        exchange: bot.exchange,
-        status: "SKIPPED",
-        message: "Selected key not found",
-      });
-      continue;
-    }
-
-    const apiSecret = decryptString(key.secretEnc);
-
-    const positions = await prisma.botPosition.findMany({
-      where: {
-        userId: bot.userId,
-        exchange: bot.exchange,
-        status: "OPEN",
-      },
-      select: {
-        id: true,
-        symbol: true,
-        avgPrice: true,
-        qty: true,
-        tpPrice: true,
-        addsCount: true,
-        investedQuote: true,
-        openedAt: true,
-      },
-    });
-
-    if (!positions.length) {
-      managed.push({
-        userId: bot.userId,
-        exchange: bot.exchange,
-        status: "SKIPPED",
-        message: "No open positions",
-      });
-      continue;
-    }
-
-    for (const position of positions) {
-      try {
-        const result = await manageOnePosition({
-          userId: bot.userId,
-          exchange: bot.exchange as ExchangeName,
-          apiKey: key.apiKey,
-          apiSecret,
-          position,
-        });
-
+    try {
+      if (!bot.keyId) {
         managed.push({
           userId: bot.userId,
           exchange: bot.exchange,
-          status: "SUCCESS",
-          ...result,
+          status: "SKIPPED",
+          message: "API key not selected",
         });
-      } catch (e: any) {
-        managed.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          positionId: position.id,
-          symbol: position.symbol,
-          status: "ERROR",
-          message: String(e?.message || e),
-        });
+        continue;
       }
+
+      const key = await prisma.userKey.findFirst({
+        where: {
+          id: bot.keyId,
+          userId: bot.userId,
+        },
+        select: {
+          apiKey: true,
+          secretEnc: true,
+        },
+      });
+
+      if (!key) {
+        managed.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          status: "SKIPPED",
+          message: "Selected key not found",
+        });
+        continue;
+      }
+
+      const apiSecret = decryptString(key.secretEnc);
+
+      const positions = await prisma.botPosition.findMany({
+        where: {
+          userId: bot.userId,
+          exchange: bot.exchange,
+          status: "OPEN",
+        },
+        select: {
+          id: true,
+          symbol: true,
+          avgPrice: true,
+          qty: true,
+          tpPrice: true,
+          addsCount: true,
+          investedQuote: true,
+          openedAt: true,
+        },
+      });
+
+      if (!positions.length) {
+        managed.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          status: "SKIPPED",
+          message: "No open positions",
+        });
+
+        await markBotManaged(bot.userId);
+        continue;
+      }
+
+      for (const position of positions) {
+        try {
+          const result = await manageOnePosition({
+            userId: bot.userId,
+            exchange: bot.exchange as ExchangeName,
+            apiKey: key.apiKey,
+            apiSecret,
+            position,
+          });
+
+          managed.push({
+            userId: bot.userId,
+            exchange: bot.exchange,
+            status: "SUCCESS",
+            ...result,
+          });
+        } catch (e: any) {
+          botHadError = true;
+
+          managed.push({
+            userId: bot.userId,
+            exchange: bot.exchange,
+            positionId: position.id,
+            symbol: position.symbol,
+            status: "ERROR",
+            message: String(e?.message || e),
+          });
+        }
+      }
+
+      if (botHadError) {
+        await markBotManageError(bot.userId, "One or more positions failed during manage");
+      } else {
+        await markBotManaged(bot.userId);
+      }
+    } catch (e: any) {
+      await markBotManageError(bot.userId, e);
+
+      managed.push({
+        userId: bot.userId,
+        exchange: bot.exchange,
+        status: "ERROR",
+        message: String(e?.message || e),
+      });
     }
   }
 
@@ -751,4 +774,4 @@ export async function runManage() {
     ok: true,
     managed,
   };
-}  исправь и дай код целиком  
+}
