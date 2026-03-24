@@ -323,10 +323,9 @@ export default function HomePage() {
         String(state?.status ?? "").toUpperCase() !== "STOPPED" &&
         String(state?.status ?? "").toUpperCase() !== "IDLE";
 
-      const openPositions =
-        statsJson.ok
-          ? Number((statsJson as any)?.stats?.openPositions ?? positions.length ?? 0)
-          : positions.length;
+      const openPositions = statsJson.ok
+        ? Number((statsJson as any)?.stats?.openPositions ?? positions.length ?? 0)
+        : positions.length;
 
       const pnlToday = statsJson.ok
         ? Number((statsJson as any)?.stats?.pnlToday ?? 0)
@@ -721,26 +720,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section style={{ ...styles.aiBlock, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>AI Insight</div>
-            </div>
-
-            <div style={styles.bodyText}>
-              Рынок в фазе страха. Возможна локальная аккумуляция. Приоритет —
-              BTC, ETH и сильные альты с подтверждённым спросом.
-            </div>
-
-            <button
-              type="button"
-              style={styles.blockButton}
-              onClick={() => router.replace("/ai")}
-            >
-              Открыть AI
-            </button>
-          </section>
-
-          <section style={{ ...styles.botBlock, ...reveal(6, mounted) }}>
+          <section style={{ ...styles.botBlock, ...reveal(5, mounted) }}>
             <div style={styles.botTopRow}>
               <div>
                 <div style={styles.botEyebrow}>TRADING SYSTEM</div>
@@ -770,7 +750,11 @@ export default function HomePage() {
                     : "Остановлен"
                 }
                 sub={
-                  botWidgetLoading ? "Обновляем..." : botActive ? "Runtime ok" : "Бот выключен"
+                  botWidgetLoading
+                    ? "Обновляем..."
+                    : botActive
+                    ? "Runtime ok"
+                    : "Бот выключен"
                 }
                 valueColor={botActive ? UI.green : UI.red}
                 glowColor={
@@ -815,7 +799,7 @@ export default function HomePage() {
             </button>
           </section>
 
-          <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
+          <section style={{ ...styles.debugCard, ...reveal(6, mounted) }}>
             <div style={styles.debugHeader}>
               <div>
                 <div style={styles.debugTitle}>Технический статус</div>
@@ -1460,35 +1444,6 @@ const styles = {
     fontSize: 13,
     fontWeight: 700,
     flexWrap: "wrap",
-  } satisfies CSSProperties,
-
-  aiBlock: {
-    marginTop: 4,
-    marginBottom: 2,
-    padding: 16,
-    borderRadius: 20,
-    border: `1px solid ${UI.border}`,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
-  } satisfies CSSProperties,
-
-  bodyText: {
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: UI.textSoft,
-  } satisfies CSSProperties,
-
-  blockButton: {
-    width: "100%",
-    height: 42,
-    borderRadius: 14,
-    border: `1px solid ${UI.borderHard}`,
-    background: "transparent",
-    color: UI.textMain,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-    marginTop: 14,
   } satisfies CSSProperties,
 
   botBlock: {
