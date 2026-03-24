@@ -2,14 +2,11 @@ name: Bot Cron
 
 on:
   schedule:
-    - cron: "*/2 * * * *"   # каждые 2 минуты
-  workflow_dispatch:
+    - cron: "*/2 * * * *"
 
 jobs:
-  run-bot:
+  ping:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Call bot
-        run: |
-          curl "https://test-mini-ap-mk.vercel.app/api/cron/run?secret=123456"
+      - name: Call API
+        run: curl "https://test-mini-ap-mk.vercel.app/api/cron/run?secret=bot_secret_2026_x9"
