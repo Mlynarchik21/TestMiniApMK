@@ -35,6 +35,7 @@ type AIIntent =
   | "explain"
   | "chart_analysis"
   | "news_search"
+  | "live_coin_snapshot"
   | "offtopic";
 
 type AIIntentResult = {
@@ -272,6 +273,13 @@ function buildSystemInstruction() {
 - не противоречь им
 - не заменяй их своими цифрами
 
+КРИТИЧЕСКОЕ ПРАВИЛО ТОЧНОСТИ:
+- если сервер не передал точные уровни, диапазоны, ликвидность, funding, open interest или техиндикаторы, ты не имеешь права придумывать их сам как точные значения
+- в таком случае говори только качественно: "зона выглядит важной", "без дополнительных данных точный уровень не подтверждён"
+- если вопрос про текущую цену, изменение, капитализацию, dominance или объём — используй только SERVER_MARKET_DATA / SERVER_GLOBAL_MARKET_DATA
+- не пиши точные внутридневные диапазоны без явного источника
+- не пиши "сейчас торгуется в диапазоне X–Y", если этот диапазон не был передан сервером
+
 ФОРМАТЫ ОТВЕТА:
 Выбирай только одну структуру.
 
@@ -367,6 +375,7 @@ function buildServerDateAnswer() {
   const now = new Date();
 
   return `Сейчас ${now.toLocaleString("ru-RU", {
+    timeZone: "Europe/Moscow",
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -585,6 +594,26 @@ function isLikelyMarketRelated(message: string) {
   return marketKeywords.some((keyword) => text.includes(keyword));
 }
 
+function isLiveCoinStatusQuestion(message: string, symbol: string | null) {
+  if (!symbol) return false;
+
+  const t = message.toLowerCase();
+
+  return (
+    t.includes("что сейчас") ||
+    t.includes("что с ") ||
+    t.includes("что по ") ||
+    t.includes("какая ситуация") ||
+    t.includes("что происходит с") ||
+    t.includes("что происходит по") ||
+    t.includes("кратко по") ||
+    t.includes("что сейчас с биткоином") ||
+    t.includes("что сейчас с btc") ||
+    t.includes("что по btc") ||
+    t.includes("что по биткоину")
+  );
+}
+
 function detectAIIntent(params: {
   message: string;
   hasImage?: boolean;
@@ -753,6 +782,18 @@ function detectAIIntent(params: {
       symbol,
       wantsMarketOverview: false,
       wantsPriceOnly: true,
+      wantsExplanation: false,
+      wantsChartAnalysis: false,
+      wantsWebSearch: false,
+    };
+  }
+
+  if (symbol && isLiveCoinStatusQuestion(raw, symbol)) {
+    return {
+      intent: "live_coin_snapshot",
+      symbol,
+      wantsMarketOverview: true,
+      wantsPriceOnly: false,
       wantsExplanation: false,
       wantsChartAnalysis: false,
       wantsWebSearch: false,
@@ -984,6 +1025,41 @@ function buildShortPriceAnswer(quote: CMCQuoteResult) {
   )} USD, капитализация: ${formatNumberCompact(quote.marketCap)} USD.`;
 }
 
+function buildCoinSnapshotAnswer(params: {
+  quote: CMCQuoteResult;
+  global?: CMCGlobalResult | null;
+}) {
+  const { quote, global } = params;
+  const sign = quote.percentChange24h >= 0 ? "+" : "";
+
+  const lines = [
+    `${quote.symbol} сейчас около ${formatUsdCompact(quote.price)}.`,
+    `За 24 часа: ${sign}${quote.percentChange24h.toFixed(2)}%.`,
+    `Объём за 24ч: ${formatNumberCompact(quote.volume24h)} USD.`,
+    `Капитализация: ${formatNumberCompact(quote.marketCap)} USD.`,
+  ];
+
+  if (global) {
+    lines.push(
+      `BTC dominance: ${global.btcDominance.toFixed(2)}%, ETH dominance: ${global.ethDominance.toFixed(2)}%.`
+    );
+  }
+
+  if (quote.lastUpdated) {
+    lines.push(
+      `Обновлено: ${new Date(quote.lastUpdated).toLocaleString("ru-RU", {
+        timeZone: "Europe/Moscow",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}.`
+    );
+  }
+
+  return lines.join(" ");
+}
+
 async function callGemini(params: {
   message: string;
   history: MemoryMessage[];
@@ -1154,7 +1230,11 @@ export async function POST(req: Request) {
       } catch {}
     }
 
-    if (intentInfo.wantsMarketOverview || intentInfo.intent === "market_overview") {
+    if (
+      intentInfo.wantsMarketOverview ||
+      intentInfo.intent === "market_overview" ||
+      intentInfo.intent === "live_coin_snapshot"
+    ) {
       try {
         globalMetrics = await getCMCGlobalMetrics();
       } catch {}
@@ -1177,7 +1257,32 @@ export async function POST(req: Request) {
           hasQuote: true,
           hasGlobalMetrics: false,
           usedGoogleSearch: false,
-          model: GEMINI_MODEL,
+          model: "server-factual",
+        },
+      });
+    }
+
+    if (message && quote && !image && intentInfo.intent === "live_coin_snapshot") {
+      const answer = buildCoinSnapshotAnswer({
+        quote,
+        global: globalMetrics,
+      });
+
+      session.history.push({ role: "user", text: message });
+      session.history.push({ role: "model", text: answer });
+      saveSession(sessionId, session);
+
+      return ok({
+        answer,
+        sessionId,
+        expired,
+        meta: {
+          intent: "live_coin_snapshot",
+          symbol: intentInfo.symbol,
+          hasQuote: true,
+          hasGlobalMetrics: !!globalMetrics,
+          usedGoogleSearch: false,
+          model: "server-factual",
         },
       });
     }
@@ -1193,7 +1298,7 @@ export async function POST(req: Request) {
       message || (image ? "Проанализируй изображение." : ""),
       "",
       "ИНСТРУКЦИЯ",
-      "Используй серверные данные выше как главный источник фактов. Если запрос связан с ETF, притоками, оттоками, новостями, текущими событиями, фонами рынка или макро-триггерами — используй веб-поиск. Не выдумывай цифры, даты и события.",
+      "Используй серверные данные выше как главный источник фактов. Если запрос связан с текущей ценой, изменением за 24ч, капитализацией, dominance, объёмом, ETF-потоками или новостями — не выдумывай числа. Если точных уровней, диапазонов, funding, open interest, ликвидаций или техиндикаторов сервер не передал, не пиши их как точные факты. В этом случае формулируй осторожно и явно помечай как общий сценарный вывод, а не как точное рыночное значение.",
     ]
       .filter(Boolean)
       .join("\n\n");
