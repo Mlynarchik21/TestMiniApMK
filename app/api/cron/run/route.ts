@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { runEngineTick } from "@/lib/bot/runEngineTick";
-import { runManage } from "@/lib/bot/runManage";
+import { runEngineTick } from "@/lib/engine/runEngineTick";
+import { runManage } from "@/lib/engine/runManage";
 
 export const runtime = "nodejs";
 
