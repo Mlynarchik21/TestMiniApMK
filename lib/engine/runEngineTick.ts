@@ -63,6 +63,16 @@ function roundQuoteQty(n: number) {
   return Math.floor(n * 100) / 100;
 }
 
+async function markBotSynced(userId: string) {
+  await prisma.botState.updateMany({
+    where: { userId },
+    data: {
+      lastSyncAt: new Date(),
+      lastError: null,
+    },
+  });
+}
+
 async function cmcTop100(): Promise<CmcCoin[]> {
   const apiKey = process.env.CMC_API_KEY?.trim();
   if (!apiKey) throw new Error("CMC_API_KEY missing");
@@ -658,7 +668,7 @@ export async function runEngineTick() {
 
       const state = await prisma.botState.findUnique({
         where: { userId: bot.userId },
-        select: { status: true },
+        select: { status: true, lastSyncAt: true },
       });
 
       if (!state || state.status !== "RUNNING") {
@@ -674,6 +684,27 @@ export async function runEngineTick() {
           message: "bot is not running",
         });
         continue;
+      }
+
+      if (state.lastSyncAt) {
+        const diffMin = minutesDiff(new Date(state.lastSyncAt), new Date());
+
+        if (diffMin < bot.syncIntervalMin) {
+          await finishCycle(cycleId, "SKIPPED", "sync interval not reached", {
+            lastSyncAt: state.lastSyncAt,
+            syncIntervalMin: bot.syncIntervalMin,
+            minutesSinceLastSync: diffMin,
+          });
+
+          results.push({
+            userId: bot.userId,
+            exchange: bot.exchange,
+            cycleId,
+            status: "SKIPPED",
+            message: "sync interval not reached",
+          });
+          continue;
+        }
       }
 
       if (!bot.keyId) {
@@ -729,6 +760,8 @@ export async function runEngineTick() {
           maxActiveSymbols: bot.maxActiveSymbols,
         });
 
+        await markBotSynced(bot.userId);
+
         results.push({
           userId: bot.userId,
           exchange: bot.exchange,
@@ -748,6 +781,8 @@ export async function runEngineTick() {
             minutesSinceLastEntry: mins,
           });
 
+          await markBotSynced(bot.userId);
+
           results.push({
             userId: bot.userId,
             exchange: bot.exchange,
@@ -764,6 +799,9 @@ export async function runEngineTick() {
 
       if (stable.totalStable <= 0) {
         await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", stable);
+
+        await markBotSynced(bot.userId);
+
         results.push({
           userId: bot.userId,
           exchange: bot.exchange,
@@ -780,6 +818,8 @@ export async function runEngineTick() {
           ...stable,
           minFreeRequired,
         });
+
+        await markBotSynced(bot.userId);
 
         results.push({
           userId: bot.userId,
@@ -802,6 +842,8 @@ export async function runEngineTick() {
           freeStable: stable.freeStable,
           candidatesCount: scan.candidatesCount,
         });
+
+        await markBotSynced(bot.userId);
 
         results.push({
           userId: bot.userId,
@@ -839,6 +881,8 @@ export async function runEngineTick() {
           }
         );
 
+        await markBotSynced(bot.userId);
+
         results.push({
           userId: bot.userId,
           exchange: bot.exchange,
@@ -851,13 +895,7 @@ export async function runEngineTick() {
         continue;
       }
 
-      await prisma.botState.updateMany({
-        where: { userId: bot.userId },
-        data: {
-          lastSyncAt: new Date(),
-          lastError: null,
-        },
-      });
+      await markBotSynced(bot.userId);
 
       await finishCycle(cycleId, "SUCCESS", "position opened", {
         activePositionsBefore: activePositions,
