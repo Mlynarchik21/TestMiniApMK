@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/auth/requireUser";
 
@@ -35,6 +34,7 @@ type AIIntent =
   | "coin_analysis"
   | "explain"
   | "chart_analysis"
+  | "news_search"
   | "offtopic";
 
 type AIIntentResult = {
@@ -44,6 +44,7 @@ type AIIntentResult = {
   wantsPriceOnly: boolean;
   wantsExplanation: boolean;
   wantsChartAnalysis: boolean;
+  wantsWebSearch: boolean;
 };
 
 type CMCQuoteResult = {
@@ -66,7 +67,7 @@ type CMCGlobalResult = {
 
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 20;
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.1-pro-preview";
 const CMC_BASE_URL = "https://pro-api.coinmarketcap.com/v1";
 
 declare global {
@@ -167,9 +168,11 @@ function getOrCreateSession(userId: string, sessionIdRaw?: string | null) {
 
 function saveSession(sessionId: string, session: MemorySession) {
   session.updatedAt = Date.now();
+
   if (session.history.length > MAX_HISTORY_ITEMS) {
     session.history = session.history.slice(-MAX_HISTORY_ITEMS);
   }
+
   getStore().set(sessionId, session);
 }
 
@@ -196,107 +199,118 @@ function extractGeminiText(payload: any): string {
   return "";
 }
 
+function getGeminiApiKey() {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+  return apiKey;
+}
+
+function getCMCApiKey() {
+  const key = process.env.CMC_API_KEY?.trim();
+  if (!key) {
+    throw new Error("CMC_API_KEY is not set");
+  }
+  return key;
+}
+
 function buildSystemInstruction() {
   return `
 Ты — крипто ассистент внутри торгового мини-приложения.
 
-Ты работаешь ТОЛЬКО с темами:
+Твоя зона ответственности:
 - криптовалютный рынок
 - трейдинг
-- монеты, тикеры, пары
-- графики
+- монеты, тикеры и пары
+- графики и торговые интерфейсы
 - уровни, зоны, структура цены
 - ликвидность, волатильность, объёмы
 - новости крипторынка
 - макрофакторы, если они влияют на крипту
-- анализ скринов графиков и торговых интерфейсов
+- ETF, притоки/оттоки, институциональные потоки
+- анализ скринов графиков и рыночных интерфейсов
 
 ЖЁСТКОЕ ПРАВИЛО:
-Если запрос не относится к крипторынку, трейдингу, графикам, монетам, уровням, ликвидности или рыночной аналитике,
-ты отвечаешь строго одной фразой:
+Если запрос явно не относится к крипторынку, монетам, графикам, рыночным данным, ETF, новостям рынка, торговле или аналитике,
+ответь строго одной фразой:
 
 "Я работаю только с крипторынком, графиками и анализом. Задай вопрос по рынку."
 
-Если пользователь присылает картинку не с графиком, не с торговым интерфейсом и не с рыночными данными,
-ты отвечаешь строго:
-"Я работаю только с крипторынком, графиками и анализом. Задай вопрос по рынку."
+Если прислана картинка не с графиком, не с торговым интерфейсом и не с рыночными данными,
+ответь той же фразой отказа.
 
 СТИЛЬ:
 - всегда на русском языке
 - коротко, ясно, по делу
 - удобно читать с телефона
 - без воды
-- без таблиц
-- максимум пользы, минимум лишнего
+- без выдуманных фактов
+- без инвестиционных обещаний
+- без формулировок в стиле финансовой рекомендации
 - если данных недостаточно, говори об этом прямо
 
-ЗАПРЕЩЕНО:
-- выдумывать факты
-- выдумывать новости, цены, даты и события
-- давать финансовые гарантии
-- обещать доходность
-- писать как инвестиционный совет
-
-ТЫ ПОЛУЧАЕШЬ НИЖЕ БЛОКИ С ФАКТАМИ ОТ СЕРВЕРА:
+ТЫ МОЖЕШЬ ПОЛУЧИТЬ СЕРВЕРНЫЕ БЛОКИ:
 - SERVER_MARKET_DATA
 - SERVER_GLOBAL_MARKET_DATA
 
-Если эти блоки есть, используй их как главный источник фактов.
-Не противоречь им.
-Не подменяй их своими цифрами.
+Если эти блоки есть, используй их как главный слой фактов.
+Не противоречь им и не заменяй их своими цифрами.
 
 ФОРМАТЫ ОТВЕТА:
-Ты всегда выбираешь только ОДНУ из 3 структур.
+Выбирай только одну структуру.
 
-СТРУКТУРА A — для сложных вопросов:
-Используй если пользователь просит:
-- обзор рынка
-- причины движения
-- сценарии
-- сравнение активов
-- что происходит и что дальше
+СТРУКТУРА A — сложный вопрос:
+Используй для:
+- обзора рынка
+- причин движения
+- сценариев
+- сравнения активов
+- вопросов "что происходит" и "что дальше"
 
 Формат:
-
 TLDR
-1 предложение прямого ответа
+1 короткое предложение прямого ответа
 1–3 нумерованных пункта
 
 Deep Dive
-до 3 коротких смысловых блоков
+до 3 коротких смысловых блоков:
+- рынок / актив
+- новости / макро / ETF
+- ликвидность / сценарии / риски
 
 Conclusion
 1–3 предложения вывода
 без советов покупать или продавать
 
-СТРУКТУРА B — для объяснения:
-Используй если пользователь спрашивает:
+СТРУКТУРА B — объяснение:
+Используй для:
 - что это
 - как работает
 - в чем разница
-- что значит показатель, метрика или механизм
+- что значит метрика
 
 Формат:
 2–3 коротких блока
 без TLDR / Deep Dive / Conclusion
 
-СТРУКТУРА C — для простого факта:
-Используй если пользователь просит:
-- короткий факт
-- один конкретный показатель
-- прямой краткий ответ
+СТРУКТУРА C — прямой факт:
+Используй для:
+- цена
+- один показатель
+- короткий конкретный ответ
 
 Формат:
 один короткий абзац
 без заголовков
 без лишних деталей
 
-ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРИСЛАЛ СКРИН ГРАФИКА:
-- сначала определи общую структуру
-- потом выдели ключевые уровни / зоны
-- потом дай возможные сценарии
-- в конце коротко укажи риски
-- не выдумывай индикаторы, которых не видно
+ЕСЛИ АНАЛИЗИРУЕШЬ СКРИН:
+- сначала определи структуру
+- потом уровни / зоны
+- потом сценарии
+- потом риски
+- не выдумывай невидимые индикаторы
 - не придумывай таймфрейм, если он не читается
 `.trim();
 }
@@ -382,19 +396,28 @@ function extractSymbolFromMessage(message: string): string | null {
 
   const ruMap: Array<[RegExp, string]> = [
     [/\bбиткоин\b/i, "BTC"],
+    [/\bбиткойн\b/i, "BTC"],
+    [/\bbitcoin\b/i, "BTC"],
     [/\bbtc\b/i, "BTC"],
+
     [/\bэфир\b/i, "ETH"],
     [/\bэфириум\b/i, "ETH"],
+    [/\bethereum\b/i, "ETH"],
     [/\beth\b/i, "ETH"],
+
     [/\bсолана\b/i, "SOL"],
+    [/\bsolana\b/i, "SOL"],
     [/\bsol\b/i, "SOL"],
+
     [/\bрипл\b/i, "XRP"],
+    [/\bripple\b/i, "XRP"],
     [/\bxrp\b/i, "XRP"],
+
     [/\bbnb\b/i, "BNB"],
     [/\bтон\b/i, "TON"],
     [/\bton\b/i, "TON"],
-    [/\bдог\b/i, "DOGE"],
     [/\bdoge\b/i, "DOGE"],
+    [/\bдог\b/i, "DOGE"],
   ];
 
   for (const [re, symbol] of ruMap) {
@@ -421,23 +444,20 @@ function isLikelyMarketRelated(message: string) {
     "avax",
     "dot",
     "link",
-    "binance",
-    "bybit",
-    "okx",
-    "bitget",
     "bitcoin",
     "ethereum",
-    "рипл",
-    "сол",
-    "солана",
     "биткоин",
+    "биткойн",
     "эфир",
-    "альт",
-    "альткоин",
-    "крипт",
-    "крипто",
+    "эфириум",
+    "солана",
+    "рипл",
     "рынок",
+    "крипто",
+    "крипторынок",
     "график",
+    "чарт",
+    "скрин",
     "свеч",
     "уров",
     "зона",
@@ -452,9 +472,8 @@ function isLikelyMarketRelated(message: string) {
     "объем",
     "объём",
     "волатиль",
-    "макро",
-    "доминац",
     "капитализац",
+    "доминац",
     "монет",
     "тикер",
     "pair",
@@ -469,6 +488,10 @@ function isLikelyMarketRelated(message: string) {
     "ликвидац",
     "etf",
     "sec",
+    "приток",
+    "отток",
+    "flow",
+    "flows",
     "rsi",
     "macd",
     "ema",
@@ -481,23 +504,18 @@ function isLikelyMarketRelated(message: string) {
     "перпетуал",
     "сквиз",
     "сетап",
-    "сетапы",
-    "обзор рынка",
     "новости рынка",
     "что по рынку",
-    "курс",
     "цена",
+    "курс",
     "сколько стоит",
     "что такое",
     "как работает",
     "в чем разница",
     "в чём разница",
     "объясни",
-    "расскажи про",
-    "что значит",
-    "что означает",
-    "скрин",
-    "чарт",
+    "что произошло",
+    "что происходит",
   ];
 
   return marketKeywords.some((keyword) => text.includes(keyword));
@@ -516,6 +534,7 @@ function detectAIIntent(params: {
     "рынок",
     "обзор",
     "что происходит",
+    "что произошло",
     "что по рынку",
     "market",
     "dominance",
@@ -529,8 +548,6 @@ function detectAIIntent(params: {
     "btc dominance",
     "global",
     "макро",
-    "etf",
-    "sec",
   ];
 
   const PRICE_KEYWORDS = [
@@ -571,7 +588,6 @@ function detectAIIntent(params: {
     "что значит",
     "что означает",
     "как устроен",
-    "how works",
   ];
 
   const CHART_KEYWORDS = [
@@ -584,11 +600,28 @@ function detectAIIntent(params: {
     "price action",
   ];
 
+  const NEWS_KEYWORDS = [
+    "новости",
+    "etf",
+    "притоки",
+    "оттоки",
+    "flow",
+    "flows",
+    "институцион",
+    "sec",
+    "что произошло",
+    "что происходит",
+    "за сутки",
+    "за 24 часа",
+    "за неделю",
+  ];
+
   const wantsMarketOverview = includesAny(text, MARKET_KEYWORDS);
   const wantsPrice = includesAny(text, PRICE_KEYWORDS);
   const wantsAnalysis = includesAny(text, ANALYSIS_KEYWORDS);
   const wantsExplanation = includesAny(text, EXPLAIN_KEYWORDS);
   const wantsChartAnalysis = hasImage || includesAny(text, CHART_KEYWORDS);
+  const wantsNews = includesAny(text, NEWS_KEYWORDS);
 
   if (!isLikelyMarketRelated(raw) && !hasImage) {
     return {
@@ -598,6 +631,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: false,
       wantsExplanation: false,
       wantsChartAnalysis: false,
+      wantsWebSearch: false,
     };
   }
 
@@ -609,6 +643,19 @@ function detectAIIntent(params: {
       wantsPriceOnly: false,
       wantsExplanation,
       wantsChartAnalysis: true,
+      wantsWebSearch: false,
+    };
+  }
+
+  if (wantsNews) {
+    return {
+      intent: symbol ? "coin_analysis" : "news_search",
+      symbol,
+      wantsMarketOverview: wantsMarketOverview || !symbol,
+      wantsPriceOnly: false,
+      wantsExplanation: false,
+      wantsChartAnalysis: false,
+      wantsWebSearch: true,
     };
   }
 
@@ -620,6 +667,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: false,
       wantsExplanation,
       wantsChartAnalysis: false,
+      wantsWebSearch: true,
     };
   }
 
@@ -631,6 +679,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: false,
       wantsExplanation: true,
       wantsChartAnalysis: false,
+      wantsWebSearch: false,
     };
   }
 
@@ -642,6 +691,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: true,
       wantsExplanation: false,
       wantsChartAnalysis: false,
+      wantsWebSearch: false,
     };
   }
 
@@ -653,6 +703,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: wantsPrice && !wantsAnalysis,
       wantsExplanation,
       wantsChartAnalysis: false,
+      wantsWebSearch: wantsNews || wantsMarketOverview,
     };
   }
 
@@ -664,6 +715,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: true,
       wantsExplanation: false,
       wantsChartAnalysis: false,
+      wantsWebSearch: false,
     };
   }
 
@@ -675,6 +727,7 @@ function detectAIIntent(params: {
       wantsPriceOnly: false,
       wantsExplanation: true,
       wantsChartAnalysis: false,
+      wantsWebSearch: false,
     };
   }
 
@@ -685,15 +738,8 @@ function detectAIIntent(params: {
     wantsPriceOnly: false,
     wantsExplanation: false,
     wantsChartAnalysis: false,
+    wantsWebSearch: true,
   };
-}
-
-function getCMCApiKey() {
-  const key = process.env.CMC_API_KEY?.trim();
-  if (!key) {
-    throw new Error("CMC_API_KEY is not set");
-  }
-  return key;
 }
 
 async function cmcFetch<T = any>(path: string, params?: Record<string, string>) {
@@ -715,17 +761,17 @@ async function cmcFetch<T = any>(path: string, params?: Record<string, string>) 
     cache: "no-store",
   });
 
-  const json = await res.json().catch(() => null);
+  const data = await res.json().catch(() => null);
 
   if (!res.ok) {
     const msg =
-      json?.status?.error_message ||
-      json?.error_message ||
+      data?.status?.error_message ||
+      data?.error_message ||
       `CMC request failed with status ${res.status}`;
     throw new Error(msg);
   }
 
-  return json as T;
+  return data as T;
 }
 
 function normalizeSymbol(raw: string) {
@@ -879,12 +925,9 @@ async function callGemini(params: {
   history: MemoryMessage[];
   imageBase64?: string | null;
   imageMime?: string | null;
+  useGoogleSearch?: boolean;
 }) {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not set");
-  }
+  const apiKey = getGeminiApiKey();
 
   const userParts: GeminiPart[] = [];
 
@@ -907,38 +950,40 @@ async function callGemini(params: {
     }
   }
 
-  const contents: GeminiContent[] = [
-    ...historyToGeminiContents(params.history),
-    {
-      role: "user",
-      parts: userParts,
-    },
-  ];
-
-  const body = {
+  const body: any = {
     system_instruction: {
       parts: [{ text: buildSystemInstruction() }],
     },
-    contents,
+    contents: [
+      ...historyToGeminiContents(params.history),
+      {
+        role: "user",
+        parts: userParts,
+      },
+    ],
     generationConfig: {
-      temperature: 0.25,
+      temperature: 0.2,
       topP: 0.9,
-      maxOutputTokens: 1400,
+      maxOutputTokens: 1800,
     },
   };
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(
-    apiKey
-  )}`;
+  if (params.useGoogleSearch) {
+    body.tools = [{ google_search: {} }];
+  }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    }
+  );
 
   const payload = await res.json().catch(() => null);
 
@@ -964,7 +1009,6 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
 
     const form = await req.formData();
-
     const message = String(form.get("message") || "").trim();
     const sessionIdRaw = String(form.get("sessionId") || "").trim();
 
@@ -984,15 +1028,8 @@ export async function POST(req: Request) {
     if (message && !image && isDateQuestion(message)) {
       const answer = buildServerDateAnswer();
 
-      session.history.push({
-        role: "user",
-        text: message,
-      });
-      session.history.push({
-        role: "model",
-        text: answer,
-      });
-
+      session.history.push({ role: "user", text: message });
+      session.history.push({ role: "model", text: answer });
       saveSession(sessionId, session);
 
       return ok({
@@ -1010,15 +1047,8 @@ export async function POST(req: Request) {
     if (message && !image && intentInfo.intent === "offtopic") {
       const answer = marketOnlyRefusal();
 
-      session.history.push({
-        role: "user",
-        text: message,
-      });
-      session.history.push({
-        role: "model",
-        text: answer,
-      });
-
+      session.history.push({ role: "user", text: message });
+      session.history.push({ role: "model", text: answer });
       saveSession(sessionId, session);
 
       return ok({
@@ -1055,15 +1085,8 @@ export async function POST(req: Request) {
     if (message && quote && !image && intentInfo.intent === "price") {
       const answer = buildShortPriceAnswer(quote);
 
-      session.history.push({
-        role: "user",
-        text: message,
-      });
-      session.history.push({
-        role: "model",
-        text: answer,
-      });
-
+      session.history.push({ role: "user", text: message });
+      session.history.push({ role: "model", text: answer });
       saveSession(sessionId, session);
 
       return ok({
@@ -1075,6 +1098,8 @@ export async function POST(req: Request) {
           symbol: intentInfo.symbol,
           hasQuote: true,
           hasGlobalMetrics: false,
+          usedGoogleSearch: false,
+          model: GEMINI_MODEL,
         },
       });
     }
@@ -1090,7 +1115,7 @@ export async function POST(req: Request) {
       message || (image ? "Проанализируй изображение." : ""),
       "",
       "ИНСТРУКЦИЯ",
-      "Используй серверные данные выше как главный источник фактов. Не выдумывай другие цифры. Если серверных данных мало — прямо скажи об этом.",
+      "Используй серверные данные выше как главный источник фактов. Если запрос связан с ETF, притоками, оттоками, новостями, текущими событиями, фонами рынка или макро-триггерами — используй веб-поиск. Не выдумывай цифры, даты и события.",
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -1100,6 +1125,7 @@ export async function POST(req: Request) {
       history: session.history,
       imageBase64,
       imageMime,
+      useGoogleSearch: intentInfo.wantsWebSearch,
     });
 
     if (message) {
@@ -1130,6 +1156,8 @@ export async function POST(req: Request) {
         symbol: intentInfo.symbol,
         hasQuote: !!quote,
         hasGlobalMetrics: !!globalMetrics,
+        usedGoogleSearch: intentInfo.wantsWebSearch,
+        model: GEMINI_MODEL,
       },
     });
   } catch (e: any) {
