@@ -2,7 +2,7 @@ name: Bot Cron
 
 on:
   schedule:
-    - cron: "*/5 * * * *" # каждые 5 минут
+    - cron: "*/2 * * * *"   # каждые 2 минуты
   workflow_dispatch:
 
 jobs:
