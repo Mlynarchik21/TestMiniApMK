@@ -55,8 +55,6 @@ export async function GET(req: Request) {
           enabled: true,
           maxActiveSymbols: true,
           budgetPerSymbol: true,
-          maxTotalBudget: true,
-          syncIntervalMin: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -108,7 +106,6 @@ export async function GET(req: Request) {
         ? {
             ...config,
             budgetPerSymbol: config.budgetPerSymbol.toString(),
-            maxTotalBudget: config.maxTotalBudget?.toString() ?? null,
           }
         : null,
       state,
@@ -179,29 +176,6 @@ export async function PATCH(req: Request) {
       }
     }
 
-    let maxTotalBudget: Prisma.Decimal | null | undefined = undefined;
-    if (body.maxTotalBudget !== undefined) {
-      if (body.maxTotalBudget === null || body.maxTotalBudget === "") {
-        maxTotalBudget = null;
-      } else {
-        const s = parseDecimalString(body.maxTotalBudget);
-        if (!s) return fail(400, "BAD_REQUEST", "maxTotalBudget invalid");
-        maxTotalBudget = new Prisma.Decimal(s);
-        if (maxTotalBudget.lte(0)) {
-          return fail(400, "BAD_REQUEST", "maxTotalBudget must be > 0");
-        }
-      }
-    }
-
-    let syncIntervalMin: number | undefined;
-    if (body.syncIntervalMin != null) {
-      const n = parseIntSafe(body.syncIntervalMin);
-      if (n == null || n < 1 || n > 60) {
-        return fail(400, "BAD_REQUEST", "syncIntervalMin must be integer 1..60");
-      }
-      syncIntervalMin = n;
-    }
-
     if (keyId) {
       const key = await prisma.userKey.findFirst({
         where: { id: keyId, userId: user.id },
@@ -222,16 +196,12 @@ export async function PATCH(req: Request) {
         enabled: false,
         maxActiveSymbols: maxActiveSymbols ?? 10,
         budgetPerSymbol: budgetPerSymbol ?? new Prisma.Decimal("50"),
-        maxTotalBudget: maxTotalBudget ?? null,
-        syncIntervalMin: syncIntervalMin ?? 5,
       },
       update: {
         ...(exchange !== undefined ? { exchange } : {}),
         ...(keyId !== undefined ? { keyId } : {}),
         ...(maxActiveSymbols !== undefined ? { maxActiveSymbols } : {}),
         ...(budgetPerSymbol !== undefined ? { budgetPerSymbol } : {}),
-        ...(maxTotalBudget !== undefined ? { maxTotalBudget } : {}),
-        ...(syncIntervalMin !== undefined ? { syncIntervalMin } : {}),
       },
       select: {
         id: true,
@@ -241,8 +211,6 @@ export async function PATCH(req: Request) {
         enabled: true,
         maxActiveSymbols: true,
         budgetPerSymbol: true,
-        maxTotalBudget: true,
-        syncIntervalMin: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -261,7 +229,6 @@ export async function PATCH(req: Request) {
       config: {
         ...config,
         budgetPerSymbol: config.budgetPerSymbol.toString(),
-        maxTotalBudget: config.maxTotalBudget?.toString() ?? null,
       },
     });
   } catch (e: AnyJson) {
