@@ -366,6 +366,71 @@ async function cancelTrackedOrdersForPosition(positionId: string) {
   return openOrders.length;
 }
 
+async function insertClosedTrade(args: {
+  userId: string;
+  botPositionId: string;
+  exchange: string;
+  symbol: string;
+  entryValue: number;
+  exitValue: number;
+  qty: number;
+  avgEntryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  addsCount: number;
+  openedAt: Date;
+  closedAt: Date;
+}) {
+  const tradeId = crypto.randomUUID();
+  const closeReason = "MANUAL";
+
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "BotTrade" (
+      "id",
+      "userId",
+      "botPositionId",
+      "exchange",
+      "symbol",
+      "entryValue",
+      "exitValue",
+      "qty",
+      "avgEntryPrice",
+      "exitPrice",
+      "pnl",
+      "pnlPercent",
+      "addsCount",
+      "closeReason",
+      "openedAt",
+      "closedAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${tradeId},
+      ${args.userId},
+      ${args.botPositionId},
+      ${args.exchange}::"Exchange",
+      ${args.symbol},
+      ${args.entryValue.toFixed(18)}::numeric,
+      ${args.exitValue.toFixed(18)}::numeric,
+      ${args.qty.toFixed(18)}::numeric,
+      ${args.avgEntryPrice.toFixed(18)}::numeric,
+      ${args.exitPrice.toFixed(18)}::numeric,
+      ${args.pnl.toFixed(18)}::numeric,
+      ${args.pnlPercent.toFixed(18)}::numeric,
+      ${args.addsCount},
+      ${closeReason}::"BotCloseReason",
+      ${args.openedAt},
+      ${args.closedAt},
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+  `);
+
+  return tradeId;
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -389,6 +454,7 @@ export async function POST(req: Request) {
       let closeTime = new Date();
       let tradeWriteError: string | null = null;
       let notifyError: string | null = null;
+      let tradeId: string | null = null;
 
       try {
         const key = await prisma.userKey.findFirst({
@@ -520,27 +586,25 @@ export async function POST(req: Request) {
         canceledOrdersCount = await cancelTrackedOrdersForPosition(p.id);
         closeTime = new Date();
 
+        const pnl = exitValue - entryValue;
+        const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
         try {
-          await prisma.botTrade.create({
-            data: {
-              userId: user.id,
-              botPositionId: p.id,
-              exchange: p.exchange,
-              symbol: p.symbol,
-              entryValue: new Prisma.Decimal(entryValue.toFixed(18)),
-              exitValue: new Prisma.Decimal(exitValue.toFixed(18)),
-              qty: new Prisma.Decimal(exitQty.toFixed(18)),
-              avgEntryPrice: new Prisma.Decimal(Number(p.avgPrice).toFixed(18)),
-              exitPrice: new Prisma.Decimal(exitPrice.toFixed(18)),
-              pnl: new Prisma.Decimal((exitValue - entryValue).toFixed(18)),
-              pnlPercent: new Prisma.Decimal(
-                (entryValue > 0 ? ((exitValue - entryValue) / entryValue) * 100 : 0).toFixed(18)
-              ),
-              addsCount: p.addsCount,
-              closeReason: "MANUAL",
-              openedAt: p.openedAt,
-              closedAt: closeTime,
-            },
+          tradeId = await insertClosedTrade({
+            userId: user.id,
+            botPositionId: p.id,
+            exchange: String(p.exchange),
+            symbol: p.symbol,
+            entryValue,
+            exitValue,
+            qty: exitQty,
+            avgEntryPrice: Number(p.avgPrice),
+            exitPrice,
+            pnl,
+            pnlPercent,
+            addsCount: p.addsCount,
+            openedAt: p.openedAt,
+            closedAt: closeTime,
           });
         } catch (e: any) {
           tradeWriteError = String(e?.message || e);
@@ -564,7 +628,7 @@ export async function POST(req: Request) {
             qty: exitQty,
             entryValue,
             exitValue,
-            pnl: exitValue - entryValue,
+            pnl,
           });
         } catch (e: any) {
           notifyError = String(e?.message || e);
@@ -574,13 +638,14 @@ export async function POST(req: Request) {
           symbol: p.symbol,
           exchange: p.exchange,
           ok: true,
+          tradeId,
           canceledOrdersCount,
           entryValue,
           exitValue,
           exitPrice,
           qty: exitQty,
-          pnl: exitValue - entryValue,
-          pnlPercent: entryValue > 0 ? ((exitValue - entryValue) / entryValue) * 100 : 0,
+          pnl,
+          pnlPercent,
           tradeWriteError,
           notifyError,
         });
