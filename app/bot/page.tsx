@@ -146,6 +146,19 @@ function formatDate(value: unknown) {
   });
 }
 
+function formatDateTime(value: unknown) {
+  if (!value) return "—";
+  const d = safeDate(value);
+  if (!d) return String(value);
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "—";
   const totalMinutes = Math.floor(ms / 60000);
@@ -211,6 +224,15 @@ function ringStyle(percent: number, color: string): CSSProperties {
 }
 
 function compactNumber(value: unknown, digits = 3) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function compactPrice(value: unknown, digits = 6) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("ru-RU", {
@@ -313,6 +335,7 @@ export default function BotPage() {
   const [customTo, setCustomTo] = useState("");
 
   const [expandedOpenId, setExpandedOpenId] = useState<string | null>(null);
+  const [expandedClosedId, setExpandedClosedId] = useState<string | null>(null);
 
   const filteredKeys = useMemo(
     () => keys.filter((k) => k.exchange === exchange),
@@ -371,7 +394,7 @@ export default function BotPage() {
 
     if (range.from) qs.set("from", range.from.toISOString());
     if (range.to) qs.set("to", range.to.toISOString());
-    qs.set("recentTake", "20");
+    qs.set("recentTake", "50");
 
     const r = await api(`/api/bot/stats?${qs.toString()}`, { method: "GET" });
 
@@ -681,14 +704,17 @@ export default function BotPage() {
   const capitalInWork = Number(stats?.capitalInWork ?? 0);
   const pnlToday = Number(stats?.pnlToday ?? 0);
 
-  const shortOpenList = liveOpenPositions
-    .slice()
-    .sort((a, b) => {
-      const ad = safeDate(a?.updatedAt ?? a?.openedAt)?.getTime() ?? 0;
-      const bd = safeDate(b?.updatedAt ?? b?.openedAt)?.getTime() ?? 0;
-      return bd - ad;
-    })
-    .slice(0, 3);
+  const openPositionsSorted = liveOpenPositions.slice().sort((a, b) => {
+    const ad = safeDate(a?.updatedAt ?? a?.openedAt)?.getTime() ?? 0;
+    const bd = safeDate(b?.updatedAt ?? b?.openedAt)?.getTime() ?? 0;
+    return bd - ad;
+  });
+
+  const closedTradesSorted = recentTrades.slice().sort((a, b) => {
+    const ad = safeDate(a?.closedAt)?.getTime() ?? 0;
+    const bd = safeDate(b?.closedAt)?.getTime() ?? 0;
+    return bd - ad;
+  });
 
   const botActive =
     !!config?.enabled &&
@@ -729,7 +755,7 @@ export default function BotPage() {
   const avgDurationMs = Number(stats?.avgDurationMs ?? 0);
   const profitableTrades = Number(stats?.profitableTrades ?? 0);
   const losingTrades = Number(stats?.losingTrades ?? 0);
-  const totalTrades = profitableTrades + losingTrades;
+  const totalTrades = Number(stats?.closedTrades ?? recentTrades.length ?? 0);
   const profitablePct =
     totalTrades > 0 ? Math.min(100, Math.round((profitableTrades / totalTrades) * 100)) : 0;
   const losingPct =
@@ -953,7 +979,7 @@ export default function BotPage() {
                   {formatUsd(netPnlValue)}
                 </div>
                 <div style={styles.statsHeroSub}>
-                  Сделок: {Number(stats?.closedTrades ?? 0)} · Win rate:{" "}
+                  Сделок: {Number(stats?.closedTrades ?? recentTrades.length ?? 0)} · Win rate:{" "}
                   {formatPct(stats?.winRate ?? 0)}
                 </div>
               </div>
@@ -1194,11 +1220,11 @@ export default function BotPage() {
               </button>
             </div>
 
-            {!shortOpenList.length ? (
+            {!openPositionsSorted.length ? (
               <div style={styles.emptyText}>Нет открытых позиций.</div>
             ) : (
               <div style={styles.listGridTight}>
-                {shortOpenList.map((p) => {
+                {openPositionsSorted.map((p) => {
                   const isOpen = expandedOpenId === p.id;
                   const assetName = assetCodeFromSymbol(p.symbol) || p.symbol || "—";
 
@@ -1229,12 +1255,12 @@ export default function BotPage() {
                           <div style={styles.detailsGridDense}>
                             <DetailChip
                               label="Цена"
-                              value={compactNumber(p.avgPrice, 3)}
+                              value={compactPrice(p.avgPrice, 6)}
                               color={UI.blue}
                             />
                             <DetailChip
                               label="TP"
-                              value={compactNumber(p.tpPrice, 3)}
+                              value={compactPrice(p.tpPrice, 6)}
                               color={UI.green}
                             />
                             <DetailChip
@@ -1243,8 +1269,8 @@ export default function BotPage() {
                               color={UI.yellow}
                             />
                             <DetailChip
-                              label="Изм."
-                              value={formatDate(p.updatedAt ?? p.openedAt)}
+                              label="Открыта"
+                              value={formatDateTime(p.openedAt)}
                               color={UI.textSoft}
                             />
                             <DetailChip
@@ -1267,7 +1293,109 @@ export default function BotPage() {
             )}
           </section>
 
-          <section style={{ ...styles.debugCard, ...reveal(5, mounted) }}>
+          <section style={{ ...styles.block, ...reveal(5, mounted) }}>
+            <div style={styles.sectionHead}>
+              <div style={styles.sectionMainTitle}>История закрытых сделок</div>
+
+              <button
+                type="button"
+                style={styles.inlineActionGhost}
+                onClick={() => router.push("/bot/history")}
+              >
+                Вся история
+              </button>
+            </div>
+
+            {!closedTradesSorted.length ? (
+              <div style={styles.emptyText}>Нет закрытых сделок за выбранный период.</div>
+            ) : (
+              <div style={styles.listGridTight}>
+                {closedTradesSorted.map((t) => {
+                  const isOpen = expandedClosedId === t.id;
+                  const assetName = assetCodeFromSymbol(t.symbol) || t.symbol || "—";
+                  const pnl = Number(t.pnl ?? 0);
+
+                  return (
+                    <div
+                      key={t.id}
+                      style={styles.tradeCardCompactDense}
+                      onClick={() => setExpandedClosedId(isOpen ? null : t.id)}
+                    >
+                      <div style={styles.tradeDenseHead}>
+                        <div style={styles.tradeDenseAsset}>{assetName}</div>
+                        <div
+                          style={{
+                            ...styles.tradeDenseQty,
+                            color: pnlColor(pnl),
+                          }}
+                        >
+                          {formatUsd(pnl)}
+                        </div>
+                      </div>
+
+                      <div style={styles.tradeDenseMetaLine}>
+                        <span style={styles.tradeDenseOrder}>
+                          #{String(t.botPositionId ?? t.id).slice(0, 10)}
+                        </span>
+                        <span style={styles.tradeDenseDate}>
+                          {formatDate(t.closedAt)}
+                        </span>
+                      </div>
+
+                      {isOpen ? (
+                        <div style={styles.tradeExpandedDense}>
+                          <div style={styles.detailsGridDense}>
+                            <DetailChip
+                              label="Вход"
+                              value={formatUsd(t.entryValue ?? 0)}
+                              color={UI.blue}
+                            />
+                            <DetailChip
+                              label="Выход"
+                              value={formatUsd(t.exitValue ?? 0)}
+                              color={UI.green}
+                            />
+                            <DetailChip
+                              label="PnL"
+                              value={formatUsd(t.pnl ?? 0)}
+                              color={pnl >= 0 ? UI.green : UI.red}
+                            />
+                            <DetailChip
+                              label="PnL %"
+                              value={formatPct(t.pnlPercent ?? 0)}
+                              color={pnl >= 0 ? UI.green : UI.red}
+                            />
+                            <DetailChip
+                              label="Открыта"
+                              value={formatDateTime(t.openedAt)}
+                              color={UI.textSoft}
+                            />
+                            <DetailChip
+                              label="Закрыта"
+                              value={formatDateTime(t.closedAt)}
+                              color={UI.textSoft}
+                            />
+                            <DetailChip
+                              label="Причина"
+                              value={String(t.closeReason ?? "—")}
+                              color={UI.orange}
+                            />
+                            <DetailChip
+                              label="Биржа"
+                              value={String(t.exchange ?? "—")}
+                              color={UI.cyan}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section style={{ ...styles.debugCard, ...reveal(6, mounted) }}>
             <div style={styles.sectionHead}>
               <div style={styles.sectionMainTitle}>Тестовая панель</div>
             </div>
@@ -1336,14 +1464,14 @@ export default function BotPage() {
           </section>
 
           {err ? (
-            <section style={{ ...styles.errorCard, ...reveal(6, mounted) }}>
+            <section style={{ ...styles.errorCard, ...reveal(7, mounted) }}>
               <div style={styles.sectionMainTitle}>Ошибка</div>
               <div style={styles.errorText}>{err}</div>
             </section>
           ) : null}
 
           {pageLoading ? (
-            <section style={{ ...styles.loadingCard, ...reveal(7, mounted) }}>
+            <section style={{ ...styles.loadingCard, ...reveal(8, mounted) }}>
               Загрузка bot dashboard...
             </section>
           ) : null}
