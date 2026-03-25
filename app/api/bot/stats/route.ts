@@ -51,14 +51,6 @@ function iso(v: Date | null | undefined) {
   return v ? v.toISOString() : null;
 }
 
-function upper(v: unknown) {
-  return String(v ?? "").toUpperCase();
-}
-
-function isFilledStatus(v: unknown) {
-  return upper(v) === "FILLED";
-}
-
 function mapTrade(t: DerivedTrade) {
   return {
     id: t.id,
@@ -81,12 +73,52 @@ function mapTrade(t: DerivedTrade) {
   };
 }
 
-function deriveCloseReason(orders: Array<{ kind: string; side: string; status: string }>): CloseReason {
-  const filledSellTp = orders.some(
-    (o) => upper(o.kind) === "TP" && upper(o.side) === "SELL" && isFilledStatus(o.status)
-  );
-  if (filledSellTp) return "TP";
-  return "MANUAL";
+function normalizeTrade(t: {
+  id: string;
+  botPositionId: string | null;
+  exchange: any;
+  symbol: string;
+  entryValue: any;
+  exitValue: any;
+  qty: any;
+  avgEntryPrice: any;
+  exitPrice: any;
+  pnl: any;
+  pnlPercent: any;
+  addsCount: number;
+  closeReason: any;
+  openedAt: Date;
+  closedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}): DerivedTrade {
+  return {
+    id: t.id,
+    botPositionId: t.botPositionId ?? t.id,
+    exchange: String(t.exchange),
+    symbol: t.symbol,
+    entryValue: toNum(t.entryValue),
+    exitValue: toNum(t.exitValue),
+    qty: toNum(t.qty),
+    avgEntryPrice: toNum(t.avgEntryPrice),
+    exitPrice: toNum(t.exitPrice),
+    pnl: toNum(t.pnl),
+    pnlPercent: toNum(t.pnlPercent),
+    addsCount: t.addsCount ?? 0,
+    closeReason: (String(t.closeReason || "OTHER").toUpperCase() as CloseReason) ?? "OTHER",
+    openedAt: t.openedAt,
+    closedAt: t.closedAt,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
+
+function isValidClosedTrade(t: DerivedTrade) {
+  const hasClosedAt = !!t.closedAt;
+  const hasQty = t.qty > 0;
+  const hasEntry = t.entryValue > 0 || t.avgEntryPrice > 0;
+  const hasExit = t.exitValue > 0 || t.exitPrice > 0;
+  return hasClosedAt && hasQty && hasEntry && hasExit;
 }
 
 export async function GET(req: Request) {
@@ -109,7 +141,7 @@ export async function GET(req: Request) {
 
     const to = parseDateOrNull(toParam) ?? endOfUtcDay(now);
 
-    const [openPositions, allClosedPositions, rangedClosedPositions] = await Promise.all([
+    const [openPositions, allClosedTradesRaw, rangedClosedTradesRaw] = await Promise.all([
       prisma.botPosition.findMany({
         where: {
           userId: user.id,
@@ -134,21 +166,25 @@ export async function GET(req: Request) {
         },
       }),
 
-      prisma.botPosition.findMany({
+      prisma.botTrade.findMany({
         where: {
           userId: user.id,
-          OR: [{ status: "CLOSED" }, { closedAt: { not: null } }],
         },
         orderBy: { closedAt: "desc" },
         select: {
           id: true,
+          botPositionId: true,
           exchange: true,
           symbol: true,
-          status: true,
-          avgPrice: true,
+          entryValue: true,
+          exitValue: true,
           qty: true,
+          avgEntryPrice: true,
+          exitPrice: true,
+          pnl: true,
+          pnlPercent: true,
           addsCount: true,
-          investedQuote: true,
+          closeReason: true,
           openedAt: true,
           closedAt: true,
           createdAt: true,
@@ -156,10 +192,9 @@ export async function GET(req: Request) {
         },
       }),
 
-      prisma.botPosition.findMany({
+      prisma.botTrade.findMany({
         where: {
           userId: user.id,
-          OR: [{ status: "CLOSED" }, { closedAt: { not: null } }],
           closedAt: {
             gte: from,
             lte: to,
@@ -168,13 +203,18 @@ export async function GET(req: Request) {
         orderBy: { closedAt: "desc" },
         select: {
           id: true,
+          botPositionId: true,
           exchange: true,
           symbol: true,
-          status: true,
-          avgPrice: true,
+          entryValue: true,
+          exitValue: true,
           qty: true,
+          avgEntryPrice: true,
+          exitPrice: true,
+          pnl: true,
+          pnlPercent: true,
           addsCount: true,
-          investedQuote: true,
+          closeReason: true,
           openedAt: true,
           closedAt: true,
           createdAt: true,
@@ -183,113 +223,8 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    const closedPositionIds = Array.from(
-      new Set([...allClosedPositions, ...rangedClosedPositions].map((p) => p.id))
-    );
-
-    const orders = closedPositionIds.length
-      ? await prisma.botOrder.findMany({
-          where: {
-            userId: user.id,
-            botPositionId: { in: closedPositionIds },
-          },
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            botPositionId: true,
-            kind: true,
-            side: true,
-            status: true,
-            price: true,
-            qty: true,
-            filledAt: true,
-            createdAt: true,
-          },
-        })
-      : [];
-
-    const ordersByPosition = new Map<string, typeof orders>();
-    for (const order of orders) {
-      const key = order.botPositionId || "";
-      if (!key) continue;
-      const list = ordersByPosition.get(key) ?? [];
-      list.push(order);
-      ordersByPosition.set(key, list);
-    }
-
-    const buildDerivedTrade = (
-      p: (typeof allClosedPositions)[number]
-    ): DerivedTrade => {
-      const positionOrders = ordersByPosition.get(p.id) ?? [];
-
-      const filledBuyOrders = positionOrders.filter(
-        (o) => upper(o.side) === "BUY" && isFilledStatus(o.status)
-      );
-      const filledSellOrders = positionOrders.filter(
-        (o) => upper(o.side) === "SELL" && isFilledStatus(o.status)
-      );
-
-      const buyQty = filledBuyOrders.reduce((sum, o) => sum + toNum(o.qty), 0);
-      const sellQty = filledSellOrders.reduce((sum, o) => sum + toNum(o.qty), 0);
-
-      const entryValueFromOrders = filledBuyOrders.reduce(
-        (sum, o) => sum + toNum(o.qty) * toNum(o.price),
-        0
-      );
-
-      const exitValueFromOrders = filledSellOrders.reduce(
-        (sum, o) => sum + toNum(o.qty) * toNum(o.price),
-        0
-      );
-
-      const fallbackQty = toNum(p.qty);
-      const fallbackAvgPrice = toNum(p.avgPrice);
-      const fallbackEntryValue = toNum(p.investedQuote);
-
-      const qty = buyQty > 0 ? buyQty : fallbackQty;
-      const entryValue =
-        entryValueFromOrders > 0
-          ? entryValueFromOrders
-          : fallbackEntryValue > 0
-            ? fallbackEntryValue
-            : fallbackAvgPrice * fallbackQty;
-
-      const avgEntryPrice =
-        qty > 0
-          ? entryValue / qty
-          : fallbackAvgPrice;
-
-      const exitQty = sellQty > 0 ? sellQty : qty;
-      const exitValue = exitValueFromOrders;
-      const exitPrice =
-        exitQty > 0 && exitValue > 0 ? exitValue / exitQty : 0;
-
-      const pnl = exitValue - entryValue;
-      const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
-
-      return {
-        id: p.id,
-        botPositionId: p.id,
-        exchange: String(p.exchange),
-        symbol: p.symbol,
-        entryValue,
-        exitValue,
-        qty,
-        avgEntryPrice,
-        exitPrice,
-        pnl,
-        pnlPercent,
-        addsCount: p.addsCount ?? 0,
-        closeReason: deriveCloseReason(positionOrders),
-        openedAt: p.openedAt,
-        closedAt: p.closedAt ?? p.updatedAt,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      };
-    };
-
-    const allTrades = allClosedPositions.map(buildDerivedTrade);
-    const rangedTrades = rangedClosedPositions.map(buildDerivedTrade);
+    const allTrades = allClosedTradesRaw.map(normalizeTrade).filter(isValidClosedTrade);
+    const rangedTrades = rangedClosedTradesRaw.map(normalizeTrade).filter(isValidClosedTrade);
     const recentTrades = rangedTrades.slice(0, recentTake);
 
     const capitalInWork = openPositions.reduce((s, p) => s + toNum(p.investedQuote), 0);
