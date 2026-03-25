@@ -7,8 +7,6 @@ type Settings = {
   timezone: string;
   currency: string;
   riskMode: "normal" | "conservative" | "aggressive";
-  heartbeatNotifyEnabled: boolean;
-  heartbeatNotifyText: string;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
@@ -39,23 +37,6 @@ async function api<T>(path: string, init?: RequestInit): Promise<{ status: numbe
   return { status: res.status, json };
 }
 
-function Toggle(props: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={props.checked}
-      onClick={() => !props.disabled && props.onChange(!props.checked)}
-      style={toggleWrap(props.checked, !!props.disabled)}
-    >
-      <span style={toggleKnob(props.checked)} />
-    </button>
-  );
-}
-
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -69,9 +50,8 @@ export default function SettingsPage() {
     timezone: "UTC",
     currency: "USD",
     riskMode: "normal",
-    heartbeatNotifyEnabled: false,
-    heartbeatNotifyText:
-      "Бот активен. Cron отработал, поиск позиций и обновление данных выполнены.",
+    createdAt: null,
+    updatedAt: null,
   });
 
   const tokenPreview = useMemo(() => {
@@ -117,8 +97,6 @@ export default function SettingsPage() {
           timezone: settings.timezone,
           currency: settings.currency,
           riskMode: settings.riskMode,
-          heartbeatNotifyEnabled: settings.heartbeatNotifyEnabled,
-          heartbeatNotifyText: settings.heartbeatNotifyText,
         }),
       });
 
@@ -227,41 +205,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div style={settingsBox()}>
-            <div style={settingsRow()}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 14 }}>Уведомление о cron-обновлении</div>
-                <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6, lineHeight: 1.45 }}>
-                  При каждом фоновом обновлении mini app будет отправлять тебе текст в Telegram
-                </div>
-              </div>
-
-              <Toggle
-                checked={settings.heartbeatNotifyEnabled}
-                onChange={(v) =>
-                  setSettings((s) => ({ ...s, heartbeatNotifyEnabled: v }))
-                }
-                disabled={loading || saving}
-              />
-            </div>
-
-            <label style={label()}>
-              Текст уведомления
-              <textarea
-                value={settings.heartbeatNotifyText}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    heartbeatNotifyText: e.target.value,
-                  }))
-                }
-                placeholder="Бот активен. Cron отработал, поиск позиций и обновление данных выполнены."
-                style={textarea()}
-                disabled={loading || saving}
-              />
-            </label>
-          </div>
-
           <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
             <button onClick={save} style={btnPrimary()} disabled={loading || saving}>
               {saving ? "Сохраняю…" : "Сохранить"}
@@ -318,22 +261,6 @@ function input(): React.CSSProperties {
   };
 }
 
-function textarea(): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 110,
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "#0a0a0a",
-    color: "#fff",
-    padding: "10px 12px",
-    outline: "none",
-    fontSize: 14,
-    resize: "vertical",
-    lineHeight: 1.45,
-  };
-}
-
 function btnPrimary(): React.CSSProperties {
   return {
     width: "100%",
@@ -369,52 +296,5 @@ function pill(active: boolean): React.CSSProperties {
     color: active ? "#000" : "#fff",
     fontWeight: 900,
     cursor: "pointer",
-  };
-}
-
-function settingsBox(): React.CSSProperties {
-  return {
-    marginTop: 16,
-    paddingTop: 14,
-    borderTop: "1px solid rgba(255,255,255,0.10)",
-  };
-}
-
-function settingsRow(): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 14,
-  };
-}
-
-function toggleWrap(active: boolean, disabled: boolean): React.CSSProperties {
-  return {
-    width: 54,
-    height: 32,
-    borderRadius: 999,
-    border: active
-      ? "1px solid rgba(255,255,255,0.35)"
-      : "1px solid rgba(255,255,255,0.18)",
-    background: active ? "#fff" : "rgba(255,255,255,0.08)",
-    position: "relative",
-    cursor: disabled ? "not-allowed" : "pointer",
-    padding: 0,
-    flexShrink: 0,
-  };
-}
-
-function toggleKnob(active: boolean): React.CSSProperties {
-  return {
-    position: "absolute",
-    top: 3,
-    left: active ? 25 : 3,
-    width: 24,
-    height: 24,
-    borderRadius: "50%",
-    background: active ? "#000" : "#fff",
-    transition: "all 0.18s ease",
   };
 }
