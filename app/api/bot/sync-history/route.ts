@@ -128,6 +128,8 @@ export async function POST(req: Request) {
         exchange: key.exchange,
         synced: 0,
         skipped: 0,
+        errors: 0,
+        errorItems: [],
         totalFetched: 0,
         from: from.toISOString(),
         to: to.toISOString(),
@@ -137,6 +139,11 @@ export async function POST(req: Request) {
     let synced = 0;
     let skipped = 0;
     let errors = 0;
+    const errorItems: Array<{
+      symbol: string;
+      message: string;
+      updatedAt: string;
+    }> = [];
 
     for (const t of closedTrades) {
       try {
@@ -181,8 +188,16 @@ export async function POST(req: Request) {
         });
 
         synced++;
-      } catch {
+      } catch (e: any) {
         errors++;
+
+        if (errorItems.length < 10) {
+          errorItems.push({
+            symbol: String(t.symbol || ""),
+            message: e?.message ?? String(e),
+            updatedAt: String(t.updatedAt || ""),
+          });
+        }
       }
     }
 
@@ -192,6 +207,7 @@ export async function POST(req: Request) {
       synced,
       skipped,
       errors,
+      errorItems,
       totalFetched: closedTrades.length,
       from: from.toISOString(),
       to: to.toISOString(),
