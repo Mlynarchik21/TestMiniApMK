@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     let skipped = 0;
     let errors = 0;
 
-       for (const t of closedTrades) {
+    for (const t of closedTrades) {
       try {
         const closedAt = new Date(t.updatedAt);
         const openedAt = new Date(t.createdAt);
@@ -181,16 +181,8 @@ export async function POST(req: Request) {
         });
 
         synced++;
-      } catch (e: any) {
+      } catch {
         errors++;
-
-        if (errorItems.length < 10) {
-          errorItems.push({
-            symbol: String(t.symbol || ""),
-            message: e?.message ?? String(e),
-            updatedAt: String(t.updatedAt || ""),
-          });
-        }
       }
     }
 
