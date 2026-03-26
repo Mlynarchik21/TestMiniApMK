@@ -26,6 +26,11 @@ function parseDate(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function toNum(v: unknown) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function getRangeFromPreset(preset: string) {
   const now = new Date();
   const from = new Date(now);
@@ -49,6 +54,91 @@ function getRangeFromPreset(preset: string) {
   }
 
   return { from, to: now };
+}
+
+function normalizeImportedTrade(t: AnyJson) {
+  const qty = toNum(t.qty ?? t.executedQty ?? t.closedQty ?? t.orderQty);
+
+  let exitPrice = toNum(
+    t.exitPrice ??
+      t.avgPrice ??
+      t.avgExitPrice ??
+      t.sellAvgPrice ??
+      t.avgSellPrice ??
+      t.price
+  );
+
+  let entryPrice = toNum(
+    t.entryPrice ??
+      t.avgEntryPrice ??
+      t.buyAvgPrice ??
+      t.avgBuyPrice
+  );
+
+  let exitValue = toNum(
+    t.exitValue ??
+      t.quoteQty ??
+      t.sellValue ??
+      t.proceeds ??
+      t.cumExecValue
+  );
+
+  let entryValue = toNum(
+    t.entryValue ??
+      t.buyValue ??
+      t.cost ??
+      t.cumEntryValue
+  );
+
+  let pnl = toNum(
+    t.pnl ??
+      t.closedPnl ??
+      t.realizedPnl ??
+      t.realisedPnl
+  );
+
+  if (exitValue <= 0 && qty > 0 && exitPrice > 0) {
+    exitValue = qty * exitPrice;
+  }
+
+  if (entryValue <= 0 && qty > 0 && entryPrice > 0) {
+    entryValue = qty * entryPrice;
+  }
+
+  if (entryValue <= 0 && exitValue > 0 && pnl !== 0) {
+    entryValue = exitValue - pnl;
+  }
+
+  if (exitValue <= 0 && entryValue > 0 && pnl !== 0) {
+    exitValue = entryValue + pnl;
+  }
+
+  if (entryPrice <= 0 && qty > 0 && entryValue > 0) {
+    entryPrice = entryValue / qty;
+  }
+
+  if (exitPrice <= 0 && qty > 0 && exitValue > 0) {
+    exitPrice = exitValue / qty;
+  }
+
+  if (pnl === 0 && entryValue > 0 && exitValue > 0) {
+    pnl = exitValue - entryValue;
+  }
+
+  const pnlPercent =
+    entryValue > 0
+      ? toNum(t.pnlPercent) || (pnl / entryValue) * 100
+      : 0;
+
+  return {
+    qty,
+    entryPrice,
+    exitPrice,
+    entryValue,
+    exitValue,
+    pnl,
+    pnlPercent,
+  };
 }
 
 export async function POST(req: Request) {
@@ -154,7 +244,8 @@ export async function POST(req: Request) {
         const exists = await prisma.botTrade.findFirst({
           where: {
             userId: user.id,
-            symbol: t.symbol,
+            exchange: key.exchange,
+            symbol: String(t.symbol || ""),
             closedAt: {
               gte: new Date(closedAt.getTime() - 60_000),
               lte: new Date(closedAt.getTime() + 60_000),
@@ -168,18 +259,20 @@ export async function POST(req: Request) {
           continue;
         }
 
+        const normalized = normalizeImportedTrade(t);
+
         await prisma.botTrade.create({
           data: {
             userId: user.id,
             exchange: key.exchange,
-            symbol: t.symbol,
-            entryValue: t.quoteQty,
-            exitValue: t.quoteQty,
-            qty: t.qty,
-            avgEntryPrice: t.avgPrice,
-            exitPrice: t.avgPrice,
-            pnl: 0,
-            pnlPercent: 0,
+            symbol: String(t.symbol || ""),
+            entryValue: normalized.entryValue,
+            exitValue: normalized.exitValue,
+            qty: normalized.qty,
+            avgEntryPrice: normalized.entryPrice,
+            exitPrice: normalized.exitPrice,
+            pnl: normalized.pnl,
+            pnlPercent: normalized.pnlPercent,
             addsCount: 0,
             openedAt,
             closedAt,
