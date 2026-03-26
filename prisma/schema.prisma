@@ -167,13 +167,6 @@ enum BotPositionStatus {
   ERROR
 }
 
-enum BotCloseReason {
-  TP
-  MANUAL
-  STOP
-  OTHER
-}
-
 enum BotOrderKind {
   ENTRY
   GRID
@@ -274,35 +267,34 @@ model BotPosition {
 }
 
 model BotTrade {
-  id             String          @id @default(cuid())
+  id             String       @id @default(cuid())
 
   userId         String
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   botPositionId  String?
-  botPosition    BotPosition?    @relation(fields: [botPositionId], references: [id], onDelete: SetNull)
+  botPosition    BotPosition? @relation(fields: [botPositionId], references: [id], onDelete: SetNull)
 
   exchange       Exchange
-  symbol         String          @db.VarChar(32)
+  symbol         String       @db.VarChar(32)
 
-  entryValue     Decimal         @db.Decimal(38, 18)
-  exitValue      Decimal         @db.Decimal(38, 18)
+  entryValue     Decimal      @db.Decimal(38, 18)
+  exitValue      Decimal      @db.Decimal(38, 18)
 
-  qty            Decimal         @db.Decimal(38, 18)
-  avgEntryPrice  Decimal         @db.Decimal(38, 18)
-  exitPrice      Decimal         @db.Decimal(38, 18)
+  qty            Decimal      @db.Decimal(38, 18)
+  avgEntryPrice  Decimal      @db.Decimal(38, 18)
+  exitPrice      Decimal      @db.Decimal(38, 18)
 
-  pnl            Decimal         @db.Decimal(38, 18)
-  pnlPercent     Decimal         @db.Decimal(38, 18)
+  pnl            Decimal      @db.Decimal(38, 18)
+  pnlPercent     Decimal      @db.Decimal(38, 18)
 
-  addsCount      Int             @default(0)
-  closeReason    BotCloseReason  @default(TP)
+  addsCount      Int          @default(0)
 
   openedAt       DateTime
   closedAt       DateTime
 
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([userId, closedAt])
   @@index([userId, symbol, closedAt])
