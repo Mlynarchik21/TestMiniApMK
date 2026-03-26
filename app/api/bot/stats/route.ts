@@ -4,8 +4,6 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
-type CloseReason = "TP" | "MANUAL" | "STOP" | "OTHER";
-
 type DerivedTrade = {
   id: string;
   botPositionId: string;
@@ -19,7 +17,6 @@ type DerivedTrade = {
   pnl: number;
   pnlPercent: number;
   addsCount: number;
-  closeReason: CloseReason;
   openedAt: Date;
   closedAt: Date;
   createdAt: Date;
@@ -65,7 +62,6 @@ function mapTrade(t: DerivedTrade) {
     pnl: String(t.pnl),
     pnlPercent: String(t.pnlPercent),
     addsCount: t.addsCount,
-    closeReason: t.closeReason,
     openedAt: iso(t.openedAt),
     closedAt: iso(t.closedAt),
     createdAt: iso(t.createdAt),
@@ -86,7 +82,6 @@ function normalizeTrade(t: {
   pnl: any;
   pnlPercent: any;
   addsCount: number;
-  closeReason: any;
   openedAt: Date;
   closedAt: Date;
   createdAt: Date;
@@ -105,7 +100,6 @@ function normalizeTrade(t: {
     pnl: toNum(t.pnl),
     pnlPercent: toNum(t.pnlPercent),
     addsCount: t.addsCount ?? 0,
-    closeReason: (String(t.closeReason || "OTHER").toUpperCase() as CloseReason) ?? "OTHER",
     openedAt: t.openedAt,
     closedAt: t.closedAt,
     createdAt: t.createdAt,
@@ -184,7 +178,6 @@ export async function GET(req: Request) {
           pnl: true,
           pnlPercent: true,
           addsCount: true,
-          closeReason: true,
           openedAt: true,
           closedAt: true,
           createdAt: true,
@@ -214,7 +207,6 @@ export async function GET(req: Request) {
           pnl: true,
           pnlPercent: true,
           addsCount: true,
-          closeReason: true,
           openedAt: true,
           closedAt: true,
           createdAt: true,
