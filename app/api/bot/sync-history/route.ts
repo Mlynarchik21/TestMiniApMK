@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { decryptString } from "@/lib/crypto/secretBox";
@@ -31,6 +32,10 @@ function toNum(v: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function dec(v: number) {
+  return new Prisma.Decimal(v.toFixed(18));
+}
+
 function getRangeFromPreset(preset: string) {
   const now = new Date();
   const from = new Date(now);
@@ -54,91 +59,6 @@ function getRangeFromPreset(preset: string) {
   }
 
   return { from, to: now };
-}
-
-function normalizeImportedTrade(t: AnyJson) {
-  const qty = toNum(t.qty ?? t.executedQty ?? t.closedQty ?? t.orderQty);
-
-  let exitPrice = toNum(
-    t.exitPrice ??
-      t.avgPrice ??
-      t.avgExitPrice ??
-      t.sellAvgPrice ??
-      t.avgSellPrice ??
-      t.price
-  );
-
-  let entryPrice = toNum(
-    t.entryPrice ??
-      t.avgEntryPrice ??
-      t.buyAvgPrice ??
-      t.avgBuyPrice
-  );
-
-  let exitValue = toNum(
-    t.exitValue ??
-      t.quoteQty ??
-      t.sellValue ??
-      t.proceeds ??
-      t.cumExecValue
-  );
-
-  let entryValue = toNum(
-    t.entryValue ??
-      t.buyValue ??
-      t.cost ??
-      t.cumEntryValue
-  );
-
-  let pnl = toNum(
-    t.pnl ??
-      t.closedPnl ??
-      t.realizedPnl ??
-      t.realisedPnl
-  );
-
-  if (exitValue <= 0 && qty > 0 && exitPrice > 0) {
-    exitValue = qty * exitPrice;
-  }
-
-  if (entryValue <= 0 && qty > 0 && entryPrice > 0) {
-    entryValue = qty * entryPrice;
-  }
-
-  if (entryValue <= 0 && exitValue > 0 && pnl !== 0) {
-    entryValue = exitValue - pnl;
-  }
-
-  if (exitValue <= 0 && entryValue > 0 && pnl !== 0) {
-    exitValue = entryValue + pnl;
-  }
-
-  if (entryPrice <= 0 && qty > 0 && entryValue > 0) {
-    entryPrice = entryValue / qty;
-  }
-
-  if (exitPrice <= 0 && qty > 0 && exitValue > 0) {
-    exitPrice = exitValue / qty;
-  }
-
-  if (pnl === 0 && entryValue > 0 && exitValue > 0) {
-    pnl = exitValue - entryValue;
-  }
-
-  const pnlPercent =
-    entryValue > 0
-      ? toNum(t.pnlPercent) || (pnl / entryValue) * 100
-      : 0;
-
-  return {
-    qty,
-    entryPrice,
-    exitPrice,
-    entryValue,
-    exitValue,
-    pnl,
-    pnlPercent,
-  };
 }
 
 export async function POST(req: Request) {
@@ -226,6 +146,21 @@ export async function POST(req: Request) {
       });
     }
 
+    /**
+     * ВАЖНО:
+     * Удаляем ранее импортированные сделки в диапазоне,
+     * чтобы не оставались старые нулевые записи и не ломалась статистика.
+     */
+    await prisma.botTrade.deleteMany({
+      where: {
+        userId: user.id,
+        closedAt: {
+          gte: from,
+          lte: to,
+        },
+      },
+    });
+
     let synced = 0;
     let skipped = 0;
     let errors = 0;
@@ -241,38 +176,46 @@ export async function POST(req: Request) {
         const closedAt = new Date(t.updatedAt);
         const openedAt = new Date(t.createdAt);
 
-        const exists = await prisma.botTrade.findFirst({
-          where: {
-            userId: user.id,
-            exchange: key.exchange,
-            symbol: String(t.symbol || ""),
-            closedAt: {
-              gte: new Date(closedAt.getTime() - 60_000),
-              lte: new Date(closedAt.getTime() + 60_000),
-            },
-          },
-          select: { id: true },
-        });
-
-        if (exists) {
-          skipped++;
-          continue;
+        if (Number.isNaN(closedAt.getTime()) || Number.isNaN(openedAt.getTime())) {
+          throw new Error("Invalid trade dates");
         }
 
-        const normalized = normalizeImportedTrade(t);
+        const qty = toNum(t.qty);
+        const avgPrice = toNum(t.avgPrice);
+        const quoteQty = toNum(t.quoteQty);
+
+        const entryValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
+        const exitValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
+
+        /**
+         * Если адаптер позже начнет отдавать realizedPnl / pnl — подхватим автоматически.
+         */
+        const pnl = toNum(
+          t.realizedPnl ??
+          t.closedPnl ??
+          t.pnl ??
+          t.profit ??
+          0
+        );
+
+        const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
 
         await prisma.botTrade.create({
           data: {
-            userId: user.id,
-            exchange: key.exchange,
-            symbol: String(t.symbol || ""),
-            entryValue: normalized.entryValue,
-            exitValue: normalized.exitValue,
-            qty: normalized.qty,
-            avgEntryPrice: normalized.entryPrice,
-            exitPrice: normalized.exitPrice,
-            pnl: normalized.pnl,
-            pnlPercent: normalized.pnlPercent,
+            user: { connect: { id: user.id } },
+            exchange: key.exchange as any,
+            symbol: String(t.symbol || "").toUpperCase(),
+
+            entryValue: dec(entryValue),
+            exitValue: dec(exitValue),
+
+            qty: dec(qty),
+            avgEntryPrice: dec(avgPrice),
+            exitPrice: dec(avgPrice),
+
+            pnl: dec(pnl),
+            pnlPercent: dec(pnlPercent),
+
             addsCount: 0,
             openedAt,
             closedAt,
@@ -283,7 +226,7 @@ export async function POST(req: Request) {
       } catch (e: any) {
         errors++;
 
-        if (errorItems.length < 10) {
+        if (errorItems.length < 15) {
           errorItems.push({
             symbol: String(t.symbol || ""),
             message: e?.message ?? String(e),
