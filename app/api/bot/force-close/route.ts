@@ -53,7 +53,6 @@ export async function POST(req: Request) {
           pnlPercent: 0,
 
           addsCount: p.addsCount ?? 0,
-          closeReason: "MANUAL",
 
           openedAt: p.openedAt,
           closedAt: now,
