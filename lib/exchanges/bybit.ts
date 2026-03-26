@@ -6,6 +6,7 @@ import type {
   LimitOrderResult,
   MarketOrderResult,
   OrderStatusResult,
+  ExchangeClosedTrade,
 } from "@/lib/exchanges/types";
 
 const BYBIT_BASE =
@@ -77,19 +78,10 @@ function normalizeBybitStatus(status: unknown): string {
   if (!s) return "UNKNOWN";
   if (s === "FILLED") return "FILLED";
   if (s === "PARTIALLYFILLED" || s === "PARTIALLY_FILLED") return "PARTIALLY_FILLED";
-  if (
-    s === "NEW" ||
-    s === "CREATED" ||
-    s === "UNTRIGGERED" ||
-    s === "ACTIVE"
-  ) {
+  if (s === "NEW" || s === "CREATED" || s === "UNTRIGGERED" || s === "ACTIVE") {
     return "NEW";
   }
-  if (
-    s === "CANCELLED" ||
-    s === "CANCELED" ||
-    s === "DEACTIVATED"
-  ) {
+  if (s === "CANCELLED" || s === "CANCELED" || s === "DEACTIVATED") {
     return "CANCELED";
   }
   if (s === "REJECTED" || s === "FAILED") return "REJECTED";
@@ -203,6 +195,27 @@ async function readBybitRealtimeOrder(params: {
   const row = list[0] ?? null;
 
   return { json, row };
+}
+
+async function bybitGetClosedOrders(params: {
+  apiKey: string;
+  apiSecret: string;
+  startTime: number;
+  endTime: number;
+  cursor?: string;
+}) {
+  return bybitPrivateGet<AnyJson>({
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/history",
+    query: {
+      category: "spot",
+      startTime: params.startTime,
+      endTime: params.endTime,
+      limit: 50,
+      cursor: params.cursor,
+    },
+  });
 }
 
 function safeSellQty(qty: number, stepSize: number, minQty: number) {
@@ -475,5 +488,67 @@ export const bybitAdapter: ExchangeAdapter = {
     });
 
     return json;
+  },
+
+  async getClosedTrades(params): Promise<ExchangeClosedTrade[]> {
+    const startTime = params.from.getTime();
+    const endTime = params.to.getTime();
+
+    let cursor: string | undefined = undefined;
+    const all: ExchangeClosedTrade[] = [];
+
+    for (let page = 0; page < 20; page++) {
+      const json: AnyJson = await bybitGetClosedOrders({
+        apiKey: params.apiKey,
+        apiSecret: params.apiSecret,
+        startTime,
+        endTime,
+        cursor,
+      });
+
+      const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+
+      for (const row of list) {
+        const status = normalizeBybitStatus(row?.orderStatus);
+        if (status !== "FILLED") continue;
+
+        const symbol = String(row?.symbol || "").toUpperCase();
+        const sideRaw = String(row?.side || "").toUpperCase();
+        const side = sideRaw === "SELL" ? "SELL" : "BUY";
+
+        const qty = toNum(row?.cumExecQty);
+        const quoteQty = toNum(row?.cumExecValue);
+        const avgPrice = toNum(row?.avgPrice) || (qty > 0 ? quoteQty / qty : 0);
+
+        if (!symbol || qty <= 0 || avgPrice <= 0) continue;
+
+        all.push({
+          exchangeOrderId: String(row?.orderId || ""),
+          symbol,
+          side,
+          qty,
+          avgPrice,
+          quoteQty,
+          fee: toNum(row?.cumExecFee),
+          feeAsset: row?.feeCurrency ? String(row.feeCurrency) : null,
+          status,
+          createdAt: row?.createdTime
+            ? new Date(Number(row.createdTime)).toISOString()
+            : new Date().toISOString(),
+          updatedAt: row?.updatedTime
+            ? new Date(Number(row.updatedTime)).toISOString()
+            : row?.createdTime
+              ? new Date(Number(row.createdTime)).toISOString()
+              : new Date().toISOString(),
+          raw: row,
+        });
+      }
+
+      const next = String(json?.result?.nextPageCursor || "").trim();
+      if (!next) break;
+      cursor = next;
+    }
+
+    return all;
   },
 };
