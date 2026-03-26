@@ -772,5 +772,5 @@ export async function runManage() {
   return {
     ok: true,
     managed,
-  
+  };
 }
