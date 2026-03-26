@@ -146,11 +146,6 @@ export async function POST(req: Request) {
       });
     }
 
-    /**
-     * ВАЖНО:
-     * Удаляем ранее импортированные сделки в диапазоне,
-     * чтобы не оставались старые нулевые записи и не ломалась статистика.
-     */
     await prisma.botTrade.deleteMany({
       where: {
         userId: user.id,
@@ -173,29 +168,28 @@ export async function POST(req: Request) {
 
     for (const t of closedTrades) {
       try {
-        const closedAt = new Date(t.updatedAt);
-        const openedAt = new Date(t.createdAt);
+        const raw = t as AnyJson;
+
+        const closedAt = new Date(String(raw.updatedAt));
+        const openedAt = new Date(String(raw.createdAt));
 
         if (Number.isNaN(closedAt.getTime()) || Number.isNaN(openedAt.getTime())) {
           throw new Error("Invalid trade dates");
         }
 
-        const qty = toNum(t.qty);
-        const avgPrice = toNum(t.avgPrice);
-        const quoteQty = toNum(t.quoteQty);
+        const qty = toNum(raw.qty);
+        const avgPrice = toNum(raw.avgPrice);
+        const quoteQty = toNum(raw.quoteQty);
 
         const entryValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
         const exitValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
 
-        /**
-         * Если адаптер позже начнет отдавать realizedPnl / pnl — подхватим автоматически.
-         */
         const pnl = toNum(
-          t.realizedPnl ??
-          t.closedPnl ??
-          t.pnl ??
-          t.profit ??
-          0
+          raw.realizedPnl ??
+            raw.closedPnl ??
+            raw.pnl ??
+            raw.profit ??
+            0
         );
 
         const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
@@ -204,18 +198,14 @@ export async function POST(req: Request) {
           data: {
             user: { connect: { id: user.id } },
             exchange: key.exchange as any,
-            symbol: String(t.symbol || "").toUpperCase(),
-
+            symbol: String(raw.symbol || "").toUpperCase(),
             entryValue: dec(entryValue),
             exitValue: dec(exitValue),
-
             qty: dec(qty),
             avgEntryPrice: dec(avgPrice),
             exitPrice: dec(avgPrice),
-
             pnl: dec(pnl),
             pnlPercent: dec(pnlPercent),
-
             addsCount: 0,
             openedAt,
             closedAt,
@@ -228,9 +218,9 @@ export async function POST(req: Request) {
 
         if (errorItems.length < 15) {
           errorItems.push({
-            symbol: String(t.symbol || ""),
+            symbol: String((t as AnyJson)?.symbol || ""),
             message: e?.message ?? String(e),
-            updatedAt: String(t.updatedAt || ""),
+            updatedAt: String((t as AnyJson)?.updatedAt || ""),
           });
         }
       }
