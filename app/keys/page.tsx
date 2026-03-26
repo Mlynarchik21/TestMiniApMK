@@ -36,6 +36,12 @@ type KeyMetaState = {
   raw: any;
 };
 
+type SyncErrorItem = {
+  symbol: string;
+  message: string;
+  updatedAt: string;
+};
+
 type KeySyncState = {
   preset: SyncPreset;
   from: string;
@@ -49,6 +55,7 @@ type KeySyncState = {
     totalFetched?: number;
     from?: string;
     to?: string;
+    errorItems?: SyncErrorItem[];
   } | null;
 };
 
@@ -506,6 +513,7 @@ export default function KeysPage() {
           totalFetched: (r.json as any).totalFetched ?? 0,
           from: (r.json as any).from,
           to: (r.json as any).to,
+          errorItems: (r.json as any).errorItems ?? [],
         },
       });
     } catch (e: any) {
@@ -556,7 +564,6 @@ export default function KeysPage() {
         }
       } catch {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -755,20 +762,20 @@ export default function KeysPage() {
                                   statusText === "Активный"
                                     ? UI.green
                                     : statusText === "Не активный"
-                                      ? UI.red
-                                      : UI.textMuted,
+                                    ? UI.red
+                                    : UI.textMuted,
                                 borderColor:
                                   statusText === "Активный"
                                     ? "rgba(100,217,123,0.22)"
                                     : statusText === "Не активный"
-                                      ? "rgba(255,106,106,0.22)"
-                                      : "rgba(255,255,255,0.16)",
+                                    ? "rgba(255,106,106,0.22)"
+                                    : "rgba(255,255,255,0.16)",
                                 background:
                                   statusText === "Активный"
                                     ? "rgba(100,217,123,0.08)"
                                     : statusText === "Не активный"
-                                      ? "rgba(255,106,106,0.08)"
-                                      : "rgba(255,255,255,0.05)",
+                                    ? "rgba(255,106,106,0.08)"
+                                    : "rgba(255,255,255,0.05)",
                               }}
                             >
                               <span
@@ -778,8 +785,8 @@ export default function KeysPage() {
                                     statusText === "Активный"
                                       ? UI.green
                                       : statusText === "Не активный"
-                                        ? UI.red
-                                        : UI.textFaint,
+                                      ? UI.red
+                                      : UI.textFaint,
                                 }}
                               />
                               <span>{statusText}</span>
@@ -970,6 +977,23 @@ export default function KeysPage() {
                                 <div style={styles.syncPeriodText}>
                                   {syncState.result.from || "—"} → {syncState.result.to || "—"}
                                 </div>
+
+                                {Array.isArray(syncState.result.errorItems) &&
+                                syncState.result.errorItems.length > 0 ? (
+                                  <div style={styles.syncErrorsWrap}>
+                                    <div style={styles.syncErrorsTitle}>Первые ошибки:</div>
+                                    {syncState.result.errorItems.map((item, i) => (
+                                      <div
+                                        key={`${item.symbol}-${item.updatedAt}-${i}`}
+                                        style={styles.syncErrorCard}
+                                      >
+                                        <div style={styles.syncErrorSymbol}>{item.symbol}</div>
+                                        <div style={styles.syncErrorMsg}>{item.message}</div>
+                                        <div style={styles.syncErrorTime}>{item.updatedAt}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
@@ -1046,18 +1070,18 @@ function PermissionPill(props: {
         color: props.unknown
           ? UI.textMuted
           : props.active
-            ? UI.green
-            : UI.red,
+          ? UI.green
+          : UI.red,
         borderColor: props.unknown
           ? "rgba(255,255,255,0.14)"
           : props.active
-            ? "rgba(100,217,123,0.22)"
-            : "rgba(255,106,106,0.22)",
+          ? "rgba(100,217,123,0.22)"
+          : "rgba(255,106,106,0.22)",
         background: props.unknown
           ? "rgba(255,255,255,0.04)"
           : props.active
-            ? "rgba(100,217,123,0.08)"
-            : "rgba(255,106,106,0.08)",
+          ? "rgba(100,217,123,0.08)"
+          : "rgba(255,106,106,0.08)",
       }}
     >
       <span
@@ -1066,8 +1090,8 @@ function PermissionPill(props: {
           background: props.unknown
             ? UI.textFaint
             : props.active
-              ? UI.green
-              : UI.red,
+            ? UI.green
+            : UI.red,
         }}
       />
       <span>{props.label}</span>
@@ -1563,6 +1587,47 @@ const styles = {
     marginTop: 4,
     fontSize: 11,
     lineHeight: 1.5,
+    color: UI.textMuted,
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  syncErrorsWrap: {
+    marginTop: 10,
+    display: "grid",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  syncErrorsTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  syncErrorCard: {
+    borderRadius: 12,
+    padding: 10,
+    border: "1px solid rgba(255,106,106,0.18)",
+    background: "rgba(255,106,106,0.05)",
+    display: "grid",
+    gap: 4,
+  } satisfies CSSProperties,
+
+  syncErrorSymbol: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: UI.red,
+  } satisfies CSSProperties,
+
+  syncErrorMsg: {
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: UI.textSoft,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+
+  syncErrorTime: {
+    fontSize: 11,
     color: UI.textMuted,
     wordBreak: "break-word",
   } satisfies CSSProperties,
