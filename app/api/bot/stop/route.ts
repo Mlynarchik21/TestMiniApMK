@@ -4,6 +4,17 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 
+function ok(data?: any) {
+  return NextResponse.json({ ok: true, ...(data ?? {}) });
+}
+
+function fail(status: number, error: string, message?: string, extra?: any) {
+  return NextResponse.json(
+    { ok: false, error, ...(message ? { message } : {}), ...(extra ?? {}) },
+    { status }
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -21,8 +32,6 @@ export async function POST(req: Request) {
         enabled: true,
         maxActiveSymbols: true,
         budgetPerSymbol: true,
-        maxTotalBudget: true,
-        syncIntervalMin: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -50,25 +59,25 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      ok: true,
+    return ok({
       config: {
         ...config,
         budgetPerSymbol: config.budgetPerSymbol.toString(),
-        maxTotalBudget: config.maxTotalBudget?.toString() ?? null,
       },
       state,
     });
   } catch (e: any) {
+    console.error("BOT STOP ERROR:", e);
+
     const status = typeof e?.status === "number" ? e.status : 500;
 
-    return NextResponse.json(
+    return fail(
+      status,
+      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
+      e?.message ?? String(e),
       {
-        ok: false,
-        error: status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-        message: e?.message ?? String(e),
-      },
-      { status }
+        stack: e?.stack ?? null,
+      }
     );
   }
 }
