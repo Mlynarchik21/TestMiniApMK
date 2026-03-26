@@ -16,6 +16,25 @@ const STABLE_ASSETS = new Set(["USDT", "USDC"]);
 
 type AnyJson = any;
 
+type BybitExecutionRow = {
+  symbol: string;
+  side: "BUY" | "SELL";
+  qty: number;
+  price: number;
+  quoteQty: number;
+  fee: number;
+  feeAsset: string | null;
+  execTimeMs: number;
+  orderId: string;
+  raw: AnyJson;
+};
+
+type InventoryLot = {
+  qty: number;
+  price: number;
+  timeMs: number;
+};
+
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -197,7 +216,7 @@ async function readBybitRealtimeOrder(params: {
   return { json, row };
 }
 
-async function bybitGetClosedOrders(params: {
+async function bybitGetExecutions(params: {
   apiKey: string;
   apiSecret: string;
   startTime: number;
@@ -207,12 +226,12 @@ async function bybitGetClosedOrders(params: {
   return bybitPrivateGet<AnyJson>({
     apiKey: params.apiKey,
     apiSecret: params.apiSecret,
-    path: "/v5/order/history",
+    path: "/v5/execution/list",
     query: {
       category: "spot",
       startTime: params.startTime,
       endTime: params.endTime,
-      limit: 50,
+      limit: 100,
       cursor: params.cursor,
     },
   });
@@ -227,6 +246,36 @@ function safeSellQty(qty: number, stepSize: number, minQty: number) {
   }
 
   return q;
+}
+
+function normalizeExecutionRow(row: AnyJson): BybitExecutionRow | null {
+  const symbol = String(row?.symbol || "").toUpperCase();
+  const side = String(row?.side || "").toUpperCase() === "SELL" ? "SELL" : "BUY";
+
+  const qty = toNum(row?.execQty ?? row?.qty);
+  const quoteQty = toNum(row?.execValue ?? row?.cumExecValue);
+  const price = toNum(row?.execPrice ?? row?.price) || (qty > 0 ? quoteQty / qty : 0);
+  const fee = toNum(row?.execFee ?? row?.cumExecFee);
+  const feeAsset = row?.feeCurrency ? String(row.feeCurrency) : null;
+  const execTimeMs = Number(row?.execTime ?? row?.createdTime ?? 0);
+  const orderId = String(row?.orderId || "");
+
+  if (!symbol || qty <= 0 || price <= 0 || !Number.isFinite(execTimeMs) || execTimeMs <= 0) {
+    return null;
+  }
+
+  return {
+    symbol,
+    side,
+    qty,
+    price,
+    quoteQty: quoteQty > 0 ? quoteQty : qty * price,
+    fee,
+    feeAsset,
+    execTimeMs,
+    orderId,
+    raw: row,
+  };
 }
 
 export const bybitAdapter: ExchangeAdapter = {
@@ -495,10 +544,10 @@ export const bybitAdapter: ExchangeAdapter = {
     const endTime = params.to.getTime();
 
     let cursor: string | undefined = undefined;
-    const all: ExchangeClosedTrade[] = [];
+    const executions: BybitExecutionRow[] = [];
 
     for (let page = 0; page < 20; page++) {
-      const json: AnyJson = await bybitGetClosedOrders({
+      const json: AnyJson = await bybitGetExecutions({
         apiKey: params.apiKey,
         apiSecret: params.apiSecret,
         startTime,
@@ -509,39 +558,9 @@ export const bybitAdapter: ExchangeAdapter = {
       const list = Array.isArray(json?.result?.list) ? json.result.list : [];
 
       for (const row of list) {
-        const status = normalizeBybitStatus(row?.orderStatus);
-        if (status !== "FILLED") continue;
-
-        const symbol = String(row?.symbol || "").toUpperCase();
-        const sideRaw = String(row?.side || "").toUpperCase();
-        const side = sideRaw === "SELL" ? "SELL" : "BUY";
-
-        const qty = toNum(row?.cumExecQty);
-        const quoteQty = toNum(row?.cumExecValue);
-        const avgPrice = toNum(row?.avgPrice) || (qty > 0 ? quoteQty / qty : 0);
-
-        if (!symbol || qty <= 0 || avgPrice <= 0) continue;
-
-        all.push({
-          exchangeOrderId: String(row?.orderId || ""),
-          symbol,
-          side,
-          qty,
-          avgPrice,
-          quoteQty,
-          fee: toNum(row?.cumExecFee),
-          feeAsset: row?.feeCurrency ? String(row.feeCurrency) : null,
-          status,
-          createdAt: row?.createdTime
-            ? new Date(Number(row.createdTime)).toISOString()
-            : new Date().toISOString(),
-          updatedAt: row?.updatedTime
-            ? new Date(Number(row.updatedTime)).toISOString()
-            : row?.createdTime
-              ? new Date(Number(row.createdTime)).toISOString()
-              : new Date().toISOString(),
-          raw: row,
-        });
+        const normalized = normalizeExecutionRow(row);
+        if (!normalized) continue;
+        executions.push(normalized);
       }
 
       const next = String(json?.result?.nextPageCursor || "").trim();
@@ -549,6 +568,86 @@ export const bybitAdapter: ExchangeAdapter = {
       cursor = next;
     }
 
-    return all;
+    executions.sort((a, b) => a.execTimeMs - b.execTimeMs);
+
+    const lotsBySymbol = new Map<string, InventoryLot[]>();
+    const closed: ExchangeClosedTrade[] = [];
+
+    for (const exec of executions) {
+      const symbolLots = lotsBySymbol.get(exec.symbol) ?? [];
+
+      if (exec.side === "BUY") {
+        symbolLots.push({
+          qty: exec.qty,
+          price: exec.price,
+          timeMs: exec.execTimeMs,
+        });
+        lotsBySymbol.set(exec.symbol, symbolLots);
+        continue;
+      }
+
+      let remainingSellQty = exec.qty;
+      let matchedBuyQty = 0;
+      let matchedEntryValue = 0;
+      let earliestMatchedBuyTime = exec.execTimeMs;
+
+      while (remainingSellQty > 0 && symbolLots.length > 0) {
+        const lot = symbolLots[0];
+        const takeQty = Math.min(remainingSellQty, lot.qty);
+
+        matchedBuyQty += takeQty;
+        matchedEntryValue += takeQty * lot.price;
+        earliestMatchedBuyTime = Math.min(earliestMatchedBuyTime, lot.timeMs);
+
+        lot.qty -= takeQty;
+        remainingSellQty -= takeQty;
+
+        if (lot.qty <= 1e-12) {
+          symbolLots.shift();
+        }
+      }
+
+      lotsBySymbol.set(exec.symbol, symbolLots);
+
+      const matchedQty = matchedBuyQty > 0 ? matchedBuyQty : exec.qty;
+      const exitValue = exec.quoteQty > 0 ? exec.quoteQty : exec.qty * exec.price;
+      const entryValue =
+        matchedEntryValue > 0
+          ? matchedEntryValue
+          : matchedQty * exec.price;
+
+      const entryPrice = matchedQty > 0 ? entryValue / matchedQty : exec.price;
+      const exitPrice = exec.price;
+      const realizedPnl = exitValue - entryValue;
+      const pnlPercent = entryValue > 0 ? (realizedPnl / entryValue) * 100 : 0;
+
+      closed.push(
+        {
+          exchangeOrderId: exec.orderId,
+          symbol: exec.symbol,
+          side: "SELL",
+          qty: matchedQty,
+          avgPrice: exitPrice,
+          quoteQty: exitValue,
+          fee: exec.fee,
+          feeAsset: exec.feeAsset,
+          status: "FILLED",
+          createdAt: new Date(earliestMatchedBuyTime).toISOString(),
+          updatedAt: new Date(exec.execTimeMs).toISOString(),
+          raw: {
+            entryPrice,
+            exitPrice,
+            entryValue,
+            exitValue,
+            realizedPnl,
+            pnlPercent,
+            matchedQty,
+            sellExec: exec.raw,
+          },
+        } as ExchangeClosedTrade
+      );
+    }
+
+    return closed;
   },
 };
