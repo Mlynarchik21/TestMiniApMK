@@ -51,11 +51,6 @@ function getRangeFromPreset(preset: string) {
   return { from, to: now };
 }
 
-function toNum(v: unknown) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -149,10 +144,6 @@ export async function POST(req: Request) {
       symbol: string;
       message: string;
       updatedAt: string;
-      createdAt?: string;
-      qty?: number;
-      avgPrice?: number;
-      quoteQty?: number;
     }> = [];
 
     for (const t of closedTrades) {
@@ -160,34 +151,9 @@ export async function POST(req: Request) {
         const closedAt = new Date(t.updatedAt);
         const openedAt = new Date(t.createdAt);
 
-        if (Number.isNaN(closedAt.getTime())) {
-          throw new Error(`Invalid closedAt from exchange: ${String(t.updatedAt)}`);
-        }
-
-        if (Number.isNaN(openedAt.getTime())) {
-          throw new Error(`Invalid openedAt from exchange: ${String(t.createdAt)}`);
-        }
-
-        const qty = toNum(t.qty);
-        const avgPrice = toNum(t.avgPrice);
-        const quoteQty = toNum(t.quoteQty);
-
-        if (qty <= 0) {
-          throw new Error(`Invalid qty: ${String(t.qty)}`);
-        }
-
-        if (avgPrice <= 0) {
-          throw new Error(`Invalid avgPrice: ${String(t.avgPrice)}`);
-        }
-
-        if (quoteQty <= 0) {
-          throw new Error(`Invalid quoteQty: ${String(t.quoteQty)}`);
-        }
-
         const exists = await prisma.botTrade.findFirst({
           where: {
             userId: user.id,
-            exchange: key.exchange,
             symbol: t.symbol,
             closedAt: {
               gte: new Date(closedAt.getTime() - 60_000),
@@ -207,11 +173,11 @@ export async function POST(req: Request) {
             userId: user.id,
             exchange: key.exchange,
             symbol: t.symbol,
-            entryValue: quoteQty,
-            exitValue: quoteQty,
-            qty,
-            avgEntryPrice: avgPrice,
-            exitPrice: avgPrice,
+            entryValue: t.quoteQty,
+            exitValue: t.quoteQty,
+            qty: t.qty,
+            avgEntryPrice: t.avgPrice,
+            exitPrice: t.avgPrice,
             pnl: 0,
             pnlPercent: 0,
             addsCount: 0,
@@ -230,10 +196,6 @@ export async function POST(req: Request) {
             symbol: String(t.symbol || ""),
             message: e?.message ?? String(e),
             updatedAt: String(t.updatedAt || ""),
-            createdAt: String(t.createdAt || ""),
-            qty: toNum(t.qty),
-            avgPrice: toNum(t.avgPrice),
-            quoteQty: toNum(t.quoteQty),
           });
         }
       }
