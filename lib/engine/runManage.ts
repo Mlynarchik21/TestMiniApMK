@@ -242,7 +242,6 @@ async function createBotTrade(args: {
       pnl: new Prisma.Decimal(args.pnl.toFixed(18)),
       pnlPercent: new Prisma.Decimal(args.pnlPercent.toFixed(18)),
       addsCount: args.addsCount,
-      closeReason: "TP",
       openedAt: args.openedAt,
       closedAt: args.closedAt,
     },
