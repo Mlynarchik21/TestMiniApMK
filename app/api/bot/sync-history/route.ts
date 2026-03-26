@@ -181,7 +181,6 @@ export async function POST(req: Request) {
             pnl: 0,
             pnlPercent: 0,
             addsCount: 0,
-            closeReason: "MANUAL",
             openedAt,
             closedAt,
           },
