@@ -42,6 +42,21 @@ export type OrderStatusResult = {
   raw: any;
 };
 
+export type ExchangeClosedTrade = {
+  exchangeOrderId: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  qty: number;
+  avgPrice: number;
+  quoteQty: number;
+  fee?: number;
+  feeAsset?: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  raw: any;
+};
+
 export interface ExchangeAdapter {
   name: ExchangeName;
   getBalance(apiKey: string, apiSecret: string): Promise<ExchangeBalance>;
@@ -76,4 +91,10 @@ export interface ExchangeAdapter {
     exchangeOrderId?: string;
     clientOrderId?: string;
   }): Promise<any>;
+  getClosedTrades(params: {
+    apiKey: string;
+    apiSecret: string;
+    from: Date;
+    to: Date;
+  }): Promise<ExchangeClosedTrade[]>;
 }
