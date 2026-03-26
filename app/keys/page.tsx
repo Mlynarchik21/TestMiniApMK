@@ -10,6 +10,7 @@ type AnyResp =
   | { ok: false; error: string; message?: string; [k: string]: any };
 
 type ExchangeOption = "NONE" | "BYBIT" | "BINGX";
+type SyncPreset = "1D" | "7D" | "30D" | "90D" | "CUSTOM";
 
 type KeyRow = {
   id: string;
@@ -33,6 +34,22 @@ type KeyMetaState = {
   updatedAt: number | null;
   balances: BalanceRow[];
   raw: any;
+};
+
+type KeySyncState = {
+  preset: SyncPreset;
+  from: string;
+  to: string;
+  loading: boolean;
+  error: string;
+  result: {
+    synced?: number;
+    skipped?: number;
+    errors?: number;
+    totalFetched?: number;
+    from?: string;
+    to?: string;
+  } | null;
 };
 
 function getToken() {
@@ -144,15 +161,6 @@ function formatAmount(value: unknown, digits = 6) {
   });
 }
 
-function formatUsd(value: unknown) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "$0";
-  return `$${n.toLocaleString("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
 function hasWord(label: string | null | undefined, word: string) {
   return new RegExp(word, "i").test(label || "");
 }
@@ -223,6 +231,28 @@ function ChevronDownIcon() {
   );
 }
 
+function toLocalDateTimeInputValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function defaultSyncState(): KeySyncState {
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - 7);
+
+  return {
+    preset: "7D",
+    from: toLocalDateTimeInputValue(from),
+    to: toLocalDateTimeInputValue(now),
+    loading: false,
+    error: "",
+    result: null,
+  };
+}
+
 export default function KeysPage() {
   const router = useRouter();
 
@@ -237,6 +267,7 @@ export default function KeysPage() {
 
   const [keys, setKeys] = useState<KeyRow[]>([]);
   const [metaByKey, setMetaByKey] = useState<Record<string, KeyMetaState>>({});
+  const [syncByKey, setSyncByKey] = useState<Record<string, KeySyncState>>({});
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
 
   const [exchange, setExchange] = useState<ExchangeOption>("BYBIT");
@@ -246,6 +277,20 @@ export default function KeysPage() {
   const [isDemo, setIsDemo] = useState(false);
 
   const canSave = exchange === "BYBIT" && !!apiKey.trim() && !!apiSecret.trim() && !loading;
+
+  function getSyncState(keyId: string): KeySyncState {
+    return syncByKey[keyId] ?? defaultSyncState();
+  }
+
+  function patchSyncState(keyId: string, patch: Partial<KeySyncState>) {
+    setSyncByKey((prev) => ({
+      ...prev,
+      [keyId]: {
+        ...(prev[keyId] ?? defaultSyncState()),
+        ...patch,
+      },
+    }));
+  }
 
   async function reload() {
     setLoading(true);
@@ -330,6 +375,12 @@ export default function KeysPage() {
         return copy;
       });
 
+      setSyncByKey((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+
       if (expandedKeyId === id) {
         setExpandedKeyId(null);
       }
@@ -404,6 +455,64 @@ export default function KeysPage() {
           raw: null,
         },
       }));
+    }
+  }
+
+  async function syncHistory(key: KeyRow) {
+    const state = getSyncState(key.id);
+
+    patchSyncState(key.id, {
+      loading: true,
+      error: "",
+      result: null,
+    });
+
+    try {
+      const body =
+        state.preset === "CUSTOM"
+          ? {
+              keyId: key.id,
+              preset: "CUSTOM",
+              from: new Date(state.from).toISOString(),
+              to: new Date(state.to).toISOString(),
+            }
+          : {
+              keyId: key.id,
+              preset: state.preset,
+            };
+
+      const r = await api("/api/bot/sync-history", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      setResp(r.json);
+
+      if (!r.json.ok) {
+        patchSyncState(key.id, {
+          loading: false,
+          error: humanizeError(r.json),
+        });
+        return;
+      }
+
+      patchSyncState(key.id, {
+        loading: false,
+        error: "",
+        result: {
+          synced: (r.json as any).synced ?? 0,
+          skipped: (r.json as any).skipped ?? 0,
+          errors: (r.json as any).errors ?? 0,
+          totalFetched: (r.json as any).totalFetched ?? 0,
+          from: (r.json as any).from,
+          to: (r.json as any).to,
+        },
+      });
+    } catch (e: any) {
+      patchSyncState(key.id, {
+        loading: false,
+        error: e?.message ?? "Sync failed",
+      });
     }
   }
 
@@ -598,7 +707,9 @@ export default function KeysPage() {
               <div style={styles.keysList}>
                 {keys.map((key) => {
                   const meta = metaByKey[key.id];
+                  const syncState = getSyncState(key.id);
                   const open = expandedKeyId === key.id;
+
                   const statusText = meta?.loaded
                     ? meta.ok
                       ? "Активный"
@@ -765,10 +876,108 @@ export default function KeysPage() {
                             </div>
                           ) : null}
 
+                          <div style={styles.syncBlock}>
+                            <div style={styles.syncTitle}>Синхронизация истории</div>
+
+                            <div style={styles.syncGrid}>
+                              <div style={styles.selectWrap}>
+                                <select
+                                  value={syncState.preset}
+                                  onChange={(e) =>
+                                    patchSyncState(key.id, {
+                                      preset: e.target.value as SyncPreset,
+                                      error: "",
+                                      result: null,
+                                    })
+                                  }
+                                  style={styles.inputSelect}
+                                  disabled={syncState.loading}
+                                >
+                                  <option value="1D">Последние 24 часа</option>
+                                  <option value="7D">Последние 7 дней</option>
+                                  <option value="30D">Последние 30 дней</option>
+                                  <option value="90D">Последние 90 дней</option>
+                                  <option value="CUSTOM">Свой период</option>
+                                </select>
+                                <span style={styles.selectIcon}>
+                                  <ChevronDownIcon />
+                                </span>
+                              </div>
+
+                              {syncState.preset === "CUSTOM" ? (
+                                <>
+                                  <input
+                                    type="datetime-local"
+                                    value={syncState.from}
+                                    onChange={(e) =>
+                                      patchSyncState(key.id, {
+                                        from: e.target.value,
+                                        error: "",
+                                        result: null,
+                                      })
+                                    }
+                                    style={styles.input}
+                                    disabled={syncState.loading}
+                                  />
+                                  <input
+                                    type="datetime-local"
+                                    value={syncState.to}
+                                    onChange={(e) =>
+                                      patchSyncState(key.id, {
+                                        to: e.target.value,
+                                        error: "",
+                                        result: null,
+                                      })
+                                    }
+                                    style={styles.input}
+                                    disabled={syncState.loading}
+                                  />
+                                </>
+                              ) : null}
+
+                              <button
+                                type="button"
+                                onClick={() => syncHistory(key)}
+                                disabled={syncState.loading}
+                                style={styles.syncButton}
+                              >
+                                {syncState.loading ? "Подтягиваю..." : "Подтянуть историю"}
+                              </button>
+                            </div>
+
+                            {syncState.error ? (
+                              <div style={styles.errorInline}>{syncState.error}</div>
+                            ) : null}
+
+                            {syncState.result ? (
+                              <div style={styles.syncResultCard}>
+                                <div style={styles.syncResultRow}>
+                                  <span>Найдено на бирже</span>
+                                  <strong>{syncState.result.totalFetched ?? 0}</strong>
+                                </div>
+                                <div style={styles.syncResultRow}>
+                                  <span>Добавлено в БД</span>
+                                  <strong>{syncState.result.synced ?? 0}</strong>
+                                </div>
+                                <div style={styles.syncResultRow}>
+                                  <span>Пропущено</span>
+                                  <strong>{syncState.result.skipped ?? 0}</strong>
+                                </div>
+                                <div style={styles.syncResultRow}>
+                                  <span>Ошибки</span>
+                                  <strong>{syncState.result.errors ?? 0}</strong>
+                                </div>
+                                <div style={styles.syncPeriodText}>
+                                  {syncState.result.from || "—"} → {syncState.result.to || "—"}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
                           <div style={styles.actionsRow}>
                             <button
                               type="button"
-                              disabled={!!meta?.loading}
+                              disabled={!!meta?.loading || syncState.loading}
                               onClick={() => refreshBalance(key)}
                               style={styles.ghostButton}
                             >
@@ -777,7 +986,7 @@ export default function KeysPage() {
 
                             <button
                               type="button"
-                              disabled={loading}
+                              disabled={loading || syncState.loading}
                               onClick={() => delKey(key.id)}
                               style={styles.dangerButton}
                             >
@@ -1297,6 +1506,65 @@ const styles = {
     marginTop: 8,
     fontSize: 11,
     color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  syncBlock: {
+    border: `1px solid ${UI.border}`,
+    borderRadius: 16,
+    padding: 12,
+    background: "rgba(255,255,255,0.02)",
+  } satisfies CSSProperties,
+
+  syncTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: UI.textMain,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+
+  syncGrid: {
+    display: "grid",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  syncButton: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: "none",
+    background: UI.brand,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
+  } satisfies CSSProperties,
+
+  syncResultCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    padding: 12,
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${UI.borderSoft}`,
+    display: "grid",
+    gap: 8,
+  } satisfies CSSProperties,
+
+  syncResultRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 12,
+    color: UI.textSoft,
+  } satisfies CSSProperties,
+
+  syncPeriodText: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: UI.textMuted,
+    wordBreak: "break-word",
   } satisfies CSSProperties,
 
   actionsRow: {
