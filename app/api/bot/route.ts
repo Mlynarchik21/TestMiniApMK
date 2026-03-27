@@ -39,12 +39,42 @@ function parseDecimalString(v: unknown): string | null {
   return s;
 }
 
+function toNum(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeAddsCount(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+function isRealOpenPosition(p: {
+  qty: Prisma.Decimal | string | number;
+  investedQuote: Prisma.Decimal | string | number;
+  avgPrice: Prisma.Decimal | string | number;
+  symbol: string;
+}) {
+  const qty = toNum(p.qty);
+  const investedQuote = toNum(p.investedQuote);
+  const avgPrice = toNum(p.avgPrice);
+  const symbol = String(p.symbol || "").trim();
+
+  if (!symbol) return false;
+  if (qty <= 0) return false;
+  if (investedQuote <= 0) return false;
+  if (avgPrice <= 0) return false;
+
+  return true;
+}
+
 // GET /api/bot
 export async function GET(req: Request) {
   try {
     const user = await requireUser(req);
 
-    const [config, state, activePositionsCount, positions] = await Promise.all([
+    const [config, state, positionsRaw] = await Promise.all([
       prisma.botConfig.findUnique({
         where: { userId: user.id },
         select: {
@@ -71,12 +101,6 @@ export async function GET(req: Request) {
           updatedAt: true,
         },
       }),
-      prisma.botPosition.count({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-        },
-      }),
       prisma.botPosition.findMany({
         where: {
           userId: user.id,
@@ -101,6 +125,17 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    const positions = positionsRaw
+      .filter(isRealOpenPosition)
+      .map((p) => ({
+        ...p,
+        avgPrice: p.avgPrice.toString(),
+        qty: p.qty.toString(),
+        tpPrice: p.tpPrice.toString(),
+        investedQuote: p.investedQuote.toString(),
+        addsCount: normalizeAddsCount(p.addsCount),
+      }));
+
     return ok({
       config: config
         ? {
@@ -109,14 +144,8 @@ export async function GET(req: Request) {
           }
         : null,
       state,
-      activePositions: activePositionsCount,
-      positions: positions.map((p) => ({
-        ...p,
-        avgPrice: p.avgPrice.toString(),
-        qty: p.qty.toString(),
-        tpPrice: p.tpPrice.toString(),
-        investedQuote: p.investedQuote.toString(),
-      })),
+      activePositions: positions.length,
+      positions,
     });
   } catch (e: AnyJson) {
     const status = typeof e?.status === "number" ? e.status : 500;
