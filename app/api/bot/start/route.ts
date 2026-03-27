@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
+import { runManage } from "@/lib/engine/runManage";
 
 export const runtime = "nodejs";
 
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const state = await prisma.botState.upsert({
+    let state = await prisma.botState.upsert({
       where: { userId: user.id },
       create: {
         userId: user.id,
@@ -82,12 +83,54 @@ export async function POST(req: Request) {
       },
     });
 
+    let syncResult: any = null;
+
+    try {
+      syncResult = await runManage();
+
+      state = await prisma.botState.update({
+        where: { userId: user.id },
+        data: {
+          status: "RUNNING",
+          lastSyncAt: new Date(),
+          lastError: null,
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          lastSyncAt: true,
+          lastError: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    } catch (syncError: any) {
+      state = await prisma.botState.update({
+        where: { userId: user.id },
+        data: {
+          status: "RUNNING",
+          lastError: syncError?.message ?? String(syncError),
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          lastSyncAt: true,
+          lastError: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    }
+
     return ok({
       config: {
         ...updatedConfig,
         budgetPerSymbol: updatedConfig.budgetPerSymbol.toString(),
       },
       state,
+      startupSync: syncResult,
     });
   } catch (e: any) {
     console.error("BOT START ERROR:", e);
