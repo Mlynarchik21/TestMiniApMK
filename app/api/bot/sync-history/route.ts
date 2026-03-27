@@ -169,6 +169,7 @@ export async function POST(req: Request) {
     for (const t of closedTrades) {
       try {
         const raw = t as AnyJson;
+        const nestedRaw = (raw.raw ?? {}) as AnyJson;
 
         const closedAt = new Date(String(raw.updatedAt));
         const openedAt = new Date(String(raw.createdAt));
@@ -181,18 +182,48 @@ export async function POST(req: Request) {
         const avgPrice = toNum(raw.avgPrice);
         const quoteQty = toNum(raw.quoteQty);
 
-        const entryValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
-        const exitValue = quoteQty > 0 ? quoteQty : qty * avgPrice;
+        const entryPrice = toNum(
+          nestedRaw.entryPrice ??
+            raw.entryPrice ??
+            avgPrice
+        );
+
+        const exitPrice = toNum(
+          nestedRaw.exitPrice ??
+            raw.exitPrice ??
+            avgPrice
+        );
+
+        const entryValue = toNum(
+          nestedRaw.entryValue ??
+            raw.entryValue ??
+            (qty > 0 && entryPrice > 0 ? qty * entryPrice : 0)
+        );
+
+        const exitValue = toNum(
+          nestedRaw.exitValue ??
+            raw.exitValue ??
+            quoteQty ??
+            (qty > 0 && exitPrice > 0 ? qty * exitPrice : 0)
+        );
 
         const pnl = toNum(
-          raw.realizedPnl ??
+          nestedRaw.realizedPnl ??
+            nestedRaw.closedPnl ??
+            nestedRaw.pnl ??
+            nestedRaw.profit ??
+            raw.realizedPnl ??
             raw.closedPnl ??
             raw.pnl ??
             raw.profit ??
-            0
+            (exitValue - entryValue)
         );
 
-        const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+        const pnlPercent = toNum(
+          nestedRaw.pnlPercent ??
+            raw.pnlPercent ??
+            (entryValue > 0 ? (pnl / entryValue) * 100 : 0)
+        );
 
         await prisma.botTrade.create({
           data: {
@@ -202,8 +233,8 @@ export async function POST(req: Request) {
             entryValue: dec(entryValue),
             exitValue: dec(exitValue),
             qty: dec(qty),
-            avgEntryPrice: dec(avgPrice),
-            exitPrice: dec(avgPrice),
+            avgEntryPrice: dec(entryPrice),
+            exitPrice: dec(exitPrice),
             pnl: dec(pnl),
             pnlPercent: dec(pnlPercent),
             addsCount: 0,
