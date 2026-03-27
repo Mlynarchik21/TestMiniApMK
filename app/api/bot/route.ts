@@ -1,15 +1,17 @@
-// app/api/bot/route.ts
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
-import { Exchange, Prisma } from "@prisma/client";
+import { decryptString } from "@/lib/crypto/secretBox";
+import { getExchangeAdapter } from "@/lib/exchanges";
+import type { ExchangeName } from "@/lib/exchanges/types";
 
 export const runtime = "nodejs";
 
 type AnyJson = any;
 
-function ok(data: AnyJson) {
-  return NextResponse.json({ ok: true, ...data });
+function ok(data?: AnyJson) {
+  return NextResponse.json({ ok: true, ...(data ?? {}) });
 }
 
 function fail(status: number, error: string, message?: string, extra?: AnyJson) {
@@ -19,224 +21,254 @@ function fail(status: number, error: string, message?: string, extra?: AnyJson) 
   );
 }
 
-function isExchange(v: unknown): v is Exchange {
-  return v === "BINANCE" || v === "BYBIT" || v === "OKX";
-}
-
-function parseIntSafe(v: unknown): number | null {
-  if (typeof v === "number" && Number.isInteger(v)) return v;
+function parseDate(v: unknown): Date | null {
   if (typeof v !== "string") return null;
-  const n = Number(v.trim());
-  return Number.isInteger(n) ? n : null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function parseDecimalString(v: unknown): string | null {
-  if (typeof v === "number" && Number.isFinite(v)) return String(v);
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  if (!s) return null;
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
-  return s;
+function toNum(v: unknown) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-// GET /api/bot
-export async function GET(req: Request) {
-  try {
-    const user = await requireUser(req);
+function dec(v: number) {
+  return new Prisma.Decimal(v.toFixed(18));
+}
 
-    const [config, state, activePositionsCount, positions] = await Promise.all([
-      prisma.botConfig.findUnique({
-        where: { userId: user.id },
-        select: {
-          id: true,
-          userId: true,
-          exchange: true,
-          keyId: true,
-          enabled: true,
-          maxActiveSymbols: true,
-          budgetPerSymbol: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.botState.findUnique({
-        where: { userId: user.id },
-        select: {
-          id: true,
-          userId: true,
-          status: true,
-          lastSyncAt: true,
-          lastError: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.botPosition.count({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-        },
-      }),
-      prisma.botPosition.findMany({
-        where: {
-          userId: user.id,
-          status: "OPEN",
-        },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          id: true,
-          exchange: true,
-          symbol: true,
-          status: true,
-          avgPrice: true,
-          qty: true,
-          tpPrice: true,
-          addsCount: true,
-          investedQuote: true,
-          openedAt: true,
-          closedAt: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-    ]);
+function getRangeFromPreset(preset: string) {
+  const now = new Date();
+  const from = new Date(now);
 
-    return ok({
-      config: config
-        ? {
-            ...config,
-            budgetPerSymbol: config.budgetPerSymbol.toString(),
-          }
-        : null,
-      state,
-      activePositions: activePositionsCount,
-      positions: positions.map((p) => ({
-        ...p,
-        avgPrice: p.avgPrice.toString(),
-        qty: p.qty.toString(),
-        tpPrice: p.tpPrice.toString(),
-        investedQuote: p.investedQuote.toString(),
-      })),
-    });
-  } catch (e: AnyJson) {
-    const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+  switch (preset) {
+    case "1D":
+      from.setDate(from.getDate() - 1);
+      break;
+    case "7D":
+      from.setDate(from.getDate() - 7);
+      break;
+    case "30D":
+      from.setDate(from.getDate() - 30);
+      break;
+    case "90D":
+      from.setDate(from.getDate() - 90);
+      break;
+    default:
+      from.setDate(from.getDate() - 7);
+      break;
   }
+
+  return { from, to: now };
 }
 
-// PATCH /api/bot
-export async function PATCH(req: Request) {
+export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
     const body = (await req.json().catch(() => null)) as AnyJson | null;
 
-    if (!body) {
-      return fail(400, "BAD_REQUEST", "JSON body required");
+    if (!body) return fail(400, "BAD_REQUEST", "JSON body required");
+
+    const keyId = String(body.keyId || "").trim();
+    if (!keyId) {
+      return fail(400, "BAD_REQUEST", "keyId required");
     }
 
-    let exchange: Exchange | undefined;
-    if (body.exchange != null) {
-      if (!isExchange(body.exchange)) {
-        return fail(400, "BAD_REQUEST", "exchange invalid");
+    const preset = String(body.preset || "7D").toUpperCase();
+    const customFrom = parseDate(body.from);
+    const customTo = parseDate(body.to);
+
+    let from: Date;
+    let to: Date;
+
+    if (preset === "CUSTOM") {
+      if (!customFrom || !customTo) {
+        return fail(400, "BAD_REQUEST", "from/to required for CUSTOM");
       }
-      exchange = body.exchange;
+      from = customFrom;
+      to = customTo;
+    } else {
+      const range = getRangeFromPreset(preset);
+      from = range.from;
+      to = range.to;
     }
 
-    let keyId: string | null | undefined = undefined;
-    if (body.keyId !== undefined) {
-      if (body.keyId === null || body.keyId === "") {
-        keyId = null;
-      } else if (typeof body.keyId === "string") {
-        keyId = body.keyId.trim();
-      } else {
-        return fail(400, "BAD_REQUEST", "keyId invalid");
-      }
+    if (from >= to) {
+      return fail(400, "BAD_REQUEST", "`from` must be earlier than `to`");
     }
 
-    let maxActiveSymbols: number | undefined;
-    if (body.maxActiveSymbols != null) {
-      const n = parseIntSafe(body.maxActiveSymbols);
-      if (n == null || n < 1 || n > 10) {
-        return fail(400, "BAD_REQUEST", "maxActiveSymbols must be integer 1..10");
-      }
-      maxActiveSymbols = n;
-    }
-
-    let budgetPerSymbol: Prisma.Decimal | undefined;
-    if (body.budgetPerSymbol != null) {
-      const s = parseDecimalString(body.budgetPerSymbol);
-      if (!s) return fail(400, "BAD_REQUEST", "budgetPerSymbol invalid");
-      budgetPerSymbol = new Prisma.Decimal(s);
-      if (budgetPerSymbol.lte(0)) {
-        return fail(400, "BAD_REQUEST", "budgetPerSymbol must be > 0");
-      }
-    }
-
-    if (keyId) {
-      const key = await prisma.userKey.findFirst({
-        where: { id: keyId, userId: user.id },
-        select: { id: true },
-      });
-
-      if (!key) {
-        return fail(404, "NOT_FOUND", "key not found");
-      }
-    }
-
-    const config = await prisma.botConfig.upsert({
-      where: { userId: user.id },
-      create: {
+    const key = await prisma.userKey.findFirst({
+      where: {
+        id: keyId,
         userId: user.id,
-        exchange: exchange ?? "BINANCE",
-        keyId: keyId ?? null,
-        enabled: false,
-        maxActiveSymbols: maxActiveSymbols ?? 10,
-        budgetPerSymbol: budgetPerSymbol ?? new Prisma.Decimal("50"),
-      },
-      update: {
-        ...(exchange !== undefined ? { exchange } : {}),
-        ...(keyId !== undefined ? { keyId } : {}),
-        ...(maxActiveSymbols !== undefined ? { maxActiveSymbols } : {}),
-        ...(budgetPerSymbol !== undefined ? { budgetPerSymbol } : {}),
       },
       select: {
         id: true,
-        userId: true,
+        apiKey: true,
+        secretEnc: true,
         exchange: true,
-        keyId: true,
-        enabled: true,
-        maxActiveSymbols: true,
-        budgetPerSymbol: true,
-        createdAt: true,
-        updatedAt: true,
+        label: true,
       },
     });
 
-    await prisma.botState.upsert({
-      where: { userId: user.id },
-      create: {
-        userId: user.id,
-        status: "IDLE",
-      },
-      update: {},
+    if (!key) {
+      return fail(404, "KEY_NOT_FOUND", "Selected key not found");
+    }
+
+    if (key.exchange !== "BYBIT") {
+      return fail(
+        400,
+        "UNSUPPORTED_EXCHANGE",
+        "History sync currently supports BYBIT only"
+      );
+    }
+
+    const exchange = getExchangeAdapter(key.exchange as ExchangeName);
+    const apiSecret = decryptString(key.secretEnc);
+
+    const closedTrades = await exchange.getClosedTrades({
+      apiKey: key.apiKey,
+      apiSecret,
+      from,
+      to,
     });
+
+    if (!closedTrades.length) {
+      return ok({
+        keyId: key.id,
+        exchange: key.exchange,
+        synced: 0,
+        skipped: 0,
+        errors: 0,
+        errorItems: [],
+        totalFetched: 0,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      });
+    }
+
+    await prisma.botTrade.deleteMany({
+      where: {
+        userId: user.id,
+        closedAt: {
+          gte: from,
+          lte: to,
+        },
+      },
+    });
+
+    let synced = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    const errorItems: Array<{
+      symbol: string;
+      message: string;
+      updatedAt: string;
+    }> = [];
+
+    for (const t of closedTrades) {
+      try {
+        const raw = t as AnyJson;
+        const nestedRaw = (raw.raw ?? {}) as AnyJson;
+
+        const closedAt = new Date(String(raw.updatedAt));
+        const openedAt = new Date(String(raw.createdAt));
+
+        if (Number.isNaN(closedAt.getTime()) || Number.isNaN(openedAt.getTime())) {
+          throw new Error("Invalid trade dates");
+        }
+
+        const qty = toNum(raw.qty);
+        const avgPrice = toNum(raw.avgPrice);
+        const quoteQty = toNum(raw.quoteQty);
+
+        const entryPrice = toNum(
+          nestedRaw.entryPrice ??
+            raw.entryPrice ??
+            avgPrice
+        );
+
+        const exitPrice = toNum(
+          nestedRaw.exitPrice ??
+            raw.exitPrice ??
+            avgPrice
+        );
+
+        const entryValue = toNum(
+          nestedRaw.entryValue ??
+            raw.entryValue ??
+            (qty > 0 && entryPrice > 0 ? qty * entryPrice : 0)
+        );
+
+        const exitValue = toNum(
+          nestedRaw.exitValue ??
+            raw.exitValue ??
+            quoteQty ??
+            (qty > 0 && exitPrice > 0 ? qty * exitPrice : 0)
+        );
+
+        const pnl = toNum(
+          nestedRaw.realizedPnl ??
+            nestedRaw.closedPnl ??
+            nestedRaw.pnl ??
+            nestedRaw.profit ??
+            raw.realizedPnl ??
+            raw.closedPnl ??
+            raw.pnl ??
+            raw.profit ??
+            (exitValue - entryValue)
+        );
+
+        const pnlPercent = toNum(
+          nestedRaw.pnlPercent ??
+            raw.pnlPercent ??
+            (entryValue > 0 ? (pnl / entryValue) * 100 : 0)
+        );
+
+        await prisma.botTrade.create({
+          data: {
+            user: { connect: { id: user.id } },
+            exchange: key.exchange as any,
+            symbol: String(raw.symbol || "").toUpperCase(),
+            entryValue: dec(entryValue),
+            exitValue: dec(exitValue),
+            qty: dec(qty),
+            avgEntryPrice: dec(entryPrice),
+            exitPrice: dec(exitPrice),
+            pnl: dec(pnl),
+            pnlPercent: dec(pnlPercent),
+            addsCount: 0,
+            openedAt,
+            closedAt,
+          },
+        });
+
+        synced++;
+      } catch (e: any) {
+        errors++;
+
+        if (errorItems.length < 15) {
+          errorItems.push({
+            symbol: String((t as AnyJson)?.symbol || ""),
+            message: e?.message ?? String(e),
+            updatedAt: String((t as AnyJson)?.updatedAt || ""),
+          });
+        }
+      }
+    }
 
     return ok({
-      config: {
-        ...config,
-        budgetPerSymbol: config.budgetPerSymbol.toString(),
-      },
+      keyId: key.id,
+      exchange: key.exchange,
+      synced,
+      skipped,
+      errors,
+      errorItems,
+      totalFetched: closedTrades.length,
+      from: from.toISOString(),
+      to: to.toISOString(),
     });
-  } catch (e: AnyJson) {
-    const status = typeof e?.status === "number" ? e.status : 500;
-    return fail(
-      status,
-      status === 401 ? "UNAUTHORIZED" : "SERVER_ERROR",
-      e?.message ?? String(e)
-    );
+  } catch (e: any) {
+    return fail(500, "SERVER_ERROR", e?.message ?? String(e));
   }
 }
