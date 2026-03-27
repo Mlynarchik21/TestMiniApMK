@@ -106,6 +106,31 @@ async function getPositionOrders(positionId: string) {
   return rows;
 }
 
+function countFilledGridOrders(orders: RawBotOrder[]) {
+  return orders.filter((o) => o.kind === "GRID" && isFilledStatus(o.status)).length;
+}
+
+async function syncPositionAddsCount(positionId: string) {
+  const freshOrders = await getPositionOrders(positionId);
+  const filledGridCount = countFilledGridOrders(freshOrders);
+
+  const updated = await prisma.botPosition.update({
+    where: { id: positionId },
+    data: {
+      addsCount: filledGridCount,
+    },
+    select: {
+      id: true,
+      addsCount: true,
+    },
+  });
+
+  return {
+    addsCount: updated.addsCount ?? 0,
+    filledGridCount,
+  };
+}
+
 async function updateBotOrderStatus(orderId: string, status: string, meta?: AnyJson) {
   const metaJson = meta == null ? null : JSON.stringify(meta);
 
@@ -395,6 +420,8 @@ async function manageOnePosition(args: {
         excludeOrderId: tp.id,
       });
 
+      const syncedAdds = await syncPositionAddsCount(args.position.id);
+
       await createBotTrade({
         userId: args.userId,
         botPositionId: args.position.id,
@@ -407,7 +434,7 @@ async function manageOnePosition(args: {
         exitPrice,
         pnl,
         pnlPercent,
-        addsCount: args.position.addsCount,
+        addsCount: syncedAdds.addsCount,
         openedAt: args.position.openedAt,
         closedAt: closeTime,
       });
@@ -417,6 +444,7 @@ async function manageOnePosition(args: {
         data: {
           status: "CLOSED",
           closedAt: closeTime,
+          addsCount: syncedAdds.addsCount,
         },
       });
 
@@ -447,6 +475,7 @@ async function manageOnePosition(args: {
           exitPrice,
           pnl,
           pnlPercent,
+          addsCount: syncedAdds.addsCount,
         },
         canceledOrders,
       };
@@ -459,6 +488,8 @@ async function manageOnePosition(args: {
       });
     }
   }
+
+  const knownFilledGridCountBefore = countFilledGridOrders(orders);
 
   const newlyFilledGrids: Array<{
     row: RawBotOrder;
@@ -510,12 +541,15 @@ async function manageOnePosition(args: {
   }
 
   if (!newlyFilledGrids.length) {
+    const syncedAdds = await syncPositionAddsCount(args.position.id);
+
     return {
       positionId: args.position.id,
       symbol,
       action: "NO_CHANGES",
       tpChecked: tpStatuses.length,
       gridChecked: gridStatuses.length,
+      addsCount: syncedAdds.addsCount,
     };
   }
 
@@ -544,6 +578,8 @@ async function manageOnePosition(args: {
   const finalTpPrice = formatByStep(newTpPriceNum, filters.tickSize);
   const finalTpQty = formatByStep(finalQtyNum, filters.stepSize);
 
+  const totalFilledGridCount = knownFilledGridCountBefore + newlyFilledGrids.length;
+
   const updatedPosition = await prisma.botPosition.update({
     where: { id: args.position.id },
     data: {
@@ -551,9 +587,7 @@ async function manageOnePosition(args: {
       qty: new Prisma.Decimal(finalQtyNum.toFixed(18)),
       tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
       investedQuote: new Prisma.Decimal(newInvestedQuote.toFixed(18)),
-      addsCount: {
-        increment: newlyFilledGrids.length,
-      },
+      addsCount: totalFilledGridCount,
     },
     select: {
       id: true,
@@ -590,6 +624,7 @@ async function manageOnePosition(args: {
     rawOrder: newTpOrder.raw,
   });
 
+  const syncedAdds = await syncPositionAddsCount(args.position.id);
   const lastFilledGrid = newlyFilledGrids[newlyFilledGrids.length - 1];
 
   await notifyTradeAveraged({
@@ -609,6 +644,7 @@ async function manageOnePosition(args: {
     symbol,
     action: "GRID_FILLED_TP_MOVED",
     newlyFilledGridCount: newlyFilledGrids.length,
+    addsCount: syncedAdds.addsCount,
     newlyFilledGrids: newlyFilledGrids.map((x) => ({
       orderId: x.row.id,
       exchangeOrderId: x.row.exchangeOrderId,
@@ -625,6 +661,7 @@ async function manageOnePosition(args: {
     },
     updatedPosition: {
       ...updatedPosition,
+      addsCount: syncedAdds.addsCount,
       avgPrice: updatedPosition.avgPrice.toString(),
       qty: updatedPosition.qty.toString(),
       tpPrice: updatedPosition.tpPrice.toString(),
