@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
 import { getExchangeAdapter } from "@/lib/exchanges";
-import type { ExchangeName } from "@/lib/exchanges/types";
+import type { ExchangeAdapter, ExchangeName } from "@/lib/exchanges/types";
 
 type AnyJson = any;
 
@@ -274,7 +274,7 @@ async function createBotTrade(args: {
 }
 
 async function cancelBotOrders(args: {
-  exchange: ReturnType<typeof getExchangeAdapter>;
+  exchange: ExchangeAdapter;
   apiKey: string;
   apiSecret: string;
   symbol: string;
@@ -323,7 +323,7 @@ async function cancelBotOrders(args: {
 }
 
 async function cancelAllRemainingOrdersForPosition(args: {
-  exchange: ReturnType<typeof getExchangeAdapter>;
+  exchange: ExchangeAdapter;
   apiKey: string;
   apiSecret: string;
   positionId: string;
@@ -562,7 +562,7 @@ async function manageOnePosition(args: {
   const addedCost = newlyFilledGrids.reduce((s, x) => s + x.quoteSpent, 0);
 
   const newQty = oldQty + addedQty;
-  const newAvgPrice = (oldCost + addedCost) / newQty;
+  const newAvgPrice = newQty > 0 ? (oldCost + addedCost) / newQty : 0;
   const newTpPriceNum = newAvgPrice * 1.05;
   const newInvestedQuote = oldInvestedQuote + addedCost;
 
