@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { runManage } from "@/lib/engine/runManage";
+import { syncOpenPositionsForUser } from "@/lib/engine/syncOpenPositions";
 
 export const runtime = "nodejs";
 
@@ -83,10 +84,22 @@ export async function POST(req: Request) {
       },
     });
 
-    let syncResult: any = null;
+    let startupOpenSync: any = null;
+    let startupManage: any = null;
 
     try {
-      syncResult = await runManage();
+      startupOpenSync = await syncOpenPositionsForUser(user.id);
+    } catch (syncError: any) {
+      await prisma.botState.update({
+        where: { userId: user.id },
+        data: {
+          lastError: syncError?.message ?? String(syncError),
+        },
+      });
+    }
+
+    try {
+      startupManage = await runManage();
 
       state = await prisma.botState.update({
         where: { userId: user.id },
@@ -105,12 +118,12 @@ export async function POST(req: Request) {
           updatedAt: true,
         },
       });
-    } catch (syncError: any) {
+    } catch (manageError: any) {
       state = await prisma.botState.update({
         where: { userId: user.id },
         data: {
           status: "RUNNING",
-          lastError: syncError?.message ?? String(syncError),
+          lastError: manageError?.message ?? String(manageError),
         },
         select: {
           id: true,
@@ -130,7 +143,8 @@ export async function POST(req: Request) {
         budgetPerSymbol: updatedConfig.budgetPerSymbol.toString(),
       },
       state,
-      startupSync: syncResult,
+      startupOpenSync,
+      startupManage,
     });
   } catch (e: any) {
     console.error("BOT START ERROR:", e);
