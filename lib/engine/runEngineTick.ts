@@ -9,6 +9,9 @@ import { syncOpenPositionsForUser } from "@/lib/engine/syncOpenPositions";
 const CMC_LISTINGS_URL =
   "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
 
+const BYBIT_PUBLIC_BASE =
+  process.env.BYBIT_BASE_URL?.trim() || "https://api-demo.bybit.com";
+
 const STABLE_ASSETS = new Set([
   "USDT",
   "USDC",
@@ -108,7 +111,7 @@ async function cmcTop100(): Promise<CmcCoin[]> {
 }
 
 async function bybitTickersSpot(): Promise<PublicTicker[]> {
-  const r = await fetch("https://api-demo.bybit.com/v5/market/tickers?category=spot", {
+  const r = await fetch(`${BYBIT_PUBLIC_BASE}/v5/market/tickers?category=spot`, {
     method: "GET",
     cache: "no-store",
   });
@@ -749,13 +752,6 @@ export async function runEngineTick() {
       const exchange = getExchangeAdapter(bot.exchange as ExchangeName);
       const apiSecret = decryptString(key.secretEnc);
 
-      /**
-       * Сначала синхронизируем реальные открытые позиции с биржей.
-       * Это нужно, чтобы:
-       * - убрать мертвые OPEN из БД
-       * - подтянуть qty / avgPrice / investedQuote / addsCount
-       * - пересоздать TP при необходимости
-       */
       let startupSync: AnyJson = null;
       try {
         startupSync = await syncOpenPositionsForUser(bot.userId);
