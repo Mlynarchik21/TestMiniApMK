@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
 import { getExchangeAdapter } from "@/lib/exchanges";
 import type { ExchangeName } from "@/lib/exchanges/types";
+import { syncOpenPositionsForUser } from "@/lib/engine/syncOpenPositions";
 
 const CMC_LISTINGS_URL =
   "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
@@ -746,6 +747,40 @@ export async function runEngineTick() {
       }
 
       const exchange = getExchangeAdapter(bot.exchange as ExchangeName);
+      const apiSecret = decryptString(key.secretEnc);
+
+      /**
+       * Сначала синхронизируем реальные открытые позиции с биржей.
+       * Это нужно, чтобы:
+       * - убрать мертвые OPEN из БД
+       * - подтянуть qty / avgPrice / investedQuote / addsCount
+       * - пересоздать TP при необходимости
+       */
+      let startupSync: AnyJson = null;
+      try {
+        startupSync = await syncOpenPositionsForUser(bot.userId);
+      } catch (syncErr: any) {
+        await prisma.botState.updateMany({
+          where: { userId: bot.userId },
+          data: {
+            lastError: String(syncErr?.message || syncErr),
+          },
+        });
+
+        await finishCycle(cycleId, "ERROR", "syncOpenPositions failed", {
+          message: String(syncErr?.message || syncErr),
+        });
+
+        results.push({
+          userId: bot.userId,
+          exchange: bot.exchange,
+          cycleId,
+          status: "ERROR",
+          message: `syncOpenPositions failed: ${String(syncErr?.message || syncErr)}`,
+        });
+        continue;
+      }
+
       const activePositions = await prisma.botPosition.count({
         where: {
           userId: bot.userId,
@@ -758,6 +793,7 @@ export async function runEngineTick() {
         await finishCycle(cycleId, "SKIPPED", "active positions limit reached", {
           activePositions,
           maxActiveSymbols: bot.maxActiveSymbols,
+          startupSync,
         });
 
         await markBotSynced(bot.userId);
@@ -768,6 +804,7 @@ export async function runEngineTick() {
           cycleId,
           status: "SKIPPED",
           message: "active positions limit reached",
+          startupSync,
         });
         continue;
       }
@@ -779,6 +816,7 @@ export async function runEngineTick() {
           await finishCycle(cycleId, "SKIPPED", "global 30m entry cooldown active", {
             lastEntryAt: lastEntryAt.toISOString(),
             minutesSinceLastEntry: mins,
+            startupSync,
           });
 
           await markBotSynced(bot.userId);
@@ -789,16 +827,19 @@ export async function runEngineTick() {
             cycleId,
             status: "SKIPPED",
             message: "global 30m entry cooldown active",
+            startupSync,
           });
           continue;
         }
       }
 
-      const apiSecret = decryptString(key.secretEnc);
       const stable = await exchange.getBalance(key.apiKey, apiSecret);
 
       if (stable.totalStable <= 0) {
-        await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", stable);
+        await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", {
+          ...stable,
+          startupSync,
+        });
 
         await markBotSynced(bot.userId);
 
@@ -808,6 +849,7 @@ export async function runEngineTick() {
           cycleId,
           status: "SKIPPED",
           message: "no stablecoin capital found",
+          startupSync,
         });
         continue;
       }
@@ -817,6 +859,7 @@ export async function runEngineTick() {
         await finishCycle(cycleId, "SKIPPED", "free stable balance is at or below 10%", {
           ...stable,
           minFreeRequired,
+          startupSync,
         });
 
         await markBotSynced(bot.userId);
@@ -827,6 +870,7 @@ export async function runEngineTick() {
           cycleId,
           status: "SKIPPED",
           message: "free stable balance is at or below 10%",
+          startupSync,
         });
         continue;
       }
@@ -841,6 +885,7 @@ export async function runEngineTick() {
           totalStable: stable.totalStable,
           freeStable: stable.freeStable,
           candidatesCount: scan.candidatesCount,
+          startupSync,
         });
 
         await markBotSynced(bot.userId);
@@ -852,6 +897,7 @@ export async function runEngineTick() {
           status: "SKIPPED",
           message: "no market candidate found",
           candidatesCount: scan.candidatesCount,
+          startupSync,
         });
         continue;
       }
@@ -878,6 +924,7 @@ export async function runEngineTick() {
             candidate: scan.candidate,
             top5: scan.top5,
             openResult: opened,
+            startupSync,
           }
         );
 
@@ -891,6 +938,7 @@ export async function runEngineTick() {
           message: opened?.message || "candidate found but open skipped",
           candidate: scan.candidate,
           openResult: opened,
+          startupSync,
         });
         continue;
       }
@@ -908,6 +956,7 @@ export async function runEngineTick() {
         candidate: scan.candidate,
         top5: scan.top5,
         opened,
+        startupSync,
       });
 
       results.push({
@@ -920,6 +969,7 @@ export async function runEngineTick() {
         candidate: scan.candidate,
         top5: scan.top5,
         opened,
+        startupSync,
       });
     } catch (e: any) {
       await prisma.botState.updateMany({
