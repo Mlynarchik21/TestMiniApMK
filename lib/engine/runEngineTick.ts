@@ -219,7 +219,7 @@ function pickCandidate(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
     if (!ticker) continue;
 
     const drop24h = toNum(ticker.price24hPcnt) * 100 || toNum(ticker.priceChangePercent);
-    if (drop24h > -10) continue;
+    if (drop24h > -5) continue;
 
     const marketCap = toNum(coin.quote?.USD?.market_cap);
 
@@ -806,28 +806,28 @@ export async function runEngineTick() {
       }
 
       const lastEntryAt = await getLastEntryAt(bot.userId);
-      if (lastEntryAt) {
-        const mins = minutesDiff(lastEntryAt, new Date());
-        if (mins < 30) {
-          await finishCycle(cycleId, "SKIPPED", "global 30m entry cooldown active", {
-            lastEntryAt: lastEntryAt.toISOString(),
-            minutesSinceLastEntry: mins,
-            startupSync,
-          });
+if (lastEntryAt) {
+  const mins = minutesDiff(lastEntryAt, new Date());
+  if (mins < 5) {
+    await finishCycle(cycleId, "SKIPPED", "global 5m entry cooldown active", {
+      lastEntryAt: lastEntryAt.toISOString(),
+      minutesSinceLastEntry: mins,
+      startupSync,
+    });
 
-          await markBotSynced(bot.userId);
+    await markBotSynced(bot.userId);
 
-          results.push({
-            userId: bot.userId,
-            exchange: bot.exchange,
-            cycleId,
-            status: "SKIPPED",
-            message: "global 30m entry cooldown active",
-            startupSync,
-          });
-          continue;
-        }
-      }
+    results.push({
+      userId: bot.userId,
+      exchange: bot.exchange,
+      cycleId,
+      status: "SKIPPED",
+      message: "global 5m entry cooldown active",
+      startupSync,
+    });
+    continue;
+  }
+}
 
       const stable = await exchange.getBalance(key.apiKey, apiSecret);
 
