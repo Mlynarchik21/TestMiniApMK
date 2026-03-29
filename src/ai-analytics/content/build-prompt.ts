@@ -1,5 +1,5 @@
 import type { EventItem, MarketBrief, NewsItem, StrengthCoin, SectorStrength } from "../types/market-brief";
-import { formatBillions, formatMillions, formatPct, formatUsd } from "../utils/number";
+import { formatBillions, formatMillions, formatPct, formatUsd } from "../utils/numbers";
 
 function fmt(v: string | number | null | undefined): string {
   if (v === null || v === undefined || v === "") return "N/A";
