@@ -49,6 +49,9 @@ const STABLE_ASSETS = new Set([
   "USDP",
 ]);
 
+const BYBIT_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
+const HISTORY_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
+
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -166,7 +169,7 @@ async function fetchBybitSpotBalances(apiKey: string, apiSecret: string) {
   return balances;
 }
 
-async function fetchBybitFilledOrders(
+async function fetchBybitFilledOrdersChunk(
   apiKey: string,
   apiSecret: string,
   startTime: number,
@@ -198,6 +201,48 @@ async function fetchBybitFilledOrders(
   }
 
   return rows.filter((row) => isFilledStatus(String(row?.orderStatus || "")));
+}
+
+async function fetchBybitFilledOrders(
+  apiKey: string,
+  apiSecret: string,
+  startTime: number,
+  endTime: number
+) {
+  const allRows: AnyJson[] = [];
+  let chunkStart = startTime;
+
+  while (chunkStart < endTime) {
+    const chunkEnd = Math.min(chunkStart + BYBIT_MAX_RANGE_MS - 1, endTime);
+
+    const chunkRows = await fetchBybitFilledOrdersChunk(
+      apiKey,
+      apiSecret,
+      chunkStart,
+      chunkEnd
+    );
+
+    allRows.push(...chunkRows);
+    chunkStart = chunkEnd + 1;
+  }
+
+  const unique = new Map<string, AnyJson>();
+
+  for (const row of allRows) {
+    const orderId = String(row?.orderId || "");
+    const updatedTime = String(row?.updatedTime || row?.createdTime || "");
+    const symbol = upper(row?.symbol);
+    const side = upper(row?.side);
+    const qty = String(row?.cumExecQty || row?.qty || "");
+    const key = [orderId, updatedTime, symbol, side, qty].join("|");
+    unique.set(key, row);
+  }
+
+  return Array.from(unique.values()).sort((a, b) => {
+    const ta = Number(a?.updatedTime || a?.createdTime || 0);
+    const tb = Number(b?.updatedTime || b?.createdTime || 0);
+    return ta - tb;
+  });
 }
 
 async function getPositionOrders(positionId: string) {
@@ -288,7 +333,14 @@ function reconstructPositionsFromExchange(args: {
       avgPrice,
       investedQuote,
       addsCount,
-    });
+      });
+
+    if (totalBuyQty > 0 && totalSellQty > totalBuyQty) {
+      // просто игнорируем дисбаланс, но оставляем возможность отладки позже
+    }
+    if (totalSellQuote > totalBuyQuote && investedQuote <= 0) {
+      // fallback уже сработал выше
+    }
   }
 
   return reconstructed.filter(
@@ -516,13 +568,14 @@ export async function syncOpenPositionsForUser(userId: string) {
 
   const balances = await fetchBybitSpotBalances(key.apiKey, apiSecret);
 
-  /**
-   * Берем историю глубже, чтобы восстановить среднюю цену и addsCount
-   * для старых живых позиций.
-   */
   const now = Date.now();
-  const startTime = now - 180 * 24 * 60 * 60 * 1000;
-  const filledOrders = await fetchBybitFilledOrders(key.apiKey, apiSecret, startTime, now);
+  const startTime = now - HISTORY_LOOKBACK_MS;
+  const filledOrders = await fetchBybitFilledOrders(
+    key.apiKey,
+    apiSecret,
+    startTime,
+    now
+  );
 
   const exchangePositions = reconstructPositionsFromExchange({
     balances,
