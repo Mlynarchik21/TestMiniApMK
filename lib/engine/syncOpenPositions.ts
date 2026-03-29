@@ -51,6 +51,7 @@ const STABLE_ASSETS = new Set([
 
 const BYBIT_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
+const MIN_POSITION_NOTIONAL = 5;
 
 function toNum(v: unknown) {
   const n = Number(v);
@@ -103,6 +104,27 @@ function signGet(
 ) {
   const payload = `${timestamp}${apiKey}${recvWindow}${query}`;
   return crypto.createHmac("sha256", apiSecret).update(payload).digest("hex");
+}
+
+function isValidPositionSnapshot(snapshot: {
+  qty: number;
+  avgPrice: number;
+  investedQuote: number;
+}) {
+  if (!Number.isFinite(snapshot.qty) || snapshot.qty <= 0) return false;
+  if (!Number.isFinite(snapshot.avgPrice) || snapshot.avgPrice <= 0) return false;
+  if (!Number.isFinite(snapshot.investedQuote) || snapshot.investedQuote <= 0) return false;
+
+  const notionalByMarket = snapshot.qty * snapshot.avgPrice;
+  if (!Number.isFinite(notionalByMarket) || notionalByMarket < MIN_POSITION_NOTIONAL) {
+    return false;
+  }
+
+  if (snapshot.investedQuote < MIN_POSITION_NOTIONAL) {
+    return false;
+  }
+
+  return true;
 }
 
 async function bybitPrivateGet<T = AnyJson>(params: {
@@ -326,32 +348,30 @@ function reconstructPositionsFromExchange(args: {
     const avgPrice = qty > 0 && investedQuote > 0 ? investedQuote / qty : 0;
     const addsCount = Math.max(0, buyRows.length - 1);
 
-    reconstructed.push({
+    const snapshot: ReconstructedPosition = {
       symbol,
       baseCoin: balance.coin,
       qty,
       avgPrice,
       investedQuote,
       addsCount,
-      });
+    };
+
+    if (!isValidPositionSnapshot(snapshot)) {
+      continue;
+    }
+
+    reconstructed.push(snapshot);
 
     if (totalBuyQty > 0 && totalSellQty > totalBuyQty) {
-      // просто игнорируем дисбаланс, но оставляем возможность отладки позже
+      // оставлено для возможной дальнейшей диагностики
     }
     if (totalSellQuote > totalBuyQuote && investedQuote <= 0) {
-      // fallback уже сработал выше
+      // fallback уже обработан выше
     }
   }
 
-  return reconstructed.filter(
-    (p) =>
-      p.qty > 0 &&
-      Number.isFinite(p.qty) &&
-      p.avgPrice > 0 &&
-      Number.isFinite(p.avgPrice) &&
-      p.investedQuote > 0 &&
-      Number.isFinite(p.investedQuote)
-  );
+  return reconstructed.filter((p) => isValidPositionSnapshot(p));
 }
 
 async function ensureExistingPositionMatchesExchange(args: {
@@ -434,12 +454,51 @@ async function ensureExistingPositionMatchesExchange(args: {
     };
   }
 
+  if (!isValidPositionSnapshot(args.exchangeSnapshot)) {
+    await prisma.botPosition.update({
+      where: { id: args.positionId },
+      data: {
+        status: "CLOSED",
+        closedAt: new Date(),
+      },
+    });
+
+    return {
+      positionId: args.positionId,
+      symbol: args.symbol,
+      action: "CLOSED_AS_DUST_OR_INVALID",
+    };
+  }
+
   const activeTpOrders = liveOrders.filter(
     (x) => x.row.kind === "TP" && !isTerminalStatus(x.row.status)
   );
 
   const finalQtyNum = floorToStep(args.exchangeSnapshot.qty, filters.stepSize);
   const finalTpPrice = formatByStep(args.exchangeSnapshot.avgPrice * 1.05, filters.tickSize);
+  const finalNotional = finalQtyNum * args.exchangeSnapshot.avgPrice;
+
+  if (
+    !Number.isFinite(finalQtyNum) ||
+    finalQtyNum <= 0 ||
+    !Number.isFinite(finalNotional) ||
+    finalNotional < MIN_POSITION_NOTIONAL ||
+    args.exchangeSnapshot.investedQuote < MIN_POSITION_NOTIONAL
+  ) {
+    await prisma.botPosition.update({
+      where: { id: args.positionId },
+      data: {
+        status: "CLOSED",
+        closedAt: new Date(),
+      },
+    });
+
+    return {
+      positionId: args.positionId,
+      symbol: args.symbol,
+      action: "CLOSED_AFTER_STEP_ROUNDING_AS_DUST",
+    };
+  }
 
   const updated = await prisma.botPosition.update({
     where: { id: args.positionId },
@@ -482,8 +541,31 @@ async function createImportedPosition(args: {
   const exchange = getExchangeAdapter(args.exchangeName);
   const filters = await exchange.getSymbolFilters(args.snapshot.symbol);
 
+  if (!isValidPositionSnapshot(args.snapshot)) {
+    return {
+      positionId: null,
+      symbol: args.snapshot.symbol,
+      action: "SKIPPED_DUST_OR_INVALID_IMPORT",
+    };
+  }
+
   const finalQtyNum = floorToStep(args.snapshot.qty, filters.stepSize);
   const finalTpPrice = formatByStep(args.snapshot.avgPrice * 1.05, filters.tickSize);
+  const finalNotional = finalQtyNum * args.snapshot.avgPrice;
+
+  if (
+    !Number.isFinite(finalQtyNum) ||
+    finalQtyNum <= 0 ||
+    !Number.isFinite(finalNotional) ||
+    finalNotional < MIN_POSITION_NOTIONAL ||
+    args.snapshot.investedQuote < MIN_POSITION_NOTIONAL
+  ) {
+    return {
+      positionId: null,
+      symbol: args.snapshot.symbol,
+      action: "SKIPPED_DUST_AFTER_STEP_ROUNDING",
+    };
+  }
 
   const created = await prisma.botPosition.create({
     data: {
