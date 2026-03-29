@@ -630,6 +630,8 @@ async function openPositionForSymbol(args: {
 }
 
 export async function runEngineTick() {
+  const syncIntervalMin = 5;
+
   const bots = await prisma.botConfig.findMany({
     where: {
       enabled: true,
@@ -640,8 +642,6 @@ export async function runEngineTick() {
       keyId: true,
       maxActiveSymbols: true,
       budgetPerSymbol: true,
-      maxTotalBudget: true,
-      syncIntervalMin: true,
     },
   });
 
@@ -693,10 +693,10 @@ export async function runEngineTick() {
       if (state.lastSyncAt) {
         const diffMin = minutesDiff(new Date(state.lastSyncAt), new Date());
 
-        if (diffMin < bot.syncIntervalMin) {
+        if (diffMin < syncIntervalMin) {
           await finishCycle(cycleId, "SKIPPED", "sync interval not reached", {
             lastSyncAt: state.lastSyncAt,
-            syncIntervalMin: bot.syncIntervalMin,
+            syncIntervalMin,
             minutesSinceLastSync: diffMin,
           });
 
@@ -806,28 +806,28 @@ export async function runEngineTick() {
       }
 
       const lastEntryAt = await getLastEntryAt(bot.userId);
-if (lastEntryAt) {
-  const mins = minutesDiff(lastEntryAt, new Date());
-  if (mins < 5) {
-    await finishCycle(cycleId, "SKIPPED", "global 5m entry cooldown active", {
-      lastEntryAt: lastEntryAt.toISOString(),
-      minutesSinceLastEntry: mins,
-      startupSync,
-    });
+      if (lastEntryAt) {
+        const mins = minutesDiff(lastEntryAt, new Date());
+        if (mins < 5) {
+          await finishCycle(cycleId, "SKIPPED", "global 5m entry cooldown active", {
+            lastEntryAt: lastEntryAt.toISOString(),
+            minutesSinceLastEntry: mins,
+            startupSync,
+          });
 
-    await markBotSynced(bot.userId);
+          await markBotSynced(bot.userId);
 
-    results.push({
-      userId: bot.userId,
-      exchange: bot.exchange,
-      cycleId,
-      status: "SKIPPED",
-      message: "global 5m entry cooldown active",
-      startupSync,
-    });
-    continue;
-  }
-}
+          results.push({
+            userId: bot.userId,
+            exchange: bot.exchange,
+            cycleId,
+            status: "SKIPPED",
+            message: "global 5m entry cooldown active",
+            startupSync,
+          });
+          continue;
+        }
+      }
 
       const stable = await exchange.getBalance(key.apiKey, apiSecret);
 
@@ -947,8 +947,7 @@ if (lastEntryAt) {
         freeStable: stable.freeStable,
         lockedStable: stable.lockedStable,
         budgetPerSymbol: bot.budgetPerSymbol.toString(),
-        maxTotalBudget: bot.maxTotalBudget?.toString() ?? null,
-        syncIntervalMin: bot.syncIntervalMin,
+        syncIntervalMin,
         candidate: scan.candidate,
         top5: scan.top5,
         opened,
