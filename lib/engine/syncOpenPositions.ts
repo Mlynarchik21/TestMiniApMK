@@ -806,4 +806,4 @@ export async function syncOpenPositionsForUser(userId: string) {
       },
     }),
   };
-} replace what needed and return whole file
+}
