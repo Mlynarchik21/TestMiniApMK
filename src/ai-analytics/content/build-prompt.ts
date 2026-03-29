@@ -24,6 +24,7 @@ function getCoinChange(coin: StrengthCoin): number | null {
     (coin as any).change24h ??
     (coin as any).change ??
     (coin as any).performance24h ??
+    (coin as any).pct24h ??
     null;
 
   return typeof raw === "number" ? raw : null;
@@ -34,12 +35,13 @@ function getSectorChange(sector: SectorStrength): number | null {
     (sector as any).change24h ??
     (sector as any).change ??
     (sector as any).performance24h ??
+    (sector as any).pct24h ??
     null;
 
   return typeof raw === "number" ? raw : null;
 }
 
-function mapCoins(coins: StrengthCoin[]): string {
+function mapCoins(coins: StrengthCoin[] | null | undefined): string {
   if (!coins?.length) return "N/A";
 
   return coins
@@ -52,7 +54,7 @@ function mapCoins(coins: StrengthCoin[]): string {
     .join(", ");
 }
 
-function mapSectors(sectors: SectorStrength[]): string {
+function mapSectors(sectors: SectorStrength[] | null | undefined): string {
   if (!sectors?.length) return "N/A";
 
   return sectors
@@ -65,7 +67,7 @@ function mapSectors(sectors: SectorStrength[]): string {
     .join(", ");
 }
 
-function mapNews(news: NewsItem[]): string {
+function mapNews(news: NewsItem[] | null | undefined): string {
   if (!news?.length) return "N/A";
 
   return news
@@ -78,7 +80,7 @@ function mapNews(news: NewsItem[]): string {
     .join("\n");
 }
 
-function mapEvents(events: EventItem[]): string {
+function mapEvents(events: EventItem[] | null | undefined): string {
   if (!events?.length) return "N/A";
 
   return events
@@ -108,6 +110,58 @@ function getAltChange7d(brief: MarketBrief): number | null {
     market?.altChange7d ??
     market?.alts7d ??
     null
+  );
+}
+
+function getStrongCoins(brief: MarketBrief): StrengthCoin[] {
+  const s: any = brief.strength;
+  return (
+    s?.strongCoins ??
+    s?.strongerThanMarket ??
+    s?.leaders ??
+    s?.outperformers ??
+    []
+  );
+}
+
+function getWeakCoins(brief: MarketBrief): StrengthCoin[] {
+  const s: any = brief.strength;
+  return (
+    s?.weakCoins ??
+    s?.weakerThanMarket ??
+    s?.laggards ??
+    s?.underperformers ??
+    []
+  );
+}
+
+function getTopGainers(brief: MarketBrief): StrengthCoin[] {
+  const s: any = brief.strength;
+  return s?.gainers ?? s?.topGainers ?? [];
+}
+
+function getTopLosers(brief: MarketBrief): StrengthCoin[] {
+  const s: any = brief.strength;
+  return s?.losers ?? s?.topLosers ?? [];
+}
+
+function getStrongSectors(brief: MarketBrief): SectorStrength[] {
+  const s: any = brief.strength;
+  return (
+    s?.strongSectors ??
+    s?.sectorLeaders ??
+    s?.bestSectors ??
+    []
+  );
+}
+
+function getWeakSectors(brief: MarketBrief): SectorStrength[] {
+  const s: any = brief.strength;
+  return (
+    s?.weakSectors ??
+    s?.sectorLaggards ??
+    s?.worstSectors ??
+    []
   );
 }
 
@@ -148,12 +202,12 @@ export function buildPrompt(brief: MarketBrief): string {
 - tradingDate=${fmt(brief.etf.tradingDate)}
 
 === РЫНОЧНАЯ СИЛА ===
-- strongerThanMarket=${mapCoins(brief.strength.strongCoins)}
-- weakerThanMarket=${mapCoins(brief.strength.weakCoins)}
-- topGainers=${mapCoins(brief.strength.gainers)}
-- topLosers=${mapCoins(brief.strength.losers)}
-- strongSectors=${mapSectors(brief.strength.strongSectors)}
-- weakSectors=${mapSectors(brief.strength.weakSectors)}
+- strongerThanMarket=${mapCoins(getStrongCoins(brief))}
+- weakerThanMarket=${mapCoins(getWeakCoins(brief))}
+- topGainers=${mapCoins(getTopGainers(brief))}
+- topLosers=${mapCoins(getTopLosers(brief))}
+- strongSectors=${mapSectors(getStrongSectors(brief))}
+- weakSectors=${mapSectors(getWeakSectors(brief))}
 
 === НОВОСТИ ===
 ${mapNews(brief.news)}
@@ -169,11 +223,11 @@ ${mapEvents(brief.events.tomorrow)}
 ${mapEvents(brief.events.week)}
 
 === КРАТКИЙ MARKET READ ===
-- marketPhase=${fmt(brief.marketRead.phase)}
-- leader=${fmt(brief.marketRead.leader)}
-- etfSupport=${fmt(brief.marketRead.etfSupport)}
-- risks=${fmt(brief.marketRead.risks)}
-- opportunities=${fmt(brief.marketRead.opportunities)}
+- marketPhase=${fmt((brief as any).marketRead?.phase)}
+- leader=${fmt((brief as any).marketRead?.leader)}
+- etfSupport=${fmt((brief as any).marketRead?.etfSupport)}
+- risks=${fmt((brief as any).marketRead?.risks)}
+- opportunities=${fmt((brief as any).marketRead?.opportunities)}
 
 ВАЖНО:
 - Не выдумывай данные
