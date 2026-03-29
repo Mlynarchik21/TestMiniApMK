@@ -71,6 +71,8 @@ const UI = {
   alt: "#64d97b",
 };
 
+const SHOW_DEBUG_PANEL = false;
+
 function reveal(index: number, mounted: boolean): CSSProperties {
   return mounted
     ? {
@@ -849,81 +851,83 @@ export default function HomePage() {
             </button>
           </section>
 
-          <section style={{ ...styles.debugCard, ...reveal(6, mounted) }}>
-            <div style={styles.debugHeader}>
-              <div>
-                <div style={styles.debugTitle}>Технический статус</div>
-                <div style={styles.debugSub}>Сервисная информация</div>
-              </div>
+          {SHOW_DEBUG_PANEL ? (
+            <section style={{ ...styles.debugCard, ...reveal(6, mounted) }}>
+              <div style={styles.debugHeader}>
+                <div>
+                  <div style={styles.debugTitle}>Технический статус</div>
+                  <div style={styles.debugSub}>Сервисная информация</div>
+                </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  justifyContent: "flex-end",
-                }}
-              >
-                <button
-                  onClick={loadHomeMarket}
-                  disabled={marketLoading}
-                  style={debugActionStyle(marketLoading)}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
                 >
-                  {marketLoading ? "..." : "Обновить рынок"}
-                </button>
+                  <button
+                    onClick={loadHomeMarket}
+                    disabled={marketLoading}
+                    style={debugActionStyle(marketLoading)}
+                  >
+                    {marketLoading ? "..." : "Обновить рынок"}
+                  </button>
 
-                <button
-                  onClick={loadBotWidget}
-                  disabled={botWidgetLoading}
-                  style={debugActionStyle(botWidgetLoading)}
-                >
-                  {botWidgetLoading ? "..." : "Обновить бота"}
-                </button>
+                  <button
+                    onClick={loadBotWidget}
+                    disabled={botWidgetLoading}
+                    style={debugActionStyle(botWidgetLoading)}
+                  >
+                    {botWidgetLoading ? "..." : "Обновить бота"}
+                  </button>
 
-                <button
-                  onClick={checkMe}
-                  disabled={loading}
-                  style={debugActionStyle(loading)}
-                >
-                  {loading ? "..." : "Проверить /api/me"}
-                </button>
-              </div>
-            </div>
-
-            <div style={styles.debugMeta}>
-              <div>
-                <span style={styles.debugMetaLabel}>sessionToken</span>
-                <div style={styles.debugMetaValue}>{tokenPreview}</div>
-              </div>
-
-              <div>
-                <span style={styles.debugMetaLabel}>HTTP статус</span>
-                <div style={styles.debugMetaValue}>{status ?? "—"}</div>
-              </div>
-            </div>
-
-            <div style={styles.debugMeta}>
-              <div>
-                <span style={styles.debugMetaLabel}>fear & greed</span>
-                <div style={styles.debugMetaValue}>
-                  {marketData?.ok
-                    ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}`
-                    : "—"}
+                  <button
+                    onClick={checkMe}
+                    disabled={loading}
+                    style={debugActionStyle(loading)}
+                  >
+                    {loading ? "..." : "Проверить /api/me"}
+                  </button>
                 </div>
               </div>
 
-              <div>
-                <span style={styles.debugMetaLabel}>updatedAt</span>
-                <div style={styles.debugMetaValue}>
-                  {marketData?.ok ? marketData.updatedAt : "—"}
+              <div style={styles.debugMeta}>
+                <div>
+                  <span style={styles.debugMetaLabel}>sessionToken</span>
+                  <div style={styles.debugMetaValue}>{tokenPreview}</div>
+                </div>
+
+                <div>
+                  <span style={styles.debugMetaLabel}>HTTP статус</span>
+                  <div style={styles.debugMetaValue}>{status ?? "—"}</div>
                 </div>
               </div>
-            </div>
 
-            <div style={styles.debugBox}>
-              {result ? JSON.stringify(result, null, 2) : "—"}
-            </div>
-          </section>
+              <div style={styles.debugMeta}>
+                <div>
+                  <span style={styles.debugMetaLabel}>fear & greed</span>
+                  <div style={styles.debugMetaValue}>
+                    {marketData?.ok
+                      ? `${marketData.fearGreed.value} · ${marketData.fearGreed.classification}`
+                      : "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={styles.debugMetaLabel}>updatedAt</span>
+                  <div style={styles.debugMetaValue}>
+                    {marketData?.ok ? marketData.updatedAt : "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.debugBox}>
+                {result ? JSON.stringify(result, null, 2) : "—"}
+              </div>
+            </section>
+          ) : null}
         </div>
       </main>
     </>
