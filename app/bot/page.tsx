@@ -22,6 +22,8 @@ type BalanceRow = {
 
 type StatsRangePreset = "1D" | "1W" | "1M" | "CUSTOM";
 
+const SHOW_TEST_PANEL = true;
+
 function getToken() {
   try {
     return localStorage.getItem("sessionToken") || "";
@@ -1267,73 +1269,75 @@ export default function BotPage() {
             )}
           </section>
 
-          <section style={{ ...styles.debugCard, ...reveal(5, mounted) }}>
-            <div style={styles.sectionHead}>
-              <div style={styles.sectionMainTitle}>Тестовая панель</div>
-            </div>
-
-            <div style={styles.testHint}>
-              Временный блок для тестов. Позже его уберём.
-            </div>
-
-            <div style={styles.testPanelCard}>
-              <label style={styles.fieldWrap}>
-                <span style={styles.fieldLabel}>Тестовый символ</span>
-                <input
-                  value={testSymbol}
-                  onChange={(e) => setTestSymbol(e.target.value.toUpperCase())}
-                  placeholder="BTCUSDT"
-                  style={styles.input}
-                />
-              </label>
-
-              <div style={styles.testActionsGrid}>
-                <button
-                  type="button"
-                  style={styles.testPrimaryBtn}
-                  onClick={openTestTrade}
-                  disabled={testActionLoading !== ""}
-                >
-                  {testActionLoading === "open" ? "..." : "Открыть тест сделку"}
-                </button>
-
-                <button
-                  type="button"
-                  style={styles.testGhostBtn}
-                  onClick={averageTestTrade}
-                  disabled={testActionLoading !== ""}
-                >
-                  {testActionLoading === "average" ? "..." : "Усреднить тест сделку"}
-                </button>
-
-                <button
-                  type="button"
-                  style={styles.testDangerBtn}
-                  onClick={closeTestTrade}
-                  disabled={testActionLoading !== ""}
-                >
-                  {testActionLoading === "close" ? "..." : "Закрыть тест сделку"}
-                </button>
+          {SHOW_TEST_PANEL ? (
+            <section style={{ ...styles.debugCard, ...reveal(5, mounted) }}>
+              <div style={styles.sectionHead}>
+                <div style={styles.sectionMainTitle}>Тестовая панель</div>
               </div>
-            </div>
 
-            {testError ? (
-              <div style={styles.testErrorCard}>
-                <div style={styles.testErrorHead}>
-                  <div style={styles.testErrorTitle}>Ошибка тестового действия</div>
+              <div style={styles.testHint}>
+                Временный блок для тестов. Позже его уберём.
+              </div>
+
+              <div style={styles.testPanelCard}>
+                <label style={styles.fieldWrap}>
+                  <span style={styles.fieldLabel}>Тестовый символ</span>
+                  <input
+                    value={testSymbol}
+                    onChange={(e) => setTestSymbol(e.target.value.toUpperCase())}
+                    placeholder="BTCUSDT"
+                    style={styles.input}
+                  />
+                </label>
+
+                <div style={styles.testActionsGrid}>
                   <button
                     type="button"
-                    style={styles.copyBtn}
-                    onClick={copyTestError}
+                    style={styles.testPrimaryBtn}
+                    onClick={openTestTrade}
+                    disabled={testActionLoading !== ""}
                   >
-                    Копировать
+                    {testActionLoading === "open" ? "..." : "Открыть тест сделку"}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.testGhostBtn}
+                    onClick={averageTestTrade}
+                    disabled={testActionLoading !== ""}
+                  >
+                    {testActionLoading === "average" ? "..." : "Усреднить тест сделку"}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.testDangerBtn}
+                    onClick={closeTestTrade}
+                    disabled={testActionLoading !== ""}
+                  >
+                    {testActionLoading === "close" ? "..." : "Закрыть тест сделку"}
                   </button>
                 </div>
-
-                <div style={styles.testErrorText}>{testError}</div>
               </div>
-            ) : null}
-          </section>
+
+              {testError ? (
+                <div style={styles.testErrorCard}>
+                  <div style={styles.testErrorHead}>
+                    <div style={styles.testErrorTitle}>Ошибка тестового действия</div>
+                    <button
+                      type="button"
+                      style={styles.copyBtn}
+                      onClick={copyTestError}
+                    >
+                      Копировать
+                    </button>
+                  </div>
+
+                  <div style={styles.testErrorText}>{testError}</div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {err ? (
             <section style={{ ...styles.errorCard, ...reveal(6, mounted) }}>
