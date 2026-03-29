@@ -37,6 +37,12 @@ type ReconstructedPosition = {
   addsCount: number;
 };
 
+type FillLot = {
+  qty: number;
+  price: number;
+  time: number;
+};
+
 const BYBIT_BASE =
   process.env.BYBIT_BASE_URL?.trim() || "https://api-demo.bybit.com";
 
@@ -52,6 +58,7 @@ const STABLE_ASSETS = new Set([
 const BYBIT_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
 const MIN_POSITION_NOTIONAL = 5;
+const EPS = 1e-12;
 
 function toNum(v: unknown) {
   const n = Number(v);
@@ -319,34 +326,81 @@ function reconstructPositionsFromExchange(args: {
 
   for (const balance of args.balances) {
     const symbol = `${balance.coin}USDT`;
-    const rows = args.filledOrders.filter((row) => upper(row?.symbol) === symbol);
+    const rows = args.filledOrders
+      .filter((row) => upper(row?.symbol) === symbol)
+      .sort((a, b) => {
+        const ta = Number(a?.updatedTime || a?.createdTime || 0);
+        const tb = Number(b?.updatedTime || b?.createdTime || 0);
+        return ta - tb;
+      });
 
-    const buyRows = rows.filter((row) => upper(row?.side) === "BUY");
-    const sellRows = rows.filter((row) => upper(row?.side) === "SELL");
+    const lots: FillLot[] = [];
 
-    const totalBuyQty = buyRows.reduce((sum, row) => sum + toNum(row?.cumExecQty), 0);
-    const totalBuyQuote = buyRows.reduce((sum, row) => sum + toNum(row?.cumExecValue), 0);
+    for (const row of rows) {
+      const side = upper(row?.side);
+      const qty = toNum(row?.cumExecQty);
+      const quote = toNum(row?.cumExecValue);
+      const price =
+        toNum(row?.avgPrice) || (qty > 0 ? quote / qty : 0);
+      const time = Number(row?.updatedTime || row?.createdTime || 0);
 
-    const totalSellQty = sellRows.reduce((sum, row) => sum + toNum(row?.cumExecQty), 0);
-    const totalSellQuote = sellRows.reduce((sum, row) => sum + toNum(row?.cumExecValue), 0);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      if (!Number.isFinite(price) || price <= 0) continue;
 
-    const qty = balance.qty;
-    if (qty <= 0) continue;
+      if (side === "BUY") {
+        lots.push({
+          qty,
+          price,
+          time,
+        });
+        continue;
+      }
 
-    let investedQuote = totalBuyQuote - totalSellQuote;
-    if (!Number.isFinite(investedQuote) || investedQuote <= 0) {
-      const lastBuy = buyRows[buyRows.length - 1];
-      const fallbackAvg =
-        toNum(lastBuy?.avgPrice) ||
-        (toNum(lastBuy?.cumExecQty) > 0
-          ? toNum(lastBuy?.cumExecValue) / toNum(lastBuy?.cumExecQty)
-          : 0);
+      if (side === "SELL") {
+        let remainingSellQty = qty;
 
-      investedQuote = fallbackAvg > 0 ? fallbackAvg * qty : 0;
+        while (remainingSellQty > EPS && lots.length > 0) {
+          const lot = lots[0];
+          const takeQty = Math.min(remainingSellQty, lot.qty);
+
+          lot.qty -= takeQty;
+          remainingSellQty -= takeQty;
+
+          if (lot.qty <= EPS) {
+            lots.shift();
+          }
+        }
+      }
     }
 
-    const avgPrice = qty > 0 && investedQuote > 0 ? investedQuote / qty : 0;
-    const addsCount = Math.max(0, buyRows.length - 1);
+    const balanceQty = balance.qty;
+    if (!Number.isFinite(balanceQty) || balanceQty <= EPS) continue;
+    if (!lots.length) continue;
+
+    let remainingBalanceToMatch = balanceQty;
+    let matchedQty = 0;
+    let matchedCost = 0;
+    let matchedBuyCount = 0;
+
+    for (let i = lots.length - 1; i >= 0 && remainingBalanceToMatch > EPS; i--) {
+      const lot = lots[i];
+      if (lot.qty <= EPS) continue;
+
+      const takeQty = Math.min(remainingBalanceToMatch, lot.qty);
+      if (takeQty <= EPS) continue;
+
+      matchedQty += takeQty;
+      matchedCost += takeQty * lot.price;
+      matchedBuyCount += 1;
+      remainingBalanceToMatch -= takeQty;
+    }
+
+    if (matchedQty <= EPS || matchedCost <= 0) continue;
+
+    const qty = matchedQty;
+    const investedQuote = matchedCost;
+    const avgPrice = investedQuote / qty;
+    const addsCount = Math.max(0, matchedBuyCount - 1);
 
     const snapshot: ReconstructedPosition = {
       symbol,
@@ -362,13 +416,6 @@ function reconstructPositionsFromExchange(args: {
     }
 
     reconstructed.push(snapshot);
-
-    if (totalBuyQty > 0 && totalSellQty > totalBuyQty) {
-      // оставлено для возможной дальнейшей диагностики
-    }
-    if (totalSellQuote > totalBuyQuote && investedQuote <= 0) {
-      // fallback уже обработан выше
-    }
   }
 
   return reconstructed.filter((p) => isValidPositionSnapshot(p));
@@ -759,4 +806,4 @@ export async function syncOpenPositionsForUser(userId: string) {
       },
     }),
   };
-}
+} replace what needed and return whole file
