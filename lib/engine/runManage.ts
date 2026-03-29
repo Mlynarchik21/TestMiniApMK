@@ -348,6 +348,91 @@ async function cancelAllRemainingOrdersForPosition(args: {
   });
 }
 
+async function ensureTakeProfitOrder(args: {
+  userId: string;
+  exchange: ExchangeName;
+  apiKey: string;
+  apiSecret: string;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+  };
+  exchangeAdapter: ExchangeAdapter;
+}) {
+  const symbol = args.position.symbol;
+  const filters = await args.exchangeAdapter.getSymbolFilters(symbol);
+
+  const currentQty = toNum(args.position.qty);
+  const currentAvgPrice = toNum(args.position.avgPrice);
+  const currentTpPrice = toNum(args.position.tpPrice);
+
+  if (currentQty <= 0 || currentAvgPrice <= 0) {
+    return {
+      restored: false,
+      reason: "INVALID_POSITION_VALUES",
+    };
+  }
+
+  const safeTpPriceNum = currentTpPrice > 0 ? currentTpPrice : currentAvgPrice * 1.05;
+  const finalQtyNum = floorToStep(currentQty, filters.stepSize);
+  const finalTpPrice = formatByStep(safeTpPriceNum, filters.tickSize);
+  const finalTpQty = formatByStep(finalQtyNum, filters.stepSize);
+
+  if (finalQtyNum <= 0 || Number(finalTpQty) <= 0 || Number(finalTpPrice) <= 0) {
+    return {
+      restored: false,
+      reason: "INVALID_TP_AFTER_ROUNDING",
+    };
+  }
+
+  const tpClientId = `tp_${Date.now()}_${symbol}`.slice(0, 36);
+  const newTpOrder = await args.exchangeAdapter.placeLimitOrder({
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    symbol,
+    side: "SELL",
+    qty: Number(finalTpQty),
+    price: Number(finalTpPrice),
+    clientOrderId: tpClientId,
+  });
+
+  await prisma.botPosition.update({
+    where: { id: args.position.id },
+    data: {
+      tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
+    },
+  });
+
+  await insertTpBotOrder({
+    userId: args.userId,
+    botPositionId: args.position.id,
+    exchange: args.exchange,
+    symbol,
+    qty: finalTpQty,
+    price: finalTpPrice,
+    exchangeOrderId: String(newTpOrder.exchangeOrderId ?? ""),
+    clientOrderId: String(newTpOrder.clientOrderId ?? tpClientId),
+    rawOrder: newTpOrder.raw,
+  });
+
+  return {
+    restored: true,
+    tpOrder: {
+      orderId: newTpOrder.exchangeOrderId ?? null,
+      clientOrderId: newTpOrder.clientOrderId ?? tpClientId,
+      price: finalTpPrice,
+      qty: finalTpQty,
+      status: newTpOrder.status ?? "NEW",
+    },
+  };
+}
+
 async function manageOnePosition(args: {
   userId: string;
   exchange: ExchangeName;
@@ -542,6 +627,28 @@ async function manageOnePosition(args: {
 
   if (!newlyFilledGrids.length) {
     const syncedAdds = await syncPositionAddsCount(args.position.id);
+
+    if (!tpOrders.length) {
+      const restoredTp = await ensureTakeProfitOrder({
+        userId: args.userId,
+        exchange: args.exchange,
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        position: args.position,
+        exchangeAdapter: exchange,
+      });
+
+      return {
+        positionId: args.position.id,
+        symbol,
+        action: restoredTp.restored ? "TP_RESTORED" : "NO_CHANGES",
+        tpChecked: tpStatuses.length,
+        gridChecked: gridStatuses.length,
+        addsCount: syncedAdds.addsCount,
+        ...(restoredTp.restored ? { restoredTpOrder: restoredTp.tpOrder } : {}),
+        ...(!restoredTp.restored ? { restoreReason: restoredTp.reason } : {}),
+      };
+    }
 
     return {
       positionId: args.position.id,
