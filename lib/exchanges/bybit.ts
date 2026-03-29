@@ -540,32 +540,40 @@ export const bybitAdapter: ExchangeAdapter = {
   },
 
   async getClosedTrades(params): Promise<ExchangeClosedTrade[]> {
-    const startTime = params.from.getTime();
-    const endTime = params.to.getTime();
+    const MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1;
 
-    let cursor: string | undefined = undefined;
     const executions: BybitExecutionRow[] = [];
+    let rangeStart = params.from.getTime();
+    const finalEnd = params.to.getTime();
 
-    for (let page = 0; page < 20; page++) {
-      const json: AnyJson = await bybitGetExecutions({
-        apiKey: params.apiKey,
-        apiSecret: params.apiSecret,
-        startTime,
-        endTime,
-        cursor,
-      });
+    while (rangeStart < finalEnd) {
+      const rangeEnd = Math.min(rangeStart + MAX_RANGE_MS, finalEnd);
 
-      const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+      let cursor: string | undefined = undefined;
 
-      for (const row of list) {
-        const normalized = normalizeExecutionRow(row);
-        if (!normalized) continue;
-        executions.push(normalized);
+      for (let page = 0; page < 50; page++) {
+        const json: AnyJson = await bybitGetExecutions({
+          apiKey: params.apiKey,
+          apiSecret: params.apiSecret,
+          startTime: rangeStart,
+          endTime: rangeEnd,
+          cursor,
+        });
+
+        const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+
+        for (const row of list) {
+          const normalized = normalizeExecutionRow(row);
+          if (!normalized) continue;
+          executions.push(normalized);
+        }
+
+        const next = String(json?.result?.nextPageCursor || "").trim();
+        if (!next) break;
+        cursor = next;
       }
 
-      const next = String(json?.result?.nextPageCursor || "").trim();
-      if (!next) break;
-      cursor = next;
+      rangeStart = rangeEnd + 1;
     }
 
     executions.sort((a, b) => a.execTimeMs - b.execTimeMs);
@@ -611,41 +619,36 @@ export const bybitAdapter: ExchangeAdapter = {
 
       const matchedQty = matchedBuyQty > 0 ? matchedBuyQty : exec.qty;
       const exitValue = exec.quoteQty > 0 ? exec.quoteQty : exec.qty * exec.price;
-      const entryValue =
-        matchedEntryValue > 0
-          ? matchedEntryValue
-          : matchedQty * exec.price;
+      const entryValue = matchedEntryValue > 0 ? matchedEntryValue : matchedQty * exec.price;
 
       const entryPrice = matchedQty > 0 ? entryValue / matchedQty : exec.price;
       const exitPrice = exec.price;
       const realizedPnl = exitValue - entryValue;
       const pnlPercent = entryValue > 0 ? (realizedPnl / entryValue) * 100 : 0;
 
-      closed.push(
-        {
-          exchangeOrderId: exec.orderId,
-          symbol: exec.symbol,
-          side: "SELL",
-          qty: matchedQty,
-          avgPrice: exitPrice,
-          quoteQty: exitValue,
-          fee: exec.fee,
-          feeAsset: exec.feeAsset,
-          status: "FILLED",
-          createdAt: new Date(earliestMatchedBuyTime).toISOString(),
-          updatedAt: new Date(exec.execTimeMs).toISOString(),
-          raw: {
-            entryPrice,
-            exitPrice,
-            entryValue,
-            exitValue,
-            realizedPnl,
-            pnlPercent,
-            matchedQty,
-            sellExec: exec.raw,
-          },
-        } as ExchangeClosedTrade
-      );
+      closed.push({
+        exchangeOrderId: exec.orderId,
+        symbol: exec.symbol,
+        side: "SELL",
+        qty: matchedQty,
+        avgPrice: exitPrice,
+        quoteQty: exitValue,
+        fee: exec.fee,
+        feeAsset: exec.feeAsset,
+        status: "FILLED",
+        createdAt: new Date(earliestMatchedBuyTime).toISOString(),
+        updatedAt: new Date(exec.execTimeMs).toISOString(),
+        raw: {
+          entryPrice,
+          exitPrice,
+          entryValue,
+          exitValue,
+          realizedPnl,
+          pnlPercent,
+          matchedQty,
+          sellExec: exec.raw,
+        },
+      } as ExchangeClosedTrade);
     }
 
     return closed;
