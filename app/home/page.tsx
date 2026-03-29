@@ -32,6 +32,14 @@ type HomeMarketResp =
         value: number | null;
         source: string | null;
       };
+      positioning: {
+        spotShare: number | null;
+        perpShare: number | null;
+        btcLongShortRatio: number | null;
+        longPercent: number | null;
+        shortPercent: number | null;
+        source: string | null;
+      };
       updatedAt: string;
     }
   | { ok: false; error: string; message?: string };
@@ -416,6 +424,14 @@ export default function HomePage() {
   const altseasonValue = marketData?.ok ? marketData.altseason.value : null;
   const updatedAt = marketData?.ok ? formatUpdatedAt(marketData.updatedAt) : "—";
 
+  const spotShare = marketData?.ok ? marketData.positioning.spotShare : null;
+  const perpShare = marketData?.ok ? marketData.positioning.perpShare : null;
+  const longPercent = marketData?.ok ? marketData.positioning.longPercent : null;
+  const shortPercent = marketData?.ok ? marketData.positioning.shortPercent : null;
+  const longShortRatio = marketData?.ok
+    ? marketData.positioning.btcLongShortRatio
+    : null;
+
   const botActive = botWidget?.active ?? false;
   const botOpenPositions = botWidget?.openPositions ?? 0;
   const botPnlToday = botWidget?.pnlToday ?? 0;
@@ -688,13 +704,27 @@ export default function HomePage() {
               </div>
 
               <div style={styles.splitBar}>
-                <div style={styles.splitBarSpot} />
-                <div style={styles.splitBarPerp} />
+                <div
+                  style={{
+                    ...styles.splitBarSpot,
+                    width: `${spotShare ?? 0}%`,
+                  }}
+                />
+                <div
+                  style={{
+                    ...styles.splitBarPerp,
+                    width: `${perpShare ?? 0}%`,
+                  }}
+                />
               </div>
 
               <div style={styles.splitMeta}>
-                <span style={{ color: UI.green }}>68% Spot Activity</span>
-                <span style={{ color: UI.red }}>32% Perp Activity</span>
+                <span style={{ color: UI.green }}>
+                  {spotShare != null ? `${spotShare}% Spot Activity` : "—"}
+                </span>
+                <span style={{ color: UI.red }}>
+                  {perpShare != null ? `${perpShare}% Perp Activity` : "—"}
+                </span>
               </div>
 
               <div style={styles.bodyTextTight}>
@@ -709,13 +739,33 @@ export default function HomePage() {
               </div>
 
               <div style={styles.splitBar}>
-                <div style={styles.splitBarLong} />
-                <div style={styles.splitBarShort} />
+                <div
+                  style={{
+                    ...styles.splitBarLong,
+                    width: `${longPercent ?? 0}%`,
+                  }}
+                />
+                <div
+                  style={{
+                    ...styles.splitBarShort,
+                    width: `${shortPercent ?? 0}%`,
+                  }}
+                />
               </div>
 
               <div style={styles.splitMeta}>
-                <span style={{ color: UI.green }}>61.4% Longs</span>
-                <span style={{ color: UI.red }}>38.6% Shorts</span>
+                <span style={{ color: UI.green }}>
+                  {longPercent != null ? `${longPercent}% Longs` : "—"}
+                </span>
+                <span style={{ color: UI.red }}>
+                  {shortPercent != null ? `${shortPercent}% Shorts` : "—"}
+                </span>
+              </div>
+
+              <div style={styles.bodyTextTight}>
+                {longShortRatio != null
+                  ? `Текущий BTC Long / Short Ratio: ${longShortRatio}`
+                  : "Нет актуальных данных по Long / Short Ratio"}
               </div>
             </div>
           </section>
@@ -1417,22 +1467,18 @@ const styles = {
   } satisfies CSSProperties,
 
   splitBarSpot: {
-    width: "68%",
     background: UI.green,
   } satisfies CSSProperties,
 
   splitBarPerp: {
-    width: "32%",
     background: UI.red,
   } satisfies CSSProperties,
 
   splitBarLong: {
-    width: "61.4%",
     background: UI.green,
   } satisfies CSSProperties,
 
   splitBarShort: {
-    width: "38.6%",
     background: UI.red,
   } satisfies CSSProperties,
 
