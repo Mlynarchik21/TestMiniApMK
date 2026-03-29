@@ -30,7 +30,7 @@ export async function generateTelegramPost(brief: MarketBrief): Promise<string> 
 
   const prompt = buildPrompt(brief);
 
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-pro";
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-pro-preview";
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
