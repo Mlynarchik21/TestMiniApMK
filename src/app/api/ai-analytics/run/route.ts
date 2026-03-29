@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { buildMarketBrief } from "@/ai-analytics/brief/build-brief";
-import { buildPrompt } from "@/ai-analytics/content/build-prompt";
-import { generatePost } from "@/ai-analytics/content/generate-post";
+import { buildBrief } from "../../../../ai-analytics/brief/build-brief";
+import { buildPrompt } from "../../../../ai-analytics/content/build-prompt";
+import { generateTelegramPost } from "../../../../ai-analytics/content/generate-post";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,18 +11,17 @@ export async function GET() {
   try {
     const startedAt = Date.now();
 
-    const brief = await buildMarketBrief();
+    const brief = await buildBrief();
     const prompt = buildPrompt(brief);
-    const ai = await generatePost(brief);
+    const aiText = await generateTelegramPost(brief);
 
     return NextResponse.json({
       ok: true,
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
-
       brief,
       prompt,
-      ai,
+      aiText,
     });
   } catch (error: any) {
     return NextResponse.json(
