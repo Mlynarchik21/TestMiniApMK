@@ -22,7 +22,7 @@ type BalanceRow = {
 
 type StatsRangePreset = "1D" | "1W" | "1M" | "CUSTOM";
 
-const SHOW_TEST_PANEL = true;
+const SHOW_TEST_PANEL = false;
 
 function getToken() {
   try {
