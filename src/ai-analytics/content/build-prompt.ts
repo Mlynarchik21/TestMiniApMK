@@ -2,8 +2,8 @@ import type {
   EventItem,
   MarketBrief,
   NewsItem,
-  StrengthCoin,
   SectorStrength,
+  StrengthCoin,
 } from "../types/market-brief";
 
 import {
@@ -19,42 +19,56 @@ function fmt(v: string | number | null | undefined): string {
   return String(v);
 }
 
-function list(items: string[]): string {
-  if (!items?.length) return "N/A";
-  return items.join(", ");
+function getCoinChange(coin: StrengthCoin): number | null {
+  const raw = (coin as any).change24h ?? (coin as any).change ?? (coin as any).performance24h ?? null;
+  return typeof raw === "number" ? raw : null;
+}
+
+function getSectorChange(sector: SectorStrength): number | null {
+  const raw =
+    (sector as any).change24h ?? (sector as any).change ?? (sector as any).performance24h ?? null;
+  return typeof raw === "number" ? raw : null;
 }
 
 function mapCoins(coins: StrengthCoin[]): string {
   if (!coins?.length) return "N/A";
+
   return coins
-    .map((c) => `${c.symbol} (${formatPct(c.change24h)})`)
+    .map((c) => `${fmt((c as any).symbol || (c as any).name)} (${formatPct(getCoinChange(c))})`)
     .join(", ");
 }
 
 function mapSectors(sectors: SectorStrength[]): string {
   if (!sectors?.length) return "N/A";
+
   return sectors
-    .map((s) => `${s.name} (${formatPct(s.change24h)})`)
+    .map((s) => `${fmt((s as any).name || (s as any).sector)} (${formatPct(getSectorChange(s))})`)
     .join(", ");
 }
 
 function mapNews(news: NewsItem[]): string {
   if (!news?.length) return "N/A";
+
   return news
-    .map(
-      (n) =>
-        `- ${fmt(n.title)} — ${fmt(n.summary)} — ${fmt(n.impact)}`
-    )
+    .map((n) => {
+      const title = (n as any).title ?? "N/A";
+      const summary = (n as any).summary ?? (n as any).whatHappened ?? "N/A";
+      const impact = (n as any).impact ?? (n as any).whyImportant ?? "N/A";
+      return `- ${fmt(title)} — ${fmt(summary)} — ${fmt(impact)}`;
+    })
     .join("\n");
 }
 
 function mapEvents(events: EventItem[]): string {
   if (!events?.length) return "N/A";
+
   return events
-    .map(
-      (e) =>
-        `- ${fmt(e.title)} — ${fmt(e.date)} — ${fmt(e.impact)}`
-    )
+    .map((e) => {
+      const title = (e as any).title ?? "N/A";
+      const date = (e as any).date ?? (e as any).when ?? "N/A";
+      const impact = (e as any).impact ?? (e as any).whyImportant ?? "N/A";
+      return `- ${fmt(title)} — ${fmt(date)} — ${fmt(impact)}`;
+    })
     .join("\n");
 }
 
@@ -89,12 +103,8 @@ export function buildPrompt(brief: MarketBrief): string {
 - totalVolume24h=${formatBillions(brief.market.totalVolume24h)}
 
 === ETF ===
-- bitcoinSpotEtfNetflow=${formatMillions(
-    brief.etf.bitcoinSpotEtfNetflow
-  )}
-- ethereumSpotEtfNetflow=${formatMillions(
-    brief.etf.ethereumSpotEtfNetflow
-  )}
+- bitcoinSpotEtfNetflow=${formatMillions(brief.etf.bitcoinSpotEtfNetflow)}
+- ethereumSpotEtfNetflow=${formatMillions(brief.etf.ethereumSpotEtfNetflow)}
 - etfSummary=${fmt(brief.etf.summary)}
 - tradingDate=${fmt(brief.etf.tradingDate)}
 
