@@ -525,7 +525,7 @@ export default function KeysPage() {
   }
 
   function handleBack() {
-    router.replace("/home");
+    router.replace("/bot");
   }
 
   useEffect(() => {
