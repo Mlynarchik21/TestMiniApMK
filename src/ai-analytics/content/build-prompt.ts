@@ -20,13 +20,22 @@ function fmt(v: string | number | null | undefined): string {
 }
 
 function getCoinChange(coin: StrengthCoin): number | null {
-  const raw = (coin as any).change24h ?? (coin as any).change ?? (coin as any).performance24h ?? null;
+  const raw =
+    (coin as any).change24h ??
+    (coin as any).change ??
+    (coin as any).performance24h ??
+    null;
+
   return typeof raw === "number" ? raw : null;
 }
 
 function getSectorChange(sector: SectorStrength): number | null {
   const raw =
-    (sector as any).change24h ?? (sector as any).change ?? (sector as any).performance24h ?? null;
+    (sector as any).change24h ??
+    (sector as any).change ??
+    (sector as any).performance24h ??
+    null;
+
   return typeof raw === "number" ? raw : null;
 }
 
@@ -34,7 +43,12 @@ function mapCoins(coins: StrengthCoin[]): string {
   if (!coins?.length) return "N/A";
 
   return coins
-    .map((c) => `${fmt((c as any).symbol || (c as any).name)} (${formatPct(getCoinChange(c))})`)
+    .map(
+      (c) =>
+        `${fmt((c as any).symbol || (c as any).name)} (${formatPct(
+          getCoinChange(c)
+        )})`
+    )
     .join(", ");
 }
 
@@ -42,7 +56,12 @@ function mapSectors(sectors: SectorStrength[]): string {
   if (!sectors?.length) return "N/A";
 
   return sectors
-    .map((s) => `${fmt((s as any).name || (s as any).sector)} (${formatPct(getSectorChange(s))})`)
+    .map(
+      (s) =>
+        `${fmt((s as any).name || (s as any).sector)} (${formatPct(
+          getSectorChange(s)
+        )})`
+    )
     .join(", ");
 }
 
@@ -72,6 +91,26 @@ function mapEvents(events: EventItem[]): string {
     .join("\n");
 }
 
+function getAltChange24h(brief: MarketBrief): number | null {
+  const market: any = brief.market;
+  return (
+    market?.alt?.change24h ??
+    market?.altChange24h ??
+    market?.alts24h ??
+    null
+  );
+}
+
+function getAltChange7d(brief: MarketBrief): number | null {
+  const market: any = brief.market;
+  return (
+    market?.alt?.change7d ??
+    market?.altChange7d ??
+    market?.alts7d ??
+    null
+  );
+}
+
 export function buildPrompt(brief: MarketBrief): string {
   return `
 Мне нужны только АКТУАЛЬНЫЕ и ПОЛЕЗНЫЕ данные для подготовки Telegram-поста.
@@ -93,8 +132,8 @@ export function buildPrompt(brief: MarketBrief): string {
 - ethVolume24h=${formatBillions(brief.market.eth.volume24h)}
 - ethMarketCap=${formatTrillions(brief.market.eth.marketCap)}
 
-- altChange24h=${formatPct(brief.market.alt.change24h)}
-- altChange7d=${formatPct(brief.market.alt.change7d)}
+- altChange24h=${formatPct(getAltChange24h(brief))}
+- altChange7d=${formatPct(getAltChange7d(brief))}
 
 - btcDominance=${formatPct(brief.market.btcDominance)}
 - ethDominance=${formatPct(brief.market.ethDominance)}
