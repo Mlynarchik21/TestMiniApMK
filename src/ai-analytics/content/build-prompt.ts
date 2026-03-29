@@ -67,14 +67,29 @@ function mapSectors(sectors: SectorStrength[] | null | undefined): string {
     .join(", ");
 }
 
-function mapNews(news: NewsItem[] | null | undefined): string {
-  if (!news?.length) return "N/A";
+function extractNewsArray(input: any): NewsItem[] {
+  if (!input) return [];
+
+  if (Array.isArray(input)) return input;
+
+  if (Array.isArray(input.items)) return input.items;
+  if (Array.isArray(input.news)) return input.news;
+  if (Array.isArray(input.list)) return input.list;
+
+  return [];
+}
+
+function mapNews(newsInput: any): string {
+  const news = extractNewsArray(newsInput);
+
+  if (!news.length) return "N/A";
 
   return news
-    .map((n) => {
-      const title = (n as any).title ?? "N/A";
-      const summary = (n as any).summary ?? (n as any).whatHappened ?? "N/A";
-      const impact = (n as any).impact ?? (n as any).whyImportant ?? "N/A";
+    .map((n: any) => {
+      const title = n.title ?? "N/A";
+      const summary = n.summary ?? n.whatHappened ?? "N/A";
+      const impact = n.impact ?? n.whyImportant ?? "N/A";
+
       return `- ${fmt(title)} — ${fmt(summary)} — ${fmt(impact)}`;
     })
     .join("\n");
