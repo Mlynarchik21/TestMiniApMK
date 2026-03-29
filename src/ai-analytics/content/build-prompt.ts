@@ -108,6 +108,21 @@ function mapEvents(events: EventItem[] | null | undefined): string {
     .join("\n");
 }
 
+function getTodayEvents(brief: MarketBrief): EventItem[] {
+  const e: any = brief.events;
+  return e?.today ?? e?.todayEvents ?? [];
+}
+
+function getTomorrowEvents(brief: MarketBrief): EventItem[] {
+  const e: any = brief.events;
+  return e?.tomorrow ?? e?.tomorrowEvents ?? [];
+}
+
+function getWeekEvents(brief: MarketBrief): EventItem[] {
+  const e: any = brief.events;
+  return e?.week ?? e?.weekEvents ?? e?.thisWeek ?? [];
+}
+
 function getAltChange24h(brief: MarketBrief): number | null {
   const market: any = brief.market;
   return (
@@ -229,13 +244,13 @@ ${mapNews(brief.news)}
 
 === СОБЫТИЯ ===
 - today:
-${mapEvents(brief.events.today)}
+${mapEvents(getTodayEvents(brief))}
 
 - tomorrow:
-${mapEvents(brief.events.tomorrow)}
+${mapEvents(getTomorrowEvents(brief))}
 
 - week:
-${mapEvents(brief.events.week)}
+${mapEvents(getWeekEvents(brief))}
 
 === КРАТКИЙ MARKET READ ===
 - marketPhase=${fmt((brief as any).marketRead?.phase)}
