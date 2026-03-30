@@ -16,22 +16,22 @@ function buildMarketState(market: MarketBlock): string {
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btc24 > 2 && eth24 > 2 && alt24 > 2) {
-    return "Risk-on, \u0448\u0438\u0440\u043e\u043a\u0438\u0439 \u0440\u043e\u0441\u0442 \u043f\u043e \u0440\u044b\u043d\u043a\u0443";
+    return "Risk-on, broad market strength";
   }
 
   if (btc24 > 2 && alt24 < 1) {
-    return "BTC-led market, \u0440\u044b\u043d\u043e\u043a \u0432\u0435\u0434\u0435\u0442 Bitcoin";
+    return "BTC-led market";
   }
 
   if (eth24 > btc24 && alt24 > btc24) {
-    return "\u0420\u043e\u0442\u0430\u0446\u0438\u044f \u0432 ETH \u0438 \u0430\u043b\u044c\u0442\u043a\u043e\u0438\u043d\u044b";
+    return "Rotation into ETH and altcoins";
   }
 
   if (btc24 < 0 && eth24 < 0 && alt24 < 0) {
-    return "Risk-off, \u0434\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043f\u043e \u0432\u0441\u0435\u043c\u0443 \u0440\u044b\u043d\u043a\u0443";
+    return "Risk-off, broad market pressure";
   }
 
-  return "\u0421\u043c\u0435\u0448\u0430\u043d\u043d\u044b\u0439 \u0440\u044b\u043d\u043e\u043a / \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u043d\u0430\u044f \u0444\u0430\u0437\u0430";
+  return "Mixed market / transition phase";
 }
 
 function buildMovementLeader(market: MarketBlock): string {
@@ -56,22 +56,22 @@ function buildEtfSupport(etf: EtfFlowBlock, news: NewsBlock): string {
   const total = btcFlow + ethFlow;
 
   if (total > 0 && hasNews) {
-    return "\u0414\u0430, \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f ETF-\u043f\u043e\u0442\u043e\u043a\u0430\u043c\u0438 \u0438 \u043d\u043e\u0432\u043e\u0441\u0442\u043d\u044b\u043c \u0444\u043e\u043d\u043e\u043c";
+    return "Supported by ETF flows and news";
   }
 
   if (total > 0) {
-    return "\u0427\u0430\u0441\u0442\u0438\u0447\u043d\u043e \u0434\u0430, \u0435\u0441\u0442\u044c \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0441\u043e \u0441\u0442\u043e\u0440\u043e\u043d\u044b ETF";
+    return "Partially supported by ETF flows";
   }
 
   if (total < 0) {
-    return "\u0421\u043a\u043e\u0440\u0435\u0435 \u043d\u0435\u0442, ETF-\u043f\u043e\u0442\u043e\u043a\u0438 \u0441\u043e\u0437\u0434\u0430\u044e\u0442 \u0432\u0441\u0442\u0440\u0435\u0447\u043d\u043e\u0435 \u0434\u0430\u0432\u043b\u0435\u043d\u0438\u0435";
+    return "ETF flows are a headwind";
   }
 
   if (hasNews) {
-    return "\u0421\u043a\u043e\u0440\u0435\u0435 \u043d\u043e\u0432\u043e\u0441\u0442\u043d\u043e\u0439 \u0434\u0440\u0430\u0439\u0432\u0435\u0440 \u0431\u0435\u0437 \u044f\u0432\u043d\u043e\u0439 ETF-\u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0438";
+    return "Driven more by news than ETF support";
   }
 
-  return "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0441\u043b\u0430\u0431\u0430\u044f / \u043d\u0435\u0439\u0442\u0440\u0430\u043b\u044c\u043d\u0430\u044f";
+  return "Weak / neutral support";
 }
 
 function buildMainRisk(
@@ -84,18 +84,18 @@ function buildMainRisk(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow < 0) {
-    return "\u041d\u0435\u0433\u0430\u0442\u0438\u0432\u043d\u044b\u0435 ETF-\u043f\u043e\u0442\u043e\u043a\u0438";
+    return "Negative ETF flows";
   }
 
   if (alt24 < -2) {
-    return "\u0421\u043b\u0430\u0431\u043e\u0441\u0442\u044c \u0430\u043b\u044c\u0442\u0440\u044b\u043d\u043a\u0430 \u0438 \u0440\u0438\u0441\u043a \u0431\u043e\u043b\u0435\u0435 \u0433\u043b\u0443\u0431\u043e\u043a\u043e\u0439 \u043a\u043e\u0440\u0440\u0435\u043a\u0446\u0438\u0438";
+    return "Alt market weakness and deeper pullback risk";
   }
 
   if (weakCount >= 4) {
-    return "\u0428\u0438\u0440\u043e\u043a\u0430\u044f \u0440\u044b\u043d\u043e\u0447\u043d\u0430\u044f \u0441\u043b\u0430\u0431\u043e\u0441\u0442\u044c \u043f\u043e\u0434 \u043f\u043e\u0432\u0435\u0440\u0445\u043d\u043e\u0441\u0442\u044c\u044e";
+    return "Broad underlying market weakness";
   }
 
-  return "\u0420\u0438\u0441\u043a \u0440\u0435\u0437\u043a\u043e\u0439 \u0432\u043e\u043b\u0430\u0442\u0438\u043b\u044c\u043d\u043e\u0441\u0442\u0438 \u043d\u0430 \u043d\u043e\u0432\u043e\u0441\u0442\u044f\u0445";
+  return "News-driven volatility risk";
 }
 
 function buildMainOpportunity(
@@ -109,18 +109,18 @@ function buildMainOpportunity(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow > 0 && ethFlow > 0) {
-    return "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u0435 \u0438\u043d\u0441\u0442\u0438\u0442\u0443\u0446\u0438\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0441\u043f\u0440\u043e\u0441\u0430 \u0447\u0435\u0440\u0435\u0437 ETF";
+    return "Institutional bid through ETF flows";
   }
 
   if (alt24 > 2) {
-    return "\u0420\u043e\u0442\u0430\u0446\u0438\u044f \u0432 \u0441\u0438\u043b\u044c\u043d\u044b\u0435 \u0430\u043b\u044c\u0442\u043a\u043e\u0438\u043d\u044b";
+    return "Rotation into strong altcoins";
   }
 
   if (strongCount >= 4) {
-    return "\u041b\u0438\u0434\u0435\u0440\u044b \u0440\u044b\u043d\u043a\u0430 \u0443\u0436\u0435 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u044e\u0442 \u043e\u0442\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c\u043d\u0443\u044e \u0441\u0438\u043b\u0443";
+    return "Market leaders already show relative strength";
   }
 
-  return "\u0422\u043e\u0447\u0435\u0447\u043d\u044b\u0435 \u0441\u0434\u0435\u043b\u043a\u0438 \u0432 \u0441\u0438\u043b\u044c\u043d\u044b\u0445 \u0441\u0435\u043a\u0442\u043e\u0440\u0430\u0445";
+  return "Selective trades in strong sectors";
 }
 
 export function buildMarketRead(params: {
