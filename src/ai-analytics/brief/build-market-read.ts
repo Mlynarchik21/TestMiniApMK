@@ -7,7 +7,7 @@ import type {
 } from "../types/market-brief";
 
 function hasImportantNews(news: NewsBlock): boolean {
-  return Array.isArray(news.items) && news.items.length > 0;
+  return Array.(news.items) && news.items.length > 0;
 }
 
 function buildMarketState(market: MarketBlock): string {
