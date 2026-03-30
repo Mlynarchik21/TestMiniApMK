@@ -2,65 +2,93 @@ import type { EtfFlowBlock } from "../types/market-brief";
 import { fetchText } from "../utils/http";
 import { toNumber } from "../utils/numbers";
 
-/**
- * Парсим ETF данные с Farside
- * Это лучший публичный источник по ETF flows
- */
+const BTC_ETF_URL = "https://farside.co.uk/bitcoin-etf-flow-all-data/";
+const ETH_ETF_URL = "https://farside.co.uk/ethereum-etf-flow-all-data/";
+
+type ParsedEtfPage = {
+  tradingDate: string | null;
+  totalFlow: number | null;
+};
 
 function parseNumber(str: string): number | null {
   if (!str) return null;
 
-  const clean = str.replace(/[^0-9\.-]/g, "");
-  const n = Number(clean);
+  const trimmed = str.trim();
+  if (!trimmed || trimmed === "-") return null;
 
+  const negativeBracket = /^\((.+)\)$/.exec(trimmed);
+  const normalized = negativeBracket ? `-${negativeBracket[1]}` : trimmed;
+  const clean = normalized.replace(/[^0-9.\-]/g, "");
+
+  const n = Number(clean);
   return Number.isFinite(n) ? n : null;
 }
 
-function extractLatestETFRow(html: string): {
-  date: string | null;
-  btcFlow: number | null;
-  ethFlow: number | null;
-} {
+function stripTags(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isDateLike(value: string): boolean {
+  return /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(value.trim());
+}
+
+function extractLatestEtfTotal(html: string): ParsedEtfPage {
+  const text = stripTags(html);
+
   /**
-   * Мы ищем последнюю строку таблицы ETF flows
-   * Обычно там структура:
-   * Date | BTC | ... | ETH
+   * На страницах Farside данные идут плоским текстом:
+   * Date ... Total 11 Jan 2024 ... 655.3 12 Jan 2024 ... 203.0 ...
+   *
+   * Берем все даты и последнее число перед следующей датой / концом текста.
    */
+  const dateRegex = /(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/g;
+  const matches = Array.from(text.matchAll(dateRegex));
 
-  const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  if (!matches.length) {
+    return {
+      tradingDate: null,
+      totalFlow: null,
+    };
+  }
 
-  // Берем последние строки (там свежие данные)
-  const lastRows = rows.slice(-10).reverse();
+  let latestDate: string | null = null;
+  let latestTotal: number | null = null;
 
-  for (const row of lastRows) {
-    const cols = row.match(/<td[\s\S]*?<\/td>/gi);
-    if (!cols || cols.length < 2) continue;
+  for (let i = 0; i < matches.length; i++) {
+    const currentDate = matches[i]?.[1] ?? null;
+    const startIndex = matches[i]?.index ?? 0;
+    const endIndex =
+      i + 1 < matches.length ? matches[i + 1]!.index! : text.length;
 
-    const texts = cols.map((c) =>
-      c.replace(/<[^>]+>/g, "").trim()
-    );
+    if (!currentDate) continue;
 
-    const date = texts[0] || null;
+    const segment = text.slice(startIndex, endIndex).trim();
+    const segmentWithoutDate = segment.replace(currentDate, "").trim();
 
-    // BTC flow обычно 2-3 колонка
-    const btcFlow = parseNumber(texts[1] || "");
+    const numericTokens =
+      segmentWithoutDate.match(/\(?-?\d+(?:\.\d+)?\)?/g) ?? [];
 
-    // ETH иногда есть дальше
-    const ethFlow = parseNumber(texts[texts.length - 1] || "");
+    if (!numericTokens.length) continue;
 
-    if (btcFlow !== null || ethFlow !== null) {
-      return {
-        date,
-        btcFlow,
-        ethFlow,
-      };
-    }
+    const lastNumeric = numericTokens[numericTokens.length - 1] ?? "";
+    const parsed = parseNumber(lastNumeric);
+
+    if (parsed === null) continue;
+
+    latestDate = currentDate;
+    latestTotal = parsed;
   }
 
   return {
-    date: null,
-    btcFlow: null,
-    ethFlow: null,
+    tradingDate: latestDate,
+    totalFlow: latestTotal,
   };
 }
 
@@ -77,19 +105,32 @@ function buildSummary(
   return "Neutral";
 }
 
+function pickTradingDate(
+  btcDate: string | null,
+  ethDate: string | null
+): string | null {
+  if (btcDate && ethDate) {
+    return btcDate === ethDate ? btcDate : `${btcDate} / ${ethDate}`;
+  }
+
+  return btcDate || ethDate || null;
+}
+
 export async function getEtfBlock(): Promise<EtfFlowBlock> {
   try {
-    const html = await fetchText(
-      "https://farside.co.uk/bitcoin-etf-flow-all-data/"
-    );
+    const [btcHtml, ethHtml] = await Promise.all([
+      fetchText(BTC_ETF_URL),
+      fetchText(ETH_ETF_URL),
+    ]);
 
-    const parsed = extractLatestETFRow(html);
+    const btc = extractLatestEtfTotal(btcHtml);
+    const eth = extractLatestEtfTotal(ethHtml);
 
     return {
-      bitcoinSpotEtfNetflow: toNumber(parsed.btcFlow),
-      ethereumSpotEtfNetflow: toNumber(parsed.ethFlow),
-      summary: buildSummary(parsed.btcFlow, parsed.ethFlow),
-      tradingDate: parsed.date,
+      bitcoinSpotEtfNetflow: toNumber(btc.totalFlow),
+      ethereumSpotEtfNetflow: toNumber(eth.totalFlow),
+      summary: buildSummary(btc.totalFlow, eth.totalFlow),
+      tradingDate: pickTradingDate(btc.tradingDate, eth.tradingDate),
     };
   } catch {
     return {
