@@ -16,22 +16,22 @@ function buildMarketState(market: MarketBlock): string {
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btc24 > 2 && eth24 > 2 && alt24 > 2) {
-    return "Risk-on, широкий рост по рынку";
+    return "Risk-on, \u0448\u0438\u0440\u043e\u043a\u0438\u0439 \u0440\u043e\u0441\u0442 \u043f\u043e \u0440\u044b\u043d\u043a\u0443";
   }
 
   if (btc24 > 2 && alt24 < 1) {
-    return "BTC-led market, рынок ведет Bitcoin";
+    return "BTC-led market, \u0440\u044b\u043d\u043e\u043a \u0432\u0435\u0434\u0435\u0442 Bitcoin";
   }
 
   if (eth24 > btc24 && alt24 > btc24) {
-    return "Ротация в ETH и альткоины";
+    return "\u0420\u043e\u0442\u0430\u0446\u0438\u044f \u0432 ETH \u0438 \u0430\u043b\u044c\u0442\u043a\u043e\u0438\u043d\u044b";
   }
 
   if (btc24 < 0 && eth24 < 0 && alt24 < 0) {
-    return "Risk-off, давление по всему рынку";
+    return "Risk-off, \u0434\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043f\u043e \u0432\u0441\u0435\u043c\u0443 \u0440\u044b\u043d\u043a\u0443";
   }
 
-  return "Смешанный рынок / переходная фаза";
+  return "\u0421\u043c\u0435\u0448\u0430\u043d\u043d\u044b\u0439 \u0440\u044b\u043d\u043e\u043a / \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u043d\u0430\u044f \u0444\u0430\u0437\u0430";
 }
 
 function buildMovementLeader(market: MarketBlock): string {
@@ -56,22 +56,22 @@ function buildEtfSupport(etf: EtfFlowBlock, news: NewsBlock): string {
   const total = btcFlow + ethFlow;
 
   if (total > 0 && hasNews) {
-    return "Да, движение поддерживается ETF-потоками и новостным фоном";
+    return "\u0414\u0430, \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f ETF-\u043f\u043e\u0442\u043e\u043a\u0430\u043c\u0438 \u0438 \u043d\u043e\u0432\u043e\u0441\u0442\u043d\u044b\u043c \u0444\u043e\u043d\u043e\u043c";
   }
 
   if (total > 0) {
-    return "Частично да, есть поддержка со стороны ETF";
+    return "\u0427\u0430\u0441\u0442\u0438\u0447\u043d\u043e \u0434\u0430, \u0435\u0441\u0442\u044c \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0441\u043e \u0441\u0442\u043e\u0440\u043e\u043d\u044b ETF";
   }
 
   if (total < 0) {
-    return "Скорее нет, ETF-потоки создают встречное давление";
+    return "\u0421\u043a\u043e\u0440\u0435\u0435 \u043d\u0435\u0442, ETF-\u043f\u043e\u0442\u043e\u043a\u0438 \u0441\u043e\u0437\u0434\u0430\u044e\u0442 \u0432\u0441\u0442\u0440\u0435\u0447\u043d\u043e\u0435 \u0434\u0430\u0432\u043b\u0435\u043d\u0438\u0435";
   }
 
   if (hasNews) {
-    return "Скорее новостной драйвер без явной ETF-поддержки";
+    return "\u0421\u043a\u043e\u0440\u0435\u0435 \u043d\u043e\u0432\u043e\u0441\u0442\u043d\u043e\u0439 \u0434\u0440\u0430\u0439\u0432\u0435\u0440 \u0431\u0435\u0437 \u044f\u0432\u043d\u043e\u0439 ETF-\u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0438";
   }
 
-  return "Поддержка слабая / нейтральная";
+  return "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0441\u043b\u0430\u0431\u0430\u044f / \u043d\u0435\u0439\u0442\u0440\u0430\u043b\u044c\u043d\u0430\u044f";
 }
 
 function buildMainRisk(
@@ -84,18 +84,18 @@ function buildMainRisk(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow < 0) {
-    return "Негативные ETF-потоки";
+    return "\u041d\u0435\u0433\u0430\u0442\u0438\u0432\u043d\u044b\u0435 ETF-\u043f\u043e\u0442\u043e\u043a\u0438";
   }
 
   if (alt24 < -2) {
-    return "Слабость альтрынка и риск более глубокой коррекции";
+    return "\u0421\u043b\u0430\u0431\u043e\u0441\u0442\u044c \u0430\u043b\u044c\u0442\u0440\u044b\u043d\u043a\u0430 \u0438 \u0440\u0438\u0441\u043a \u0431\u043e\u043b\u0435\u0435 \u0433\u043b\u0443\u0431\u043e\u043a\u043e\u0439 \u043a\u043e\u0440\u0440\u0435\u043a\u0446\u0438\u0438";
   }
 
   if (weakCount >= 4) {
-    return "Широкая рыночная слабость под поверхностью";
+    return "\u0428\u0438\u0440\u043e\u043a\u0430\u044f \u0440\u044b\u043d\u043e\u0447\u043d\u0430\u044f \u0441\u043b\u0430\u0431\u043e\u0441\u0442\u044c \u043f\u043e\u0434 \u043f\u043e\u0432\u0435\u0440\u0445\u043d\u043e\u0441\u0442\u044c\u044e";
   }
 
-  return "Риск резкой волатильности на новостях";
+  return "\u0420\u0438\u0441\u043a \u0440\u0435\u0437\u043a\u043e\u0439 \u0432\u043e\u043b\u0430\u0442\u0438\u043b\u044c\u043d\u043e\u0441\u0442\u0438 \u043d\u0430 \u043d\u043e\u0432\u043e\u0441\u0442\u044f\u0445";
 }
 
 function buildMainOpportunity(
@@ -109,18 +109,18 @@ function buildMainOpportunity(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow > 0 && ethFlow > 0) {
-    return "Продолжение институционального спроса через ETF";
+    return "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u0435 \u0438\u043d\u0441\u0442\u0438\u0442\u0443\u0446\u0438\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0441\u043f\u0440\u043e\u0441\u0430 \u0447\u0435\u0440\u0435\u0437 ETF";
   }
 
   if (alt24 > 2) {
-    return "Ротация в сильные альткоины";
+    return "\u0420\u043e\u0442\u0430\u0446\u0438\u044f \u0432 \u0441\u0438\u043b\u044c\u043d\u044b\u0435 \u0430\u043b\u044c\u0442\u043a\u043e\u0438\u043d\u044b";
   }
 
   if (strongCount >= 4) {
-    return "Лидеры рынка уже показывают относительную силу";
+    return "\u041b\u0438\u0434\u0435\u0440\u044b \u0440\u044b\u043d\u043a\u0430 \u0443\u0436\u0435 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u044e\u0442 \u043e\u0442\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c\u043d\u0443\u044e \u0441\u0438\u043b\u0443";
   }
 
-  return "Точечные сделки в сильных секторах";
+  return "\u0422\u043e\u0447\u0435\u0447\u043d\u044b\u0435 \u0441\u0434\u0435\u043b\u043a\u0438 \u0432 \u0441\u0438\u043b\u044c\u043d\u044b\u0445 \u0441\u0435\u043a\u0442\u043e\u0440\u0430\u0445";
 }
 
 export function buildMarketRead(params: {
