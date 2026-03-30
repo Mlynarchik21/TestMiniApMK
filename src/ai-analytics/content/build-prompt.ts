@@ -253,11 +253,11 @@ ${mapEvents(getTomorrowEvents(brief))}
 ${mapEvents(getWeekEvents(brief))}
 
 === КРАТКИЙ MARKET READ ===
-- marketPhase=${fmt((brief as any).marketRead?.phase)}
-- leader=${fmt((brief as any).marketRead?.leader)}
-- etfSupport=${fmt((brief as any).marketRead?.etfSupport)}
-- risks=${fmt((brief as any).marketRead?.risks)}
-- opportunities=${fmt((brief as any).marketRead?.opportunities)}
+- marketPhase=${fmt(brief.marketRead?.marketState)}
+- leader=${fmt(brief.marketRead?.movementLeader)}
+- etfSupport=${fmt(brief.marketRead?.supportedByEtfAndNews)}
+- risks=${fmt(brief.marketRead?.mainRisk)}
+- opportunities=${fmt(brief.marketRead?.mainOpportunity)}
 
 ВАЖНО:
 - Не выдумывай данные
