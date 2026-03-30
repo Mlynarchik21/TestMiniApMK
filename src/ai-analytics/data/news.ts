@@ -35,20 +35,40 @@ function containsExcludedKeyword(text: string) {
 
 function isTrustedDomain(url?: string | null, domain?: string | null) {
   const value = `${url || ""} ${domain || ""}`.toLowerCase();
-  return TRUSTED_NEWS_DOMAINS.some((d) => value.includes(d));
+  return TRUSTED_NEWS_DOMAINS.some((d) => value.includes(d.toLowerCase()));
 }
 
-function detectCategory(title: string): string | null {
+function detectCategory(title: string): string {
   const t = title.toLowerCase();
 
   if (t.includes("etf")) return "ETF";
-  if (t.includes("sec") || t.includes("court") || t.includes("regulation")) return "Regulation";
-  if (t.includes("hack") || t.includes("exploit") || t.includes("breach")) return "Security";
-  if (t.includes("listing")) return "Listing";
+  if (
+    t.includes("sec") ||
+    t.includes("court") ||
+    t.includes("regulation") ||
+    t.includes("lawsuit")
+  ) {
+    return "Regulation";
+  }
+  if (t.includes("hack") || t.includes("exploit") || t.includes("breach")) {
+    return "Security";
+  }
+  if (t.includes("listing") || t.includes("listed")) return "Listing";
   if (t.includes("unlock")) return "Unlock";
-  if (t.includes("binance") || t.includes("coinbase")) return "Exchange";
-  if (t.includes("blackrock") || t.includes("grayscale")) return "Institutional";
-  if (t.includes("tether") || t.includes("circle") || t.includes("stablecoin")) return "Stablecoin";
+  if (t.includes("binance") || t.includes("coinbase") || t.includes("kraken")) {
+    return "Exchange";
+  }
+  if (
+    t.includes("blackrock") ||
+    t.includes("grayscale") ||
+    t.includes("fidelity") ||
+    t.includes("ark")
+  ) {
+    return "Institutional";
+  }
+  if (t.includes("tether") || t.includes("circle") || t.includes("stablecoin")) {
+    return "Stablecoin";
+  }
 
   return "General";
 }
@@ -56,19 +76,43 @@ function detectCategory(title: string): string | null {
 function buildWhyItMatters(title: string): string {
   const t = title.toLowerCase();
 
-  if (t.includes("etf")) return "Может усилить или ослабить институциональный спрос.";
-  if (t.includes("sec") || t.includes("court") || t.includes("regulation"))
+  if (t.includes("etf")) {
+    return "Может усилить или ослабить институциональный спрос.";
+  }
+
+  if (
+    t.includes("sec") ||
+    t.includes("court") ||
+    t.includes("regulation") ||
+    t.includes("lawsuit")
+  ) {
     return "Влияет на регуляторный риск и настроение рынка.";
-  if (t.includes("hack") || t.includes("exploit") || t.includes("breach"))
-    return "Повышает риск-офф настроение и давление на сектор.";
-  if (t.includes("listing"))
+  }
+
+  if (t.includes("hack") || t.includes("exploit") || t.includes("breach")) {
+    return "Повышает risk-off настроение и давление на сектор.";
+  }
+
+  if (t.includes("listing") || t.includes("listed")) {
     return "Может дать краткосрочный приток ликвидности и внимания.";
-  if (t.includes("unlock"))
+  }
+
+  if (t.includes("unlock")) {
     return "Может создать дополнительное давление предложения.";
-  if (t.includes("blackrock") || t.includes("grayscale") || t.includes("institutional"))
+  }
+
+  if (
+    t.includes("blackrock") ||
+    t.includes("grayscale") ||
+    t.includes("fidelity") ||
+    t.includes("institutional")
+  ) {
     return "Важно для оценки институционального участия.";
-  if (t.includes("tether") || t.includes("circle") || t.includes("stablecoin"))
+  }
+
+  if (t.includes("tether") || t.includes("circle") || t.includes("stablecoin")) {
     return "Важно для ликвидности и устойчивости крипторынка.";
+  }
 
   return "Может повлиять на направление рынка и краткосрочный сентимент.";
 }
@@ -87,6 +131,30 @@ function mapPost(post: CryptoPanicPost): NewsItem {
   };
 }
 
+function sortByPublishedAtDesc(items: NewsItem[]): NewsItem[] {
+  return items
+    .slice()
+    .sort((a, b) => {
+      const at = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const bt = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return bt - at;
+    });
+}
+
+function dedupeByTitle(items: NewsItem[]): NewsItem[] {
+  const seen = new Set<string>();
+  const result: NewsItem[] = [];
+
+  for (const item of items) {
+    const key = item.title.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
 export async function getNewsBlock(): Promise<NewsBlock> {
   try {
     const token = process.env.CRYPTOPANIC_API_TOKEN?.trim();
@@ -96,26 +164,40 @@ export async function getNewsBlock(): Promise<NewsBlock> {
     }
 
     const url =
-      `https://cryptopanic.com/api/v1/posts/?auth_token=${token}&kind=news&public=true&regions=en`;
+      `https://cryptopanic.com/api/v1/posts/?auth_token=${token}` +
+      `&kind=news&public=true&filter=rising&regions=en`;
 
     const data = await fetchJson<CryptoPanicResp>(url);
 
     const raw = Array.isArray(data?.results) ? data.results : [];
 
-    const filtered = raw
+    const mapped = raw
       .filter((post) => {
         const title = String(post.title || "").trim();
         if (!title) return false;
         if (containsExcludedKeyword(title)) return false;
-        if (!containsImportantKeyword(title)) return false;
-        if (!isTrustedDomain(post.url, post.domain || post.source?.domain || null)) return false;
         return true;
       })
-      .slice(0, MAX_NEWS_ITEMS)
       .map(mapPost);
 
+    const strongMatches = mapped.filter((item) => {
+      const title = String(item.title || "");
+      return containsImportantKeyword(title) && isTrustedDomain(item.url, item.source);
+    });
+
+    const fallbackMatches = mapped.filter((item) => {
+      const title = String(item.title || "");
+      return containsImportantKeyword(title);
+    });
+
+    const finalItems = dedupeByTitle(
+      sortByPublishedAtDesc(
+        strongMatches.length > 0 ? strongMatches : fallbackMatches
+      )
+    ).slice(0, MAX_NEWS_ITEMS);
+
     return {
-      items: filtered,
+      items: finalItems,
     };
   } catch {
     return {
