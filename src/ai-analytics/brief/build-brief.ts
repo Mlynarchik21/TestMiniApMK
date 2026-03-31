@@ -7,6 +7,48 @@ import { getEventsBlock } from "../data/events";
 import { buildMarketRead } from "./build-market-read";
 import { nowIso } from "../utils/dates";
 
+/* =========================
+   VALIDATORS (ВАЖНО)
+========================= */
+
+function isValidMarket(m: any): boolean {
+  return (
+    m &&
+    m.btc?.price !== null &&
+    m.eth?.price !== null &&
+    m.totalMarketCap !== null
+  );
+}
+
+function isValidStrength(s: any): boolean {
+  return (
+    s &&
+    Array.isArray(s.strongerThanMarket) &&
+    Array.isArray(s.weakerThanMarket)
+  );
+}
+
+function isValidNews(n: any): boolean {
+  return n && Array.isArray(n.items);
+}
+
+function isValidEvents(e: any): boolean {
+  return (
+    e &&
+    Array.isArray(e.today) &&
+    Array.isArray(e.tomorrow) &&
+    Array.isArray(e.thisWeek)
+  );
+}
+
+function isValidEtf(e: any): boolean {
+  return e && "bitcoinSpotEtfNetflow" in e;
+}
+
+/* =========================
+   BUILD
+========================= */
+
 export async function buildBrief(): Promise<MarketBrief> {
   const [marketRes, etfRes, strengthRes, newsRes, eventsRes] =
     await Promise.allSettled([
@@ -74,9 +116,7 @@ export async function buildBrief(): Promise<MarketBrief> {
   const news =
     newsRes.status === "fulfilled"
       ? newsRes.value
-      : {
-          items: [],
-        };
+      : { items: [] };
 
   const events =
     eventsRes.status === "fulfilled"
@@ -102,12 +142,23 @@ export async function buildBrief(): Promise<MarketBrief> {
     news,
     events,
     marketRead,
+
+    /* 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ */
     quality: {
-      marketOk: marketRes.status === "fulfilled",
-      etfOk: etfRes.status === "fulfilled",
-      strengthOk: strengthRes.status === "fulfilled",
-      newsOk: newsRes.status === "fulfilled",
-      eventsOk: eventsRes.status === "fulfilled",
+      marketOk:
+        marketRes.status === "fulfilled" && isValidMarket(market),
+
+      etfOk:
+        etfRes.status === "fulfilled" && isValidEtf(etf),
+
+      strengthOk:
+        strengthRes.status === "fulfilled" && isValidStrength(strength),
+
+      newsOk:
+        newsRes.status === "fulfilled" && isValidNews(news),
+
+      eventsOk:
+        eventsRes.status === "fulfilled" && isValidEvents(events),
     },
   };
 }
