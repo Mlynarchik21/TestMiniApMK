@@ -67,7 +67,6 @@ async function markBotManaged(userId: string) {
   await prisma.botState.updateMany({
     where: { userId },
     data: {
-      lastSyncAt: new Date(),
       lastError: null,
     },
   });
