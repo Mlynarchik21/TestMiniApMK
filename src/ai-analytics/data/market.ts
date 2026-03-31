@@ -26,13 +26,6 @@ type CoinGeckoGlobalResp = {
   };
 };
 
-type CoinGeckoCategoryResp = Array<{
-  id?: string;
-  name?: string;
-  market_cap?: number;
-  market_cap_change_24h?: number;
-}>;
-
 function emptySnapshot(symbol: string, name: string): PriceSnapshot {
   return {
     symbol,
@@ -46,7 +39,24 @@ function emptySnapshot(symbol: string, name: string): PriceSnapshot {
   };
 }
 
-function mapCoin(row: CoinGeckoCoinsMarketsRow | undefined, fallbackSymbol: string, fallbackName: string): PriceSnapshot {
+function emptyMarketBlock(): MarketBlock {
+  return {
+    btc: emptySnapshot("BTC", "Bitcoin"),
+    eth: emptySnapshot("ETH", "Ethereum"),
+    altMarketChange24h: null,
+    altMarketChange7d: null,
+    btcDominance: null,
+    ethDominance: null,
+    totalMarketCap: null,
+    totalVolume24h: null,
+  };
+}
+
+function mapCoin(
+  row: CoinGeckoCoinsMarketsRow | undefined,
+  fallbackSymbol: string,
+  fallbackName: string
+): PriceSnapshot {
   if (!row) return emptySnapshot(fallbackSymbol, fallbackName);
 
   return {
@@ -82,15 +92,15 @@ function calcAltMarketChange24h(
 
   const totalPrev =
     (totalMarketCap as number) /
-    (1 + (Number(totalMarketChange24h ?? 0) / 100));
+    (1 + Number(totalMarketChange24h ?? 0) / 100);
 
   const btcPrev =
     (btcCap as number) /
-    (1 + (Number(btcChange24h ?? 0) / 100));
+    (1 + Number(btcChange24h ?? 0) / 100);
 
   const ethPrev =
     (ethCap as number) /
-    (1 + (Number(ethChange24h ?? 0) / 100));
+    (1 + Number(ethChange24h ?? 0) / 100);
 
   const altPrev = totalPrev - btcPrev - ethPrev;
   return percentChange(altCap, altPrev);
@@ -116,30 +126,63 @@ function calcAltMarketChange7d(
 
   const btcPrev =
     (btcCap as number) /
-    (1 + (Number(btcChange7d ?? 0) / 100));
+    (1 + Number(btcChange7d ?? 0) / 100);
 
   const ethPrev =
     (ethCap as number) /
-    (1 + (Number(ethChange7d ?? 0) / 100));
+    (1 + Number(ethChange7d ?? 0) / 100);
 
   const approxTotalPrev =
     (totalMarketCap as number) /
-    (1 + ((Number(btcChange7d ?? 0) + Number(ethChange7d ?? 0)) / 2 / 100));
+    (1 + (Number(btcChange7d ?? 0) + Number(ethChange7d ?? 0)) / 2 / 100);
 
   const altPrev = approxTotalPrev - btcPrev - ethPrev;
   return percentChange(altCap, altPrev);
 }
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 2, delayMs = 700): Promise<T> {
+  let lastError: unknown;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+async function getGlobalData(): Promise<CoinGeckoGlobalResp | null> {
+  try {
+    return await withRetry(() =>
+      fetchJson<CoinGeckoGlobalResp>("https://api.coingecko.com/api/v3/global")
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function getCoinsData(): Promise<CoinGeckoCoinsMarketsRow[]> {
+  try {
+    const data = await withRetry(() =>
+      fetchJson<CoinGeckoCoinsMarketsRow[]>(
+        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum&price_change_percentage=1h,24h,7d"
+      )
+    );
+
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getMarketBlock(): Promise<MarketBlock> {
-  const [global, coins, categories] = await Promise.all([
-    fetchJson<CoinGeckoGlobalResp>("https://api.coingecko.com/api/v3/global"),
-    fetchJson<CoinGeckoCoinsMarketsRow[]>(
-      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum&price_change_percentage=1h,24h,7d"
-    ),
-    fetchJson<CoinGeckoCategoryResp>(
-      "https://api.coingecko.com/api/v3/coins/categories?order=market_cap_desc"
-    ).catch(() => []),
-  ]);
+  const [global, coins] = await Promise.all([getGlobalData(), getCoinsData()]);
 
   const btcRow = coins.find((c) => c.id === "bitcoin");
   const ethRow = coins.find((c) => c.id === "ethereum");
@@ -151,7 +194,9 @@ export async function getMarketBlock(): Promise<MarketBlock> {
   const totalVolume24h = toNumber(global?.data?.total_volume?.usd);
   const btcDominance = toNumber(global?.data?.market_cap_percentage?.btc);
   const ethDominance = toNumber(global?.data?.market_cap_percentage?.eth);
-  const totalMarketChange24h = toNumber(global?.data?.market_cap_change_percentage_24h_usd);
+  const totalMarketChange24h = toNumber(
+    global?.data?.market_cap_change_percentage_24h_usd
+  );
 
   const altMarketChange24h = calcAltMarketChange24h(
     totalMarketCap,
@@ -170,11 +215,7 @@ export async function getMarketBlock(): Promise<MarketBlock> {
     eth.change7d
   );
 
-  const aiCategory = categories.find((c) =>
-    String(c.name || "").toLowerCase().includes("artificial intelligence")
-  );
-
-  return {
+  const result: MarketBlock = {
     btc,
     eth,
     altMarketChange24h,
@@ -184,4 +225,12 @@ export async function getMarketBlock(): Promise<MarketBlock> {
     totalMarketCap,
     totalVolume24h,
   };
+
+  const hasAnyMarketData =
+    result.btc.price != null ||
+    result.eth.price != null ||
+    result.totalMarketCap != null ||
+    result.totalVolume24h != null;
+
+  return hasAnyMarketData ? result : emptyMarketBlock();
 }
