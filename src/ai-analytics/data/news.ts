@@ -5,23 +5,47 @@ import {
   MAX_NEWS_ITEMS,
   TRUSTED_NEWS_DOMAINS,
 } from "../constants/filters";
-import { fetchJson } from "../utils/http";
+import { fetchText } from "../utils/http";
 
-type CryptoPanicPost = {
-  title?: string;
-  published_at?: string;
-  url?: string;
-  domain?: string;
-  kind?: string;
-  source?: {
-    title?: string;
-    domain?: string;
-  };
+type RssItem = {
+  title: string;
+  link: string | null;
+  description: string | null;
+  pubDate: string | null;
+  source: string;
 };
 
-type CryptoPanicResp = {
-  results?: CryptoPanicPost[];
-};
+const RSS_FEEDS = [
+  {
+    source: "CoinDesk",
+    url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+  },
+  {
+    source: "Cointelegraph",
+    url: "https://cointelegraph.com/rss",
+  },
+];
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getTag(block: string, tag: string): string | null {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+  const m = block.match(re);
+  return m?.[1] ? decodeHtml(m[1]) : null;
+}
 
 function containsImportantKeyword(text: string) {
   const t = text.toLowerCase();
@@ -33,8 +57,8 @@ function containsExcludedKeyword(text: string) {
   return IMPORTANT_NEWS_EXCLUDE.some((k) => t.includes(k.toLowerCase()));
 }
 
-function isTrustedDomain(url?: string | null, domain?: string | null) {
-  const value = `${url || ""} ${domain || ""}`.toLowerCase();
+function isTrustedDomain(url?: string | null, source?: string | null) {
+  const value = `${url || ""} ${source || ""}`.toLowerCase();
   return TRUSTED_NEWS_DOMAINS.some((d) => value.includes(d.toLowerCase()));
 }
 
@@ -117,17 +141,36 @@ function buildWhyItMatters(title: string): string {
   return "Может повлиять на направление рынка и краткосрочный сентимент.";
 }
 
-function mapPost(post: CryptoPanicPost): NewsItem {
-  const title = String(post.title || "").trim();
+function parseRss(xml: string, source: string): RssItem[] {
+  const items = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
 
+  return items
+    .map((item) => {
+      const title = getTag(item, "title") || "";
+      const link = getTag(item, "link");
+      const description = getTag(item, "description");
+      const pubDate = getTag(item, "pubDate");
+
+      return {
+        title,
+        link,
+        description,
+        pubDate,
+        source,
+      };
+    })
+    .filter((item) => item.title);
+}
+
+function mapItem(item: RssItem): NewsItem {
   return {
-    title,
-    summary: title,
-    whyItMatters: buildWhyItMatters(title),
-    source: post.source?.title || post.domain || null,
-    url: post.url || null,
-    publishedAt: post.published_at || null,
-    category: detectCategory(title),
+    title: item.title,
+    summary: item.description || item.title,
+    whyItMatters: buildWhyItMatters(item.title),
+    source: item.source,
+    url: item.link,
+    publishedAt: item.pubDate,
+    category: detectCategory(item.title),
   };
 }
 
@@ -157,44 +200,34 @@ function dedupeByTitle(items: NewsItem[]): NewsItem[] {
 
 export async function getNewsBlock(): Promise<NewsBlock> {
   try {
-    const token = process.env.CRYPTOPANIC_API_TOKEN?.trim();
+    const results = await Promise.all(
+      RSS_FEEDS.map(async (feed) => {
+        try {
+          const xml = await fetchText(feed.url, undefined, 8000);
+          return parseRss(xml, feed.source);
+        } catch {
+          return [];
+        }
+      })
+    );
 
-    if (!token) {
-      return { items: [] };
-    }
-
-    const url =
-      `https://cryptopanic.com/api/v1/posts/?auth_token=${token}` +
-      `&kind=news&public=true&filter=rising&regions=en`;
-
-    const data = await fetchJson<CryptoPanicResp>(url);
-
-    const raw = Array.isArray(data?.results) ? data.results : [];
+    const raw = results.flat();
 
     const mapped = raw
-      .filter((post) => {
-        const title = String(post.title || "").trim();
-        if (!title) return false;
-        if (containsExcludedKeyword(title)) return false;
+      .filter((item) => {
+        const text = `${item.title} ${item.description || ""}`.trim();
+        if (!text) return false;
+        if (containsExcludedKeyword(text)) return false;
+        if (!containsImportantKeyword(text)) return false;
+        if (!isTrustedDomain(item.link, item.source)) return false;
         return true;
       })
-      .map(mapPost);
+      .map(mapItem);
 
-    const strongMatches = mapped.filter((item) => {
-      const title = String(item.title || "");
-      return containsImportantKeyword(title) && isTrustedDomain(item.url, item.source);
-    });
-
-    const fallbackMatches = mapped.filter((item) => {
-      const title = String(item.title || "");
-      return containsImportantKeyword(title);
-    });
-
-    const finalItems = dedupeByTitle(
-      sortByPublishedAtDesc(
-        strongMatches.length > 0 ? strongMatches : fallbackMatches
-      )
-    ).slice(0, MAX_NEWS_ITEMS);
+    const finalItems = dedupeByTitle(sortByPublishedAtDesc(mapped)).slice(
+      0,
+      MAX_NEWS_ITEMS
+    );
 
     return {
       items: finalItems,
