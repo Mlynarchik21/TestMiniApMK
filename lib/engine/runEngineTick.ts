@@ -71,7 +71,6 @@ async function markBotSynced(userId: string) {
   await prisma.botState.updateMany({
     where: { userId },
     data: {
-      lastSyncAt: new Date(),
       lastError: null,
     },
   });
@@ -630,7 +629,7 @@ async function openPositionForSymbol(args: {
 }
 
 export async function runEngineTick() {
-  const syncIntervalMin = 5;
+  const entryCooldownMin = 5;
 
   const bots = await prisma.botConfig.findMany({
     where: {
@@ -672,7 +671,7 @@ export async function runEngineTick() {
 
       const state = await prisma.botState.findUnique({
         where: { userId: bot.userId },
-        select: { status: true, lastSyncAt: true },
+        select: { status: true },
       });
 
       if (!state || state.status !== "RUNNING") {
@@ -688,27 +687,6 @@ export async function runEngineTick() {
           message: "bot is not running",
         });
         continue;
-      }
-
-      if (state.lastSyncAt) {
-        const diffMin = minutesDiff(new Date(state.lastSyncAt), new Date());
-
-        if (diffMin < syncIntervalMin) {
-          await finishCycle(cycleId, "SKIPPED", "sync interval not reached", {
-            lastSyncAt: state.lastSyncAt,
-            syncIntervalMin,
-            minutesSinceLastSync: diffMin,
-          });
-
-          results.push({
-            userId: bot.userId,
-            exchange: bot.exchange,
-            cycleId,
-            status: "SKIPPED",
-            message: "sync interval not reached",
-          });
-          continue;
-        }
       }
 
       if (!bot.keyId) {
@@ -808,10 +786,11 @@ export async function runEngineTick() {
       const lastEntryAt = await getLastEntryAt(bot.userId);
       if (lastEntryAt) {
         const mins = minutesDiff(lastEntryAt, new Date());
-        if (mins < 5) {
+        if (mins < entryCooldownMin) {
           await finishCycle(cycleId, "SKIPPED", "global 5m entry cooldown active", {
             lastEntryAt: lastEntryAt.toISOString(),
             minutesSinceLastEntry: mins,
+            entryCooldownMin,
             startupSync,
           });
 
@@ -947,7 +926,7 @@ export async function runEngineTick() {
         freeStable: stable.freeStable,
         lockedStable: stable.lockedStable,
         budgetPerSymbol: bot.budgetPerSymbol.toString(),
-        syncIntervalMin,
+        entryCooldownMin,
         candidate: scan.candidate,
         top5: scan.top5,
         opened,
