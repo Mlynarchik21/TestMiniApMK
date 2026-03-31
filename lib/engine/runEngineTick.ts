@@ -42,6 +42,16 @@ type PublicTicker = {
   priceChangePercent?: string;
 };
 
+type Candidate = {
+  symbol: string;
+  baseSymbol: string;
+  marketCap: number;
+  rank: number;
+  priceChangePercent: number;
+  cmcId: number;
+  name: string;
+};
+
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -194,19 +204,11 @@ function minutesDiff(from: Date, to: Date) {
   return Math.floor((to.getTime() - from.getTime()) / 1000 / 60);
 }
 
-function pickCandidate(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
+function pickCandidates(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
   const tickerMap = new Map<string, PublicTicker>();
   for (const t of tickers) tickerMap.set(String(t.symbol), t);
 
-  const candidates: Array<{
-    symbol: string;
-    baseSymbol: string;
-    marketCap: number;
-    rank: number;
-    priceChangePercent: number;
-    cmcId: number;
-    name: string;
-  }> = [];
+  const candidates: Candidate[] = [];
 
   for (const coin of cmcCoins) {
     const baseSymbol = String(coin.symbol || "").toUpperCase().trim();
@@ -240,7 +242,7 @@ function pickCandidate(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
   });
 
   return {
-    candidate: candidates[0] ?? null,
+    candidates,
     candidatesCount: candidates.length,
     top5: candidates.slice(0, 5),
   };
@@ -630,6 +632,7 @@ async function openPositionForSymbol(args: {
 
 export async function runEngineTick() {
   const entryCooldownMin = 5;
+  const maxCandidateAttempts = 10;
 
   const bots = await prisma.botConfig.findMany({
     where: {
@@ -852,9 +855,9 @@ export async function runEngineTick() {
 
       const cmcCoins = await cmcTop100();
       const tickers = await bybitTickersSpot();
-      const scan = pickCandidate(cmcCoins, tickers);
+      const scan = pickCandidates(cmcCoins, tickers);
 
-      if (!scan.candidate) {
+      if (!scan.candidates.length) {
         await finishCycle(cycleId, "SKIPPED", "no market candidate found", {
           activePositions,
           totalStable: stable.totalStable,
@@ -877,28 +880,44 @@ export async function runEngineTick() {
         continue;
       }
 
-      const opened = await openPositionForSymbol({
-        userId: bot.userId,
-        exchange: bot.exchange as ExchangeName,
-        apiKey: key.apiKey,
-        apiSecret,
-        symbol: scan.candidate.symbol,
-        budgetPerSymbol: bot.budgetPerSymbol,
-        totalStable: stable.totalStable,
-        freeStable: stable.freeStable,
-      });
+      let opened: AnyJson = null;
+      let selectedCandidate: Candidate | null = null;
+      const attempts: AnyJson[] = [];
+
+      for (const candidate of scan.candidates.slice(0, maxCandidateAttempts)) {
+        const tryOpen = await openPositionForSymbol({
+          userId: bot.userId,
+          exchange: bot.exchange as ExchangeName,
+          apiKey: key.apiKey,
+          apiSecret,
+          symbol: candidate.symbol,
+          budgetPerSymbol: bot.budgetPerSymbol,
+          totalStable: stable.totalStable,
+          freeStable: stable.freeStable,
+        });
+
+        attempts.push({
+          candidate,
+          result: tryOpen,
+        });
+
+        if (tryOpen?.ok) {
+          opened = tryOpen;
+          selectedCandidate = candidate;
+          break;
+        }
+      }
 
       if (!opened?.ok) {
         await finishCycle(
           cycleId,
           "SKIPPED",
-          opened?.message || "candidate found but open skipped",
+          "no available candidate could be opened",
           {
             activePositions,
             balances: stable,
-            candidate: scan.candidate,
             top5: scan.top5,
-            openResult: opened,
+            attempts,
             startupSync,
           }
         );
@@ -910,9 +929,9 @@ export async function runEngineTick() {
           exchange: bot.exchange,
           cycleId,
           status: "SKIPPED",
-          message: opened?.message || "candidate found but open skipped",
-          candidate: scan.candidate,
-          openResult: opened,
+          message: "no available candidate could be opened",
+          top5: scan.top5,
+          attempts,
           startupSync,
         });
         continue;
@@ -927,8 +946,9 @@ export async function runEngineTick() {
         lockedStable: stable.lockedStable,
         budgetPerSymbol: bot.budgetPerSymbol.toString(),
         entryCooldownMin,
-        candidate: scan.candidate,
+        candidate: selectedCandidate,
         top5: scan.top5,
+        attempts,
         opened,
         startupSync,
       });
@@ -940,8 +960,9 @@ export async function runEngineTick() {
         status: "SUCCESS",
         message: "position opened",
         balances: stable,
-        candidate: scan.candidate,
+        candidate: selectedCandidate,
         top5: scan.top5,
+        attempts,
         opened,
         startupSync,
       });
