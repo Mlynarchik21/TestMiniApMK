@@ -1,4 +1,17 @@
-export default function DebugUtf8Page() {
+async function getData() {
+  const res = await fetch(
+    "https://test-mini-ap-mk.vercel.app/api/ai-analytics/debug-market-read",
+    {
+      cache: "no-store",
+    }
+  );
+
+  return res.json();
+}
+
+export default async function DebugApiPage() {
+  const data = await getData();
+
   return (
     <main
       style={{
@@ -10,12 +23,8 @@ export default function DebugUtf8Page() {
         lineHeight: 1.8,
       }}
     >
-      <h1>UTF8 TEST</h1>
-      <p>Смешанный рынок / переходная фаза</p>
-      <p>Ротация в ETH и альткоины</p>
-      <p>Поддержка слабая / нейтральная</p>
-      <p>Широкая рыночная слабость под поверхностью</p>
-      <p>Точечные сделки в сильных секторах</p>
+      <h1>DEBUG API</h1>
+      <pre>{JSON.stringify(data, null, 2)}</pre>
     </main>
   );
 }
