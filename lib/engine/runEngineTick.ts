@@ -21,6 +21,15 @@ const STABLE_ASSETS = new Set([
   "USDP",
 ]);
 
+const BLOCKED_BASE_SYMBOLS = new Set([
+  "STABLE",
+]);
+
+const BLOCKED_NAME_PARTS = [
+  "stable",
+  "stablecoin",
+];
+
 type AnyJson = any;
 
 type CmcCoin = {
@@ -75,6 +84,24 @@ function formatByStep(value: number, step: number) {
 
 function roundQuoteQty(n: number) {
   return Math.floor(n * 100) / 100;
+}
+
+function isBlockedCoin(baseSymbol: string, coinName: string) {
+  const bs = String(baseSymbol || "").toUpperCase().trim();
+  const nm = String(coinName || "").toLowerCase().trim();
+
+  if (!bs) return true;
+  if (STABLE_ASSETS.has(bs)) return true;
+  if (BLOCKED_BASE_SYMBOLS.has(bs)) return true;
+
+  if (bs.includes("STABLE")) return true;
+  if (bs.includes("USD")) return true;
+
+  for (const bad of BLOCKED_NAME_PARTS) {
+    if (nm.includes(bad)) return true;
+  }
+
+  return false;
 }
 
 async function markBotSynced(userId: string) {
@@ -212,17 +239,23 @@ function pickCandidates(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
 
   for (const coin of cmcCoins) {
     const baseSymbol = String(coin.symbol || "").toUpperCase().trim();
+    const coinName = String(coin.name || "").trim();
+
     if (!baseSymbol) continue;
-    if (STABLE_ASSETS.has(baseSymbol)) continue;
+    if (isBlockedCoin(baseSymbol, coinName)) continue;
 
     const pair = `${baseSymbol}USDT`;
     const ticker = tickerMap.get(pair);
     if (!ticker) continue;
 
+    const lastPrice = toNum(ticker.lastPrice);
+    if (lastPrice <= 0) continue;
+
     const drop24h = toNum(ticker.price24hPcnt) * 100 || toNum(ticker.priceChangePercent);
     if (drop24h > -5) continue;
 
     const marketCap = toNum(coin.quote?.USD?.market_cap);
+    if (marketCap <= 0) continue;
 
     candidates.push({
       symbol: pair,
@@ -231,7 +264,7 @@ function pickCandidates(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
       rank: toNum(coin.cmc_rank),
       priceChangePercent: drop24h,
       cmcId: toNum(coin.id),
-      name: String(coin.name || baseSymbol),
+      name: coinName || baseSymbol,
     });
   }
 
