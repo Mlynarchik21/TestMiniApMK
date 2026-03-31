@@ -16,22 +16,22 @@ function buildMarketState(market: MarketBlock): string {
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btc24 > 2 && eth24 > 2 && alt24 > 2) {
-    return "Risk-on, broad market strength";
+    return "Risk-on, широкий рост по рынку";
   }
 
   if (btc24 > 2 && alt24 < 1) {
-    return "BTC-led market";
+    return "BTC-led market, рынок ведет Bitcoin";
   }
 
   if (eth24 > btc24 && alt24 > btc24) {
-    return "Rotation into ETH and altcoins";
+    return "Ротация в ETH и альткоины";
   }
 
   if (btc24 < 0 && eth24 < 0 && alt24 < 0) {
-    return "Risk-off, broad market pressure";
+    return "Risk-off, давление по всему рынку";
   }
 
-  return "Mixed market / transition phase";
+  return "Смешанный рынок / переходная фаза";
 }
 
 function buildMovementLeader(market: MarketBlock): string {
@@ -56,22 +56,22 @@ function buildEtfSupport(etf: EtfFlowBlock, news: NewsBlock): string {
   const total = btcFlow + ethFlow;
 
   if (total > 0 && hasNews) {
-    return "Supported by ETF flows and news";
+    return "Да, движение поддерживается ETF-потоками и новостным фоном";
   }
 
   if (total > 0) {
-    return "Partially supported by ETF flows";
+    return "Частично да, есть поддержка со стороны ETF";
   }
 
   if (total < 0) {
-    return "ETF flows are a headwind";
+    return "Скорее нет, ETF-потоки создают встречное давление";
   }
 
   if (hasNews) {
-    return "Driven more by news than ETF support";
+    return "Скорее новостной драйвер без явной ETF-поддержки";
   }
 
-  return "Weak / neutral support";
+  return "Поддержка слабая / нейтральная";
 }
 
 function buildMainRisk(
@@ -84,18 +84,18 @@ function buildMainRisk(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow < 0) {
-    return "Negative ETF flows";
+    return "Негативные ETF-потоки";
   }
 
   if (alt24 < -2) {
-    return "Alt market weakness and deeper pullback risk";
+    return "Слабость альтрынка и риск более глубокой коррекции";
   }
 
   if (weakCount >= 4) {
-    return "Broad underlying market weakness";
+    return "Широкая рыночная слабость под поверхностью";
   }
 
-  return "News-driven volatility risk";
+  return "Риск резкой волатильности на новостях";
 }
 
 function buildMainOpportunity(
@@ -109,18 +109,18 @@ function buildMainOpportunity(
   const alt24 = Number(market.altMarketChange24h ?? 0);
 
   if (btcFlow > 0 && ethFlow > 0) {
-    return "Institutional bid through ETF flows";
+    return "Продолжение институционального спроса через ETF";
   }
 
   if (alt24 > 2) {
-    return "Rotation into strong altcoins";
+    return "Ротация в сильные альткоины";
   }
 
   if (strongCount >= 4) {
-    return "Market leaders already show relative strength";
+    return "Лидеры рынка уже показывают относительную силу";
   }
 
-  return "Selective trades in strong sectors";
+  return "Точечные сделки в сильных секторах";
 }
 
 export function buildMarketRead(params: {
