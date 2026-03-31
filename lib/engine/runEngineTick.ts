@@ -61,6 +61,30 @@ type Candidate = {
   name: string;
 };
 
+type BotRow = {
+  userId: string;
+  exchange: string;
+  keyId: string | null;
+  maxActiveSymbols: number;
+  budgetPerSymbol: Prisma.Decimal;
+};
+
+type ActiveContext = {
+  userId: string;
+  exchange: ExchangeName;
+  cycleId: string;
+  apiKey: string;
+  apiSecret: string;
+  budgetPerSymbol: Prisma.Decimal;
+  maxActiveSymbols: number;
+  startupSync: AnyJson;
+  attempts: AnyJson[];
+  opened: AnyJson | null;
+  selectedCandidate: Candidate | null;
+  balances: AnyJson | null;
+  openedInThisRun: boolean;
+};
+
 function toNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -252,7 +276,7 @@ function pickCandidates(cmcCoins: CmcCoin[], tickers: PublicTicker[]) {
     if (lastPrice <= 0) continue;
 
     const drop24h = toNum(ticker.price24hPcnt) * 100 || toNum(ticker.priceChangePercent);
-    if (drop24h > -5) continue;
+    if (drop24h >= -5) continue;
 
     const marketCap = toNum(coin.quote?.USD?.market_cap);
     if (marketCap <= 0) continue;
@@ -663,48 +687,30 @@ async function openPositionForSymbol(args: {
   };
 }
 
-export async function runEngineTick() {
-  const entryCooldownMin = 5;
-  const maxCandidateAttempts = 10;
-
-  const bots = await prisma.botConfig.findMany({
-    where: {
-      enabled: true,
-    },
-    select: {
-      userId: true,
-      exchange: true,
-      keyId: true,
-      maxActiveSymbols: true,
-      budgetPerSymbol: true,
-    },
-  });
-
-  if (!bots.length) {
-    return {
-      ok: true,
-      message: "no enabled bots",
-      cycles: [],
-    };
-  }
-
-  const results: AnyJson[] = [];
+async function prepareActiveContexts(
+  bots: BotRow[]
+): Promise<{
+  activeContexts: ActiveContext[];
+  immediateResults: AnyJson[];
+}> {
+  const activeContexts: ActiveContext[] = [];
+  const immediateResults: AnyJson[] = [];
 
   for (const bot of bots) {
     const cycleId = await createCycle(bot.userId, bot.exchange);
 
-    try {
-      if (!cycleId) {
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId: null,
-          status: "ERROR",
-          message: "cycle not created",
-        });
-        continue;
-      }
+    if (!cycleId) {
+      immediateResults.push({
+        userId: bot.userId,
+        exchange: bot.exchange,
+        cycleId: null,
+        status: "ERROR",
+        message: "cycle not created",
+      });
+      continue;
+    }
 
+    try {
       const state = await prisma.botState.findUnique({
         where: { userId: bot.userId },
         select: { status: true },
@@ -715,7 +721,7 @@ export async function runEngineTick() {
           state: state?.status ?? null,
         });
 
-        results.push({
+        immediateResults.push({
           userId: bot.userId,
           exchange: bot.exchange,
           cycleId,
@@ -727,7 +733,7 @@ export async function runEngineTick() {
 
       if (!bot.keyId) {
         await finishCycle(cycleId, "SKIPPED", "API key not selected", {});
-        results.push({
+        immediateResults.push({
           userId: bot.userId,
           exchange: bot.exchange,
           cycleId,
@@ -753,7 +759,7 @@ export async function runEngineTick() {
           keyId: bot.keyId,
         });
 
-        results.push({
+        immediateResults.push({
           userId: bot.userId,
           exchange: bot.exchange,
           cycleId,
@@ -762,9 +768,6 @@ export async function runEngineTick() {
         });
         continue;
       }
-
-      const exchange = getExchangeAdapter(bot.exchange as ExchangeName);
-      const apiSecret = decryptString(key.secretEnc);
 
       let startupSync: AnyJson = null;
       try {
@@ -781,7 +784,7 @@ export async function runEngineTick() {
           message: String(syncErr?.message || syncErr),
         });
 
-        results.push({
+        immediateResults.push({
           userId: bot.userId,
           exchange: bot.exchange,
           cycleId,
@@ -791,213 +794,20 @@ export async function runEngineTick() {
         continue;
       }
 
-      const activePositions = await prisma.botPosition.count({
-        where: {
-          userId: bot.userId,
-          exchange: bot.exchange,
-          status: "OPEN",
-        },
-      });
-
-      if (activePositions >= bot.maxActiveSymbols) {
-        await finishCycle(cycleId, "SKIPPED", "active positions limit reached", {
-          activePositions,
-          maxActiveSymbols: bot.maxActiveSymbols,
-          startupSync,
-        });
-
-        await markBotSynced(bot.userId);
-
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId,
-          status: "SKIPPED",
-          message: "active positions limit reached",
-          startupSync,
-        });
-        continue;
-      }
-
-      const lastEntryAt = await getLastEntryAt(bot.userId);
-      if (lastEntryAt) {
-        const mins = minutesDiff(lastEntryAt, new Date());
-        if (mins < entryCooldownMin) {
-          await finishCycle(cycleId, "SKIPPED", "global 5m entry cooldown active", {
-            lastEntryAt: lastEntryAt.toISOString(),
-            minutesSinceLastEntry: mins,
-            entryCooldownMin,
-            startupSync,
-          });
-
-          await markBotSynced(bot.userId);
-
-          results.push({
-            userId: bot.userId,
-            exchange: bot.exchange,
-            cycleId,
-            status: "SKIPPED",
-            message: "global 5m entry cooldown active",
-            startupSync,
-          });
-          continue;
-        }
-      }
-
-      const stable = await exchange.getBalance(key.apiKey, apiSecret);
-
-      if (stable.totalStable <= 0) {
-        await finishCycle(cycleId, "SKIPPED", "no stablecoin capital found", {
-          ...stable,
-          startupSync,
-        });
-
-        await markBotSynced(bot.userId);
-
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId,
-          status: "SKIPPED",
-          message: "no stablecoin capital found",
-          startupSync,
-        });
-        continue;
-      }
-
-      const minFreeRequired = stable.totalStable * 0.1;
-      if (stable.freeStable <= minFreeRequired) {
-        await finishCycle(cycleId, "SKIPPED", "free stable balance is at or below 10%", {
-          ...stable,
-          minFreeRequired,
-          startupSync,
-        });
-
-        await markBotSynced(bot.userId);
-
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId,
-          status: "SKIPPED",
-          message: "free stable balance is at or below 10%",
-          startupSync,
-        });
-        continue;
-      }
-
-      const cmcCoins = await cmcTop100();
-      const tickers = await bybitTickersSpot();
-      const scan = pickCandidates(cmcCoins, tickers);
-
-      if (!scan.candidates.length) {
-        await finishCycle(cycleId, "SKIPPED", "no market candidate found", {
-          activePositions,
-          totalStable: stable.totalStable,
-          freeStable: stable.freeStable,
-          candidatesCount: scan.candidatesCount,
-          startupSync,
-        });
-
-        await markBotSynced(bot.userId);
-
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId,
-          status: "SKIPPED",
-          message: "no market candidate found",
-          candidatesCount: scan.candidatesCount,
-          startupSync,
-        });
-        continue;
-      }
-
-      let opened: AnyJson = null;
-      let selectedCandidate: Candidate | null = null;
-      const attempts: AnyJson[] = [];
-
-      for (const candidate of scan.candidates.slice(0, maxCandidateAttempts)) {
-        const tryOpen = await openPositionForSymbol({
-          userId: bot.userId,
-          exchange: bot.exchange as ExchangeName,
-          apiKey: key.apiKey,
-          apiSecret,
-          symbol: candidate.symbol,
-          budgetPerSymbol: bot.budgetPerSymbol,
-          totalStable: stable.totalStable,
-          freeStable: stable.freeStable,
-        });
-
-        attempts.push({
-          candidate,
-          result: tryOpen,
-        });
-
-        if (tryOpen?.ok) {
-          opened = tryOpen;
-          selectedCandidate = candidate;
-          break;
-        }
-      }
-
-      if (!opened?.ok) {
-        await finishCycle(
-          cycleId,
-          "SKIPPED",
-          "no available candidate could be opened",
-          {
-            activePositions,
-            balances: stable,
-            top5: scan.top5,
-            attempts,
-            startupSync,
-          }
-        );
-
-        await markBotSynced(bot.userId);
-
-        results.push({
-          userId: bot.userId,
-          exchange: bot.exchange,
-          cycleId,
-          status: "SKIPPED",
-          message: "no available candidate could be opened",
-          top5: scan.top5,
-          attempts,
-          startupSync,
-        });
-        continue;
-      }
-
-      await markBotSynced(bot.userId);
-
-      await finishCycle(cycleId, "SUCCESS", "position opened", {
-        activePositionsBefore: activePositions,
-        totalStable: stable.totalStable,
-        freeStable: stable.freeStable,
-        lockedStable: stable.lockedStable,
-        budgetPerSymbol: bot.budgetPerSymbol.toString(),
-        entryCooldownMin,
-        candidate: selectedCandidate,
-        top5: scan.top5,
-        attempts,
-        opened,
-        startupSync,
-      });
-
-      results.push({
+      activeContexts.push({
         userId: bot.userId,
-        exchange: bot.exchange,
+        exchange: bot.exchange as ExchangeName,
         cycleId,
-        status: "SUCCESS",
-        message: "position opened",
-        balances: stable,
-        candidate: selectedCandidate,
-        top5: scan.top5,
-        attempts,
-        opened,
+        apiKey: key.apiKey,
+        apiSecret: decryptString(key.secretEnc),
+        budgetPerSymbol: bot.budgetPerSymbol,
+        maxActiveSymbols: bot.maxActiveSymbols,
         startupSync,
+        attempts: [],
+        opened: null,
+        selectedCandidate: null,
+        balances: null,
+        openedInThisRun: false,
       });
     } catch (e: any) {
       await prisma.botState.updateMany({
@@ -1007,14 +817,262 @@ export async function runEngineTick() {
         },
       });
 
-      if (cycleId) {
-        await finishCycle(cycleId, "ERROR", String(e?.message || e), {});
-      }
+      await finishCycle(cycleId, "ERROR", String(e?.message || e), {});
 
-      results.push({
+      immediateResults.push({
         userId: bot.userId,
         exchange: bot.exchange,
         cycleId,
+        status: "ERROR",
+        message: String(e?.message || e),
+      });
+    }
+  }
+
+  return {
+    activeContexts,
+    immediateResults,
+  };
+}
+
+export async function runEngineTick() {
+  const entryCooldownMin = 5;
+
+  const bots = await prisma.botConfig.findMany({
+    where: {
+      enabled: true,
+    },
+    select: {
+      userId: true,
+      exchange: true,
+      keyId: true,
+      maxActiveSymbols: true,
+      budgetPerSymbol: true,
+    },
+  });
+
+  if (!bots.length) {
+    return {
+      ok: true,
+      message: "no enabled bots",
+      cycles: [],
+    };
+  }
+
+  const { activeContexts, immediateResults } = await prepareActiveContexts(bots);
+
+  const results: AnyJson[] = [...immediateResults];
+
+  if (!activeContexts.length) {
+    return {
+      ok: true,
+      cycles: results,
+    };
+  }
+
+  const cmcCoins = await cmcTop100();
+  const tickers = await bybitTickersSpot();
+  const scan = pickCandidates(cmcCoins, tickers);
+
+  if (!scan.candidates.length) {
+    for (const ctx of activeContexts) {
+      await markBotSynced(ctx.userId);
+
+      await finishCycle(ctx.cycleId, "SKIPPED", "no market candidate found", {
+        candidatesCount: scan.candidatesCount,
+        startupSync: ctx.startupSync,
+      });
+
+      results.push({
+        userId: ctx.userId,
+        exchange: ctx.exchange,
+        cycleId: ctx.cycleId,
+        status: "SKIPPED",
+        message: "no market candidate found",
+        candidatesCount: scan.candidatesCount,
+        startupSync: ctx.startupSync,
+      });
+    }
+
+    return {
+      ok: true,
+      cycles: results,
+    };
+  }
+
+  for (const candidate of scan.candidates) {
+    for (const ctx of activeContexts) {
+      if (ctx.openedInThisRun) continue;
+
+      try {
+        const activePositions = await prisma.botPosition.count({
+          where: {
+            userId: ctx.userId,
+            exchange: ctx.exchange,
+            status: "OPEN",
+          },
+        });
+
+        if (activePositions >= ctx.maxActiveSymbols) {
+          ctx.attempts.push({
+            candidate,
+            result: {
+              ok: false,
+              error: "ACTIVE_POSITIONS_LIMIT_REACHED",
+              message: "active positions limit reached",
+              activePositions,
+              maxActiveSymbols: ctx.maxActiveSymbols,
+            },
+          });
+          continue;
+        }
+
+        const lastEntryAt = await getLastEntryAt(ctx.userId);
+        if (lastEntryAt) {
+          const mins = minutesDiff(lastEntryAt, new Date());
+          if (mins < entryCooldownMin) {
+            ctx.attempts.push({
+              candidate,
+              result: {
+                ok: false,
+                error: "GLOBAL_ENTRY_COOLDOWN_ACTIVE",
+                message: "global 5m entry cooldown active",
+                lastEntryAt: lastEntryAt.toISOString(),
+                minutesSinceLastEntry: mins,
+                entryCooldownMin,
+              },
+            });
+            continue;
+          }
+        }
+
+        const exchange = getExchangeAdapter(ctx.exchange);
+        const stable = await exchange.getBalance(ctx.apiKey, ctx.apiSecret);
+        ctx.balances = stable;
+
+        if (stable.totalStable <= 0) {
+          ctx.attempts.push({
+            candidate,
+            result: {
+              ok: false,
+              error: "NO_STABLECOIN_CAPITAL",
+              message: "no stablecoin capital found",
+              balances: stable,
+            },
+          });
+          continue;
+        }
+
+        const minFreeRequired = stable.totalStable * 0.1;
+        if (stable.freeStable <= minFreeRequired) {
+          ctx.attempts.push({
+            candidate,
+            result: {
+              ok: false,
+              error: "FREE_STABLE_BELOW_10_PERCENT",
+              message: "free stable balance is at or below 10%",
+              balances: stable,
+              minFreeRequired,
+            },
+          });
+          continue;
+        }
+
+        const tryOpen = await openPositionForSymbol({
+          userId: ctx.userId,
+          exchange: ctx.exchange,
+          apiKey: ctx.apiKey,
+          apiSecret: ctx.apiSecret,
+          symbol: candidate.symbol,
+          budgetPerSymbol: ctx.budgetPerSymbol,
+          totalStable: stable.totalStable,
+          freeStable: stable.freeStable,
+        });
+
+        ctx.attempts.push({
+          candidate,
+          result: tryOpen,
+        });
+
+        if (tryOpen?.ok) {
+          ctx.opened = tryOpen;
+          ctx.selectedCandidate = candidate;
+          ctx.openedInThisRun = true;
+        }
+      } catch (e: any) {
+        ctx.attempts.push({
+          candidate,
+          result: {
+            ok: false,
+            error: "OPEN_ATTEMPT_ERROR",
+            message: String(e?.message || e),
+          },
+        });
+      }
+    }
+  }
+
+  for (const ctx of activeContexts) {
+    try {
+      await markBotSynced(ctx.userId);
+
+      if (ctx.opened?.ok) {
+        await finishCycle(ctx.cycleId, "SUCCESS", "position opened", {
+          candidate: ctx.selectedCandidate,
+          top5: scan.top5,
+          attempts: ctx.attempts,
+          opened: ctx.opened,
+          balances: ctx.balances,
+          startupSync: ctx.startupSync,
+          entryCooldownMin,
+        });
+
+        results.push({
+          userId: ctx.userId,
+          exchange: ctx.exchange,
+          cycleId: ctx.cycleId,
+          status: "SUCCESS",
+          message: "position opened",
+          candidate: ctx.selectedCandidate,
+          top5: scan.top5,
+          attempts: ctx.attempts,
+          opened: ctx.opened,
+          balances: ctx.balances,
+          startupSync: ctx.startupSync,
+        });
+        continue;
+      }
+
+      await finishCycle(ctx.cycleId, "SKIPPED", "no available candidate could be opened", {
+        top5: scan.top5,
+        attempts: ctx.attempts,
+        startupSync: ctx.startupSync,
+      });
+
+      results.push({
+        userId: ctx.userId,
+        exchange: ctx.exchange,
+        cycleId: ctx.cycleId,
+        status: "SKIPPED",
+        message: "no available candidate could be opened",
+        top5: scan.top5,
+        attempts: ctx.attempts,
+        startupSync: ctx.startupSync,
+      });
+    } catch (e: any) {
+      await prisma.botState.updateMany({
+        where: { userId: ctx.userId },
+        data: {
+          lastError: String(e?.message || e),
+        },
+      });
+
+      await finishCycle(ctx.cycleId, "ERROR", String(e?.message || e), {});
+
+      results.push({
+        userId: ctx.userId,
+        exchange: ctx.exchange,
+        cycleId: ctx.cycleId,
         status: "ERROR",
         message: String(e?.message || e),
       });
