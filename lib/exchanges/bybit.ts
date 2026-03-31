@@ -216,6 +216,32 @@ async function readBybitRealtimeOrder(params: {
   return { json, row };
 }
 
+async function readBybitHistoryOrder(params: {
+  apiKey: string;
+  apiSecret: string;
+  symbol: string;
+  exchangeOrderId?: string | null;
+  clientOrderId?: string | null;
+}) {
+  const json: AnyJson = await bybitPrivateGet({
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    path: "/v5/order/history",
+    query: {
+      category: "spot",
+      symbol: params.symbol,
+      orderId: params.exchangeOrderId,
+      orderLinkId: params.clientOrderId,
+      limit: 20,
+    },
+  });
+
+  const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+  const row = list[0] ?? null;
+
+  return { json, row };
+}
+
 async function bybitGetExecutions(params: {
   apiKey: string;
   apiSecret: string;
@@ -275,6 +301,30 @@ function normalizeExecutionRow(row: AnyJson): BybitExecutionRow | null {
     execTimeMs,
     orderId,
     raw: row,
+  };
+}
+
+function mapOrderRowToStatusResult(
+  row: AnyJson,
+  params: {
+    exchangeOrderId?: string | null;
+    clientOrderId?: string | null;
+  },
+  raw: AnyJson
+): OrderStatusResult {
+  const executedQty = toNum(row?.cumExecQty ?? row?.execQty);
+  const cumQuote = toNum(row?.cumExecValue ?? row?.execValue);
+  const avgPrice =
+    toNum(row?.avgPrice ?? row?.execPrice) || (executedQty > 0 ? cumQuote / executedQty : 0);
+
+  return {
+    exchangeOrderId: String(row?.orderId || params.exchangeOrderId || ""),
+    clientOrderId: row?.orderLinkId ?? params.clientOrderId ?? null,
+    status: normalizeBybitStatus(row?.orderStatus),
+    executedQty,
+    cumQuote,
+    avgPrice,
+    raw,
   };
 }
 
@@ -486,7 +536,7 @@ export const bybitAdapter: ExchangeAdapter = {
   },
 
   async getOrderStatus(params): Promise<OrderStatusResult> {
-    const { json, row } = await readBybitRealtimeOrder({
+    const realtime = await readBybitRealtimeOrder({
       apiKey: params.apiKey,
       apiSecret: params.apiSecret,
       symbol: params.symbol,
@@ -494,31 +544,40 @@ export const bybitAdapter: ExchangeAdapter = {
       clientOrderId: params.clientOrderId,
     });
 
-    if (!row) {
-      return {
-        exchangeOrderId: String(params.exchangeOrderId || ""),
-        clientOrderId: params.clientOrderId ?? null,
-        status: "UNKNOWN",
-        executedQty: 0,
-        cumQuote: 0,
-        avgPrice: 0,
-        raw: json,
-      };
+    if (realtime.row) {
+      return mapOrderRowToStatusResult(realtime.row, params, {
+        source: "realtime",
+        realtime: realtime.row,
+      });
     }
 
-    const executedQty = toNum(row?.cumExecQty);
-    const cumQuote = toNum(row?.cumExecValue);
-    const avgPrice =
-      toNum(row?.avgPrice) || (executedQty > 0 ? cumQuote / executedQty : 0);
+    const history = await readBybitHistoryOrder({
+      apiKey: params.apiKey,
+      apiSecret: params.apiSecret,
+      symbol: params.symbol,
+      exchangeOrderId: params.exchangeOrderId,
+      clientOrderId: params.clientOrderId,
+    });
+
+    if (history.row) {
+      return mapOrderRowToStatusResult(history.row, params, {
+        source: "history",
+        history: history.row,
+      });
+    }
 
     return {
-      exchangeOrderId: String(row?.orderId || params.exchangeOrderId || ""),
-      clientOrderId: row?.orderLinkId ?? params.clientOrderId ?? null,
-      status: normalizeBybitStatus(row?.orderStatus),
-      executedQty,
-      cumQuote,
-      avgPrice,
-      raw: row,
+      exchangeOrderId: String(params.exchangeOrderId || ""),
+      clientOrderId: params.clientOrderId ?? null,
+      status: "UNKNOWN",
+      executedQty: 0,
+      cumQuote: 0,
+      avgPrice: 0,
+      raw: {
+        source: "not_found",
+        realtime: realtime.json,
+        history: history.json,
+      },
     };
   },
 
