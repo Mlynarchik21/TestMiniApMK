@@ -5,7 +5,6 @@ import type {
   SectorStrength,
   StrengthCoin,
 } from "../types/market-brief";
-
 import {
   formatBillions,
   formatMillions,
@@ -21,6 +20,7 @@ function fmt(v: string | number | null | undefined): string {
 
 function getCoinChange(coin: StrengthCoin): number | null {
   const raw =
+    (coin as any).priceChange24h ??
     (coin as any).change24h ??
     (coin as any).change ??
     (coin as any).performance24h ??
@@ -60,7 +60,7 @@ function mapSectors(sectors: SectorStrength[] | null | undefined): string {
   return sectors
     .map(
       (s) =>
-        `${fmt((s as any).name || (s as any).sector)} (${formatPct(
+        `${fmt((s as any).sector || (s as any).name)} (${formatPct(
           getSectorChange(s)
         )})`
     )
@@ -69,27 +69,22 @@ function mapSectors(sectors: SectorStrength[] | null | undefined): string {
 
 function extractNewsArray(input: any): NewsItem[] {
   if (!input) return [];
-
   if (Array.isArray(input)) return input;
-
   if (Array.isArray(input.items)) return input.items;
   if (Array.isArray(input.news)) return input.news;
   if (Array.isArray(input.list)) return input.list;
-
   return [];
 }
 
 function mapNews(newsInput: any): string {
   const news = extractNewsArray(newsInput);
-
   if (!news.length) return "N/A";
 
   return news
     .map((n: any) => {
       const title = n.title ?? "N/A";
       const summary = n.summary ?? n.whatHappened ?? "N/A";
-      const impact = n.impact ?? n.whyImportant ?? "N/A";
-
+      const impact = n.whyItMatters ?? n.impact ?? n.whyImportant ?? "N/A";
       return `- ${fmt(title)} — ${fmt(summary)} — ${fmt(impact)}`;
     })
     .join("\n");
@@ -99,10 +94,10 @@ function mapEvents(events: EventItem[] | null | undefined): string {
   if (!events?.length) return "N/A";
 
   return events
-    .map((e) => {
-      const title = (e as any).title ?? "N/A";
-      const date = (e as any).date ?? (e as any).when ?? "N/A";
-      const impact = (e as any).impact ?? (e as any).whyImportant ?? "N/A";
+    .map((e: any) => {
+      const title = e.title ?? "N/A";
+      const date = e.date ?? e.when ?? "N/A";
+      const impact = e.whyItMatters ?? e.impact ?? e.whyImportant ?? "N/A";
       return `- ${fmt(title)} — ${fmt(date)} — ${fmt(impact)}`;
     })
     .join("\n");
@@ -120,88 +115,62 @@ function getTomorrowEvents(brief: MarketBrief): EventItem[] {
 
 function getWeekEvents(brief: MarketBrief): EventItem[] {
   const e: any = brief.events;
-  return e?.week ?? e?.weekEvents ?? e?.thisWeek ?? [];
+  return e?.thisWeek ?? e?.week ?? e?.weekEvents ?? [];
 }
 
 function getAltChange24h(brief: MarketBrief): number | null {
   const market: any = brief.market;
-  return (
-    market?.alt?.change24h ??
-    market?.altChange24h ??
-    market?.alts24h ??
-    null
-  );
+  return market?.altMarketChange24h ?? market?.alt?.change24h ?? null;
 }
 
 function getAltChange7d(brief: MarketBrief): number | null {
   const market: any = brief.market;
-  return (
-    market?.alt?.change7d ??
-    market?.altChange7d ??
-    market?.alts7d ??
-    null
-  );
+  return market?.altMarketChange7d ?? market?.alt?.change7d ?? null;
 }
 
 function getStrongCoins(brief: MarketBrief): StrengthCoin[] {
   const s: any = brief.strength;
-  return (
-    s?.strongCoins ??
-    s?.strongerThanMarket ??
-    s?.leaders ??
-    s?.outperformers ??
-    []
-  );
+  return s?.strongerThanMarket ?? s?.strongCoins ?? s?.leaders ?? [];
 }
 
 function getWeakCoins(brief: MarketBrief): StrengthCoin[] {
   const s: any = brief.strength;
-  return (
-    s?.weakCoins ??
-    s?.weakerThanMarket ??
-    s?.laggards ??
-    s?.underperformers ??
-    []
-  );
+  return s?.weakerThanMarket ?? s?.weakCoins ?? s?.laggards ?? [];
 }
 
 function getTopGainers(brief: MarketBrief): StrengthCoin[] {
   const s: any = brief.strength;
-  return s?.gainers ?? s?.topGainers ?? [];
+  return s?.topGainers ?? s?.gainers ?? [];
 }
 
 function getTopLosers(brief: MarketBrief): StrengthCoin[] {
   const s: any = brief.strength;
-  return s?.losers ?? s?.topLosers ?? [];
+  return s?.topLosers ?? s?.losers ?? [];
 }
 
 function getStrongSectors(brief: MarketBrief): SectorStrength[] {
   const s: any = brief.strength;
-  return (
-    s?.strongSectors ??
-    s?.sectorLeaders ??
-    s?.bestSectors ??
-    []
-  );
+  return s?.strongSectors ?? s?.sectorLeaders ?? [];
 }
 
 function getWeakSectors(brief: MarketBrief): SectorStrength[] {
   const s: any = brief.strength;
-  return (
-    s?.weakSectors ??
-    s?.sectorLaggards ??
-    s?.worstSectors ??
-    []
-  );
+  return s?.weakSectors ?? s?.sectorLaggards ?? [];
 }
 
 export function buildPrompt(brief: MarketBrief): string {
   return `
-Мне нужны только АКТУАЛЬНЫЕ и ПОЛЕЗНЫЕ данные для подготовки Telegram-поста.
+Ты крипто-аналитик для Telegram-канала.
+Сделай готовый короткий Telegram-пост на русском языке.
+Стиль: уверенно, ясно, без воды, без эмодзи-спама, без выдуманных фактов.
+Если каких-то данных нет, просто пропусти их или кратко укажи N/A.
+Не пиши вступление вроде "Вот пост".
+Не пиши внутренние рассуждения.
+Сразу верни готовый текст поста.
 
-Верни строго следующие данные:
+Используй эти данные:
 
-=== РЫНОК ===
+=== MARKET ===
 - btcPrice=${formatUsd(brief.market.btc.price)}
 - btcChange1h=${formatPct(brief.market.btc.change1h)}
 - btcChange24h=${formatPct(brief.market.btc.change24h)}
@@ -218,10 +187,8 @@ export function buildPrompt(brief: MarketBrief): string {
 
 - altChange24h=${formatPct(getAltChange24h(brief))}
 - altChange7d=${formatPct(getAltChange7d(brief))}
-
 - btcDominance=${formatPct(brief.market.btcDominance)}
 - ethDominance=${formatPct(brief.market.ethDominance)}
-
 - totalMarketCap=${formatTrillions(brief.market.totalMarketCap)}
 - totalVolume24h=${formatBillions(brief.market.totalVolume24h)}
 
@@ -231,7 +198,7 @@ export function buildPrompt(brief: MarketBrief): string {
 - etfSummary=${fmt(brief.etf.summary)}
 - tradingDate=${fmt(brief.etf.tradingDate)}
 
-=== РЫНОЧНАЯ СИЛА ===
+=== MARKET STRENGTH ===
 - strongerThanMarket=${mapCoins(getStrongCoins(brief))}
 - weakerThanMarket=${mapCoins(getWeakCoins(brief))}
 - topGainers=${mapCoins(getTopGainers(brief))}
@@ -239,10 +206,10 @@ export function buildPrompt(brief: MarketBrief): string {
 - strongSectors=${mapSectors(getStrongSectors(brief))}
 - weakSectors=${mapSectors(getWeakSectors(brief))}
 
-=== НОВОСТИ ===
+=== NEWS ===
 ${mapNews(brief.news)}
 
-=== СОБЫТИЯ ===
+=== EVENTS ===
 - today:
 ${mapEvents(getTodayEvents(brief))}
 
@@ -252,18 +219,21 @@ ${mapEvents(getTomorrowEvents(brief))}
 - week:
 ${mapEvents(getWeekEvents(brief))}
 
-=== КРАТКИЙ MARKET READ ===
+=== MARKET READ ===
 - marketPhase=${fmt(brief.marketRead?.marketState)}
 - leader=${fmt(brief.marketRead?.movementLeader)}
 - etfSupport=${fmt(brief.marketRead?.supportedByEtfAndNews)}
 - risks=${fmt(brief.marketRead?.mainRisk)}
 - opportunities=${fmt(brief.marketRead?.mainOpportunity)}
 
-ВАЖНО:
-- Не выдумывай данные
-- Если данных нет — пиши N/A
-- Не пиши длинные объяснения
-- Не пиши внутренние рассуждения
-- Ответ должен быть удобен для дальнейшей передачи в другой ИИ
+Требования к итоговому посту:
+1. 5-10 коротких абзацев или блоков.
+2. Сначала дай общее состояние рынка.
+3. Потом BTC / ETH / доминацию / общий market cap.
+4. Потом кто сильнее рынка и какие сектора выглядят лучше/хуже.
+5. Если есть ETF / новости / события — добавь отдельными короткими блоками.
+6. В конце дай краткий вывод: риск и возможность.
+7. Не выдумывай отсутствующие данные.
+8. Пиши естественным русским языком для Telegram.
 `;
 }
