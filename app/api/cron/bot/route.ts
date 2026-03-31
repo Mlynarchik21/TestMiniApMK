@@ -57,17 +57,8 @@ export async function GET(req: Request) {
       }
     }
 
-    let manageResult: AnyJson = null;
     let engineResult: AnyJson = null;
-
-    try {
-      manageResult = await runManage();
-    } catch (e: any) {
-      manageResult = {
-        ok: false,
-        message: e?.message ?? String(e),
-      };
-    }
+    let manageResult: AnyJson = null;
 
     try {
       engineResult = await runEngineTick();
@@ -78,12 +69,21 @@ export async function GET(req: Request) {
       };
     }
 
+    try {
+      manageResult = await runManage();
+    } catch (e: any) {
+      manageResult = {
+        ok: false,
+        message: e?.message ?? String(e),
+      };
+    }
+
     return ok({
       message: "cron cycle completed",
       syncedBots: syncResults.length,
       syncResults,
-      manageResult,
       engineResult,
+      manageResult,
       ranAt: new Date().toISOString(),
     });
   } catch (e: any) {
