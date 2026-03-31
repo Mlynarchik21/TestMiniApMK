@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { buildBrief } from "../../../../ai-analytics/brief/build-brief";
-import { buildPrompt } from "../../../../ai-analytics/content/build-prompt";
-import { generatePost } from "../../../../ai-analytics/content/generate-post";
+import { buildBrief } from "../../../../src/ai-analytics/brief/build-brief";
+import { buildPrompt } from "../../../../src/ai-analytics/content/build-prompt";
+import { generatePost } from "../../../../src/ai-analytics/content/generate-post";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
