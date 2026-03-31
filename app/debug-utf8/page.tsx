@@ -1,18 +1,21 @@
-async function getData() {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL || ""}/api/ai-analytics/debug-utf8`,
-    { cache: "no-store" }
-  );
-
-  return res.json();
-}
-
-export default async function DebugUtf8Page() {
-  const data = await getData();
-
+export default function DebugUtf8Page() {
   return (
-    <main style={{ padding: 24, color: "white", background: "black", minHeight: "100vh" }}>
-      <pre>{JSON.stringify(data, null, 2)}</pre>
+    <main
+      style={{
+        padding: "24px",
+        background: "#000",
+        color: "#fff",
+        minHeight: "100vh",
+        fontFamily: "monospace",
+        lineHeight: 1.8,
+      }}
+    >
+      <h1>UTF8 TEST</h1>
+      <p>Смешанный рынок / переходная фаза</p>
+      <p>Ротация в ETH и альткоины</p>
+      <p>Поддержка слабая / нейтральная</p>
+      <p>Широкая рыночная слабость под поверхностью</p>
+      <p>Точечные сделки в сильных секторах</p>
     </main>
   );
 }
