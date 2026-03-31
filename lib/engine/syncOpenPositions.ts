@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto/secretBox";
 import { getExchangeAdapter } from "@/lib/exchanges";
-import type { ExchangeName } from "@/lib/exchanges/types";
+import type { ExchangeAdapter, ExchangeName } from "@/lib/exchanges/types";
+import { notifyTradeClosed } from "@/lib/notifications/telegram";
 
 type AnyJson = any;
 
@@ -318,6 +319,283 @@ async function updateBotOrderStatus(orderId: string, status: string, meta?: AnyJ
   `);
 }
 
+function countFilledGridOrders(orders: RawBotOrder[]) {
+  return orders.filter((o) => o.kind === "GRID" && isFilledStatus(o.status)).length;
+}
+
+async function syncPositionAddsCount(positionId: string) {
+  const freshOrders = await getPositionOrders(positionId);
+  const filledGridCount = countFilledGridOrders(freshOrders);
+
+  const updated = await prisma.botPosition.update({
+    where: { id: positionId },
+    data: {
+      addsCount: filledGridCount,
+    },
+    select: {
+      id: true,
+      addsCount: true,
+    },
+  });
+
+  return {
+    addsCount: updated.addsCount ?? 0,
+    filledGridCount,
+  };
+}
+
+async function createBotTrade(args: {
+  userId: string;
+  botPositionId: string;
+  exchange: ExchangeName;
+  symbol: string;
+  entryValue: number;
+  exitValue: number;
+  qty: number;
+  avgEntryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  addsCount: number;
+  openedAt: Date;
+  closedAt: Date;
+}) {
+  await prisma.botTrade.create({
+    data: {
+      user: { connect: { id: args.userId } },
+      botPosition: { connect: { id: args.botPositionId } },
+      exchange: args.exchange,
+      symbol: args.symbol,
+      entryValue: new Prisma.Decimal(args.entryValue.toFixed(18)),
+      exitValue: new Prisma.Decimal(args.exitValue.toFixed(18)),
+      qty: new Prisma.Decimal(args.qty.toFixed(18)),
+      avgEntryPrice: new Prisma.Decimal(args.avgEntryPrice.toFixed(18)),
+      exitPrice: new Prisma.Decimal(args.exitPrice.toFixed(18)),
+      pnl: new Prisma.Decimal(args.pnl.toFixed(18)),
+      pnlPercent: new Prisma.Decimal(args.pnlPercent.toFixed(18)),
+      addsCount: args.addsCount,
+      openedAt: args.openedAt,
+      closedAt: args.closedAt,
+    },
+  });
+}
+
+async function insertCooldown(userId: string, exchange: ExchangeName, symbol: string) {
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "CooldownSymbol" (
+      "id",
+      "userId",
+      "exchange",
+      "symbol",
+      "reason",
+      "cooldownUntil",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      gen_random_uuid()::text,
+      ${userId},
+      ${exchange}::"Exchange",
+      ${symbol},
+      'TP_CLOSED',
+      CURRENT_TIMESTAMP + interval '12 hours',
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT ("userId", "exchange", "symbol")
+    DO UPDATE SET
+      "reason" = 'TP_CLOSED',
+      "cooldownUntil" = CURRENT_TIMESTAMP + interval '12 hours',
+      "updatedAt" = CURRENT_TIMESTAMP
+  `);
+}
+
+async function cancelTrackedOrdersForPosition(args: {
+  exchange: ExchangeAdapter;
+  apiKey: string;
+  apiSecret: string;
+  positionId: string;
+  symbol: string;
+  excludeOrderId?: string;
+}) {
+  const orders = await getPositionOrders(args.positionId);
+  const canceled: AnyJson[] = [];
+
+  for (const ord of orders) {
+    if (args.excludeOrderId && ord.id === args.excludeOrderId) continue;
+    if (upper(ord.symbol) !== upper(args.symbol)) continue;
+
+    if (isTerminalStatus(ord.status)) continue;
+    if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
+
+    try {
+      const cancelRes = await args.exchange.cancelOrder({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol: args.symbol,
+        exchangeOrderId: ord.exchangeOrderId ?? undefined,
+        clientOrderId: ord.clientOrderId ?? undefined,
+      });
+
+      await updateBotOrderStatus(ord.id, "CANCELED", {
+        ...(ord.meta ?? {}),
+        cancelRes,
+      });
+
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        status: "CANCELED",
+      });
+    } catch (e: any) {
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        status: "CANCEL_ERROR",
+        message: String(e?.message || e),
+      });
+    }
+  }
+
+  return canceled;
+}
+
+async function closePositionAsTpFilled(args: {
+  userId: string;
+  exchangeName: ExchangeName;
+  apiKey: string;
+  apiSecret: string;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+  };
+  tpOrder: {
+    row: RawBotOrder;
+    live: AnyJson;
+  };
+}) {
+  const exchange = getExchangeAdapter(args.exchangeName);
+
+  const live = args.tpOrder.live ?? {};
+  const closeTime = new Date();
+
+  const finalQty = toNum(live.executedQty || args.position.qty);
+  const finalExitValue =
+    toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
+  const exitPrice =
+    finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
+
+  const entryValue = toNum(args.position.investedQuote);
+  const avgEntryPrice = toNum(args.position.avgPrice);
+  const pnl = finalExitValue - entryValue;
+  const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+  const canceledOrders = await cancelTrackedOrdersForPosition({
+    exchange,
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    positionId: args.position.id,
+    symbol: args.position.symbol,
+    excludeOrderId: args.tpOrder.row.id,
+  });
+
+  const syncedAdds = await syncPositionAddsCount(args.position.id);
+
+  await createBotTrade({
+    userId: args.userId,
+    botPositionId: args.position.id,
+    exchange: args.exchangeName,
+    symbol: args.position.symbol,
+    entryValue,
+    exitValue: finalExitValue,
+    qty: finalQty,
+    avgEntryPrice,
+    exitPrice,
+    pnl,
+    pnlPercent,
+    addsCount: syncedAdds.addsCount,
+    openedAt: args.position.openedAt,
+    closedAt: closeTime,
+  });
+
+  await prisma.botPosition.update({
+    where: { id: args.position.id },
+    data: {
+      status: "CLOSED",
+      closedAt: closeTime,
+      addsCount: syncedAdds.addsCount,
+    },
+  });
+
+  await insertCooldown(args.userId, args.exchangeName, args.position.symbol);
+
+  try {
+    await notifyTradeClosed({
+      userId: args.userId,
+      symbol: args.position.symbol,
+      positionId: args.position.id,
+      avgEntryPrice,
+      exitPrice,
+      qty: finalQty,
+      entryValue,
+      exitValue: finalExitValue,
+      pnl,
+    });
+  } catch {}
+
+  return {
+    positionId: args.position.id,
+    symbol: args.position.symbol,
+    action: "CLOSED_BY_FILLED_TP",
+    trade: {
+      entryValue,
+      exitValue: finalExitValue,
+      qty: finalQty,
+      avgEntryPrice,
+      exitPrice,
+      pnl,
+      pnlPercent,
+      addsCount: syncedAdds.addsCount,
+    },
+    canceledOrders,
+  };
+}
+
+async function closePositionWithoutExchangeSnapshot(args: {
+  positionId: string;
+  symbol: string;
+}) {
+  const orders = await getPositionOrders(args.positionId);
+
+  for (const ord of orders) {
+    if (isTerminalStatus(ord.status)) continue;
+    await updateBotOrderStatus(ord.id, "CANCELED", {
+      ...(ord.meta ?? {}),
+      syncCloseReason: "NOT_FOUND_ON_EXCHANGE",
+    });
+  }
+
+  await prisma.botPosition.update({
+    where: { id: args.positionId },
+    data: {
+      status: "CLOSED",
+      closedAt: new Date(),
+    },
+  });
+
+  return {
+    positionId: args.positionId,
+    symbol: args.symbol,
+    action: "CLOSED_NOT_FOUND_ON_EXCHANGE",
+  };
+}
+
 function reconstructPositionsFromExchange(args: {
   balances: BybitAssetBalance[];
   filledOrders: AnyJson[];
@@ -426,13 +704,23 @@ async function ensureExistingPositionMatchesExchange(args: {
   exchangeName: ExchangeName;
   apiKey: string;
   apiSecret: string;
-  positionId: string;
-  symbol: string;
-  exchangeSnapshot: ReconstructedPosition;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+    status: string;
+  };
+  exchangeSnapshot: ReconstructedPosition | null;
 }) {
   const exchange = getExchangeAdapter(args.exchangeName);
-  const filters = await exchange.getSymbolFilters(args.symbol);
-  const orders = await getPositionOrders(args.positionId);
+  const symbol = upper(args.position.symbol);
+  const filters = await exchange.getSymbolFilters(symbol);
+  const orders = await getPositionOrders(args.position.id);
 
   const liveOrders: Array<{
     row: RawBotOrder;
@@ -454,7 +742,7 @@ async function ensureExistingPositionMatchesExchange(args: {
       const live = await exchange.getOrderStatus({
         apiKey: args.apiKey,
         apiSecret: args.apiSecret,
-        symbol: args.symbol,
+        symbol,
         exchangeOrderId: ord.exchangeOrderId ?? undefined,
         clientOrderId: ord.clientOrderId ?? undefined,
       });
@@ -486,24 +774,26 @@ async function ensureExistingPositionMatchesExchange(args: {
   );
 
   if (filledTpOrders.length > 0) {
-    await prisma.botPosition.update({
-      where: { id: args.positionId },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-      },
+    return closePositionAsTpFilled({
+      userId: args.userId,
+      exchangeName: args.exchangeName,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      position: args.position,
+      tpOrder: filledTpOrders[0],
     });
+  }
 
-    return {
-      positionId: args.positionId,
-      symbol: args.symbol,
-      action: "CLOSED_BY_FILLED_TP",
-    };
+  if (!args.exchangeSnapshot) {
+    return closePositionWithoutExchangeSnapshot({
+      positionId: args.position.id,
+      symbol,
+    });
   }
 
   if (!isValidPositionSnapshot(args.exchangeSnapshot)) {
     await prisma.botPosition.update({
-      where: { id: args.positionId },
+      where: { id: args.position.id },
       data: {
         status: "CLOSED",
         closedAt: new Date(),
@@ -511,8 +801,8 @@ async function ensureExistingPositionMatchesExchange(args: {
     });
 
     return {
-      positionId: args.positionId,
-      symbol: args.symbol,
+      positionId: args.position.id,
+      symbol,
       action: "CLOSED_AS_DUST_OR_INVALID",
     };
   }
@@ -533,7 +823,7 @@ async function ensureExistingPositionMatchesExchange(args: {
     args.exchangeSnapshot.investedQuote < MIN_POSITION_NOTIONAL
   ) {
     await prisma.botPosition.update({
-      where: { id: args.positionId },
+      where: { id: args.position.id },
       data: {
         status: "CLOSED",
         closedAt: new Date(),
@@ -541,14 +831,14 @@ async function ensureExistingPositionMatchesExchange(args: {
     });
 
     return {
-      positionId: args.positionId,
-      symbol: args.symbol,
+      positionId: args.position.id,
+      symbol,
       action: "CLOSED_AFTER_STEP_ROUNDING_AS_DUST",
     };
   }
 
   const updated = await prisma.botPosition.update({
-    where: { id: args.positionId },
+    where: { id: args.position.id },
     data: {
       status: "OPEN",
       closedAt: null,
@@ -740,37 +1030,22 @@ export async function syncOpenPositionsForUser(userId: string) {
 
   for (const position of dbPositions) {
     const symbol = upper(position.symbol);
-    const snapshot = exchangeMap.get(symbol);
-
-    if (!snapshot) {
-      await prisma.botPosition.update({
-        where: { id: position.id },
-        data: {
-          status: "CLOSED",
-          closedAt: new Date(),
-        },
-      });
-
-      synced.push({
-        positionId: position.id,
-        symbol,
-        action: "CLOSED_NOT_FOUND_ON_EXCHANGE",
-      });
-      continue;
-    }
+    const snapshot = exchangeMap.get(symbol) ?? null;
 
     const result = await ensureExistingPositionMatchesExchange({
       userId,
       exchangeName,
       apiKey: key.apiKey,
       apiSecret,
-      positionId: position.id,
-      symbol,
+      position,
       exchangeSnapshot: snapshot,
     });
 
     synced.push(result);
-    seenSymbols.add(symbol);
+
+    if (snapshot) {
+      seenSymbols.add(symbol);
+    }
   }
 
   for (const snapshot of exchangePositions) {
