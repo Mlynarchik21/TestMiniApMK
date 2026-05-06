@@ -58,7 +58,7 @@ const STABLE_ASSETS = new Set([
 
 const BYBIT_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
-const MIN_POSITION_NOTIONAL = 5;
+const MIN_POSITION_NOTIONAL = 1; // позиция считается пылью если стоимость < $1
 const EPS = 1e-12;
 
 function toNum(v: unknown) {
@@ -492,14 +492,25 @@ async function closePositionAsTpFilled(args: {
   const live = args.tpOrder.live ?? {};
   const closeTime = new Date();
 
+  // Защита от дублирования
+  const existingTrade = await prisma.botTrade.findFirst({
+    where: { botPositionId: args.position.id },
+    select: { id: true },
+  });
+  if (existingTrade) {
+    return { positionId: args.position.id, symbol: args.position.symbol, action: "ALREADY_CLOSED_TRADE_EXISTS" };
+  }
+
   const finalQty = toNum(live.executedQty || args.position.qty);
-  const finalExitValue =
-    toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
+  const avgEntryPrice = toNum(args.position.avgPrice);
+  const safeExitFallback = toNum(args.position.tpPrice) > 0
+    ? finalQty * toNum(args.position.tpPrice)
+    : finalQty * avgEntryPrice * 1.05;
+  const finalExitValue = toNum(live.cumQuote) > 0 ? toNum(live.cumQuote) : safeExitFallback;
   const exitPrice =
     finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
 
   const entryValue = toNum(args.position.investedQuote);
-  const avgEntryPrice = toNum(args.position.avgPrice);
   const pnl = finalExitValue - entryValue;
   const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
 
@@ -668,11 +679,31 @@ async function finalizeClosedPosition(args: {
     (x) => x.row.kind === "TP" && x.liveStatus === "FILLED"
   );
 
-  const exitPrice = tpOrder?.row?.price ? toNum(tpOrder.row.price) : toNum(args.position.tpPrice || args.position.avgPrice);
+  // Берём цену выхода: реальная цена TP → tpPrice из позиции → avgPrice+5%
+  const tpOrderPrice = toNum(tpOrder?.row?.price ?? 0);
+  const exitPrice =
+    tpOrderPrice > 0
+      ? tpOrderPrice
+      : toNum(args.position.tpPrice) > 0
+        ? toNum(args.position.tpPrice)
+        : avgEntryPrice * 1.05;
   const exitValue = finalQty > 0 ? finalQty * exitPrice : entryValue;
   const pnl = exitValue - entryValue;
   const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
   const closeTime = new Date();
+
+  // Защита от дублирования: не создаём BotTrade если уже есть для этой позиции
+  const existingTrade = await prisma.botTrade.findFirst({
+    where: { botPositionId: args.position.id },
+    select: { id: true },
+  });
+  if (existingTrade) {
+    await prisma.botPosition.update({
+      where: { id: args.position.id },
+      data: { status: "CLOSED", closedAt: closeTime, addsCount: syncedAdds.addsCount },
+    });
+    return { positionId: args.position.id, symbol, action: "ALREADY_CLOSED_TRADE_EXISTS" };
+  }
 
   await createBotTrade({
     userId: args.userId,

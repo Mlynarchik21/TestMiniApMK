@@ -451,6 +451,29 @@ async function manageOnePosition(args: {
   const exchange = getExchangeAdapter(args.exchange);
   const symbol = args.position.symbol;
   const filters = await exchange.getSymbolFilters(symbol);
+
+  // Dust check: если стоимость позиции < $1 — считаем пылью и закрываем
+  const posNotional = toNum(args.position.qty) * toNum(args.position.avgPrice);
+  if (posNotional < 1) {
+    await cancelAllRemainingOrdersForPosition({
+      exchange,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      positionId: args.position.id,
+      symbol,
+    });
+    await prisma.botPosition.update({
+      where: { id: args.position.id },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    return {
+      positionId: args.position.id,
+      symbol,
+      action: "CLOSED_DUST",
+      notional: posNotional,
+    };
+  }
+
   const orders = await getPositionOrders(args.position.id);
 
   const tpOrders = orders.filter(
@@ -506,7 +529,14 @@ async function manageOnePosition(args: {
 
       const syncedAdds = await syncPositionAddsCount(args.position.id);
 
-      await createBotTrade({
+      // Защита от дублирования (если sync уже создал запись)
+      const existingTrade = await prisma.botTrade.findFirst({
+        where: { botPositionId: args.position.id },
+        select: { id: true },
+      });
+
+      if (!existingTrade) {
+        await createBotTrade({
         userId: args.userId,
         botPositionId: args.position.id,
         exchange: args.exchange,
@@ -521,7 +551,8 @@ async function manageOnePosition(args: {
         addsCount: syncedAdds.addsCount,
         openedAt: args.position.openedAt,
         closedAt: closeTime,
-      });
+        });
+      }
 
       await prisma.botPosition.update({
         where: { id: args.position.id },

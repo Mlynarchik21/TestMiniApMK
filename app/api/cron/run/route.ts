@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { runEngineTick } from "@/lib/engine/runEngineTick";
 import { runManage } from "@/lib/engine/runManage";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // Vercel Pro: до 60 сек на CRON
 
 async function sendTelegramHeartbeat(text: string) {
   try {
@@ -62,21 +64,21 @@ async function sendTelegramHeartbeat(text: string) {
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const secret = url.searchParams.get("secret");
   const test = url.searchParams.get("test") === "1";
 
-  if (!process.env.CRON_SECRET) {
-    return NextResponse.json(
-      { ok: false, error: "CRON_SECRET_NOT_SET" },
-      { status: 500 }
-    );
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) {
+    return NextResponse.json({ ok: false, error: "CRON_SECRET_NOT_SET" }, { status: 500 });
   }
 
-  if (secret !== process.env.CRON_SECRET) {
-    return NextResponse.json(
-      { ok: false, error: "UNAUTHORIZED" },
-      { status: 401 }
-    );
+  const authHeader = req.headers.get("authorization") || "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const secretsMatch =
+    bearer.length === cronSecret.length &&
+    crypto.timingSafeEqual(Buffer.from(bearer), Buffer.from(cronSecret));
+
+  if (!secretsMatch) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const startedAt = new Date().toISOString();

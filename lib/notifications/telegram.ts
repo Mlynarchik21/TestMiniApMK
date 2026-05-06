@@ -96,17 +96,16 @@ async function sendTelegramMessageByUserId(userId: string, text: string) {
       return false;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        chat_id: String(user.tgId),
-        text,
-      }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: String(user.tgId), text }),
       cache: "no-store",
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
 
     const rawText = await r.text();
 

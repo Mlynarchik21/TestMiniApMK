@@ -6,6 +6,7 @@ import { runEngineTick } from "@/lib/engine/runEngineTick";
 import { syncOpenPositionsForUser } from "@/lib/engine/syncOpenPositions";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type AnyJson = any;
 

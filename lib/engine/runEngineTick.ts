@@ -389,8 +389,7 @@ async function openPositionForSymbol(args: {
   apiKey: string;
   apiSecret: string;
   symbol: string;
-  budgetPerSymbol: Prisma.Decimal;
-  totalStable: number;
+  totalCapital: number;
   freeStable: number;
 }) {
   const exchange = getExchangeAdapter(args.exchange);
@@ -423,12 +422,8 @@ async function openPositionForSymbol(args: {
 
   const filters = await exchange.getSymbolFilters(args.symbol);
 
-  let firstOrderUsdt = toNum(args.budgetPerSymbol);
-  if (firstOrderUsdt <= 0) {
-    firstOrderUsdt = roundQuoteQty(args.totalStable * 0.015);
-  }
-
-  firstOrderUsdt = roundQuoteQty(firstOrderUsdt);
+  // 1.5% от полного капитала (USDT + стоимость открытых позиций)
+  let firstOrderUsdt = roundQuoteQty(args.totalCapital * 0.015);
 
   if (firstOrderUsdt < 5) {
     return {
@@ -978,14 +973,24 @@ export async function runEngineTick() {
           continue;
         }
 
+        // Полный капитал = свободный USDT + заблокированный USDT + investedQuote открытых позиций
+        const openPositions = await prisma.botPosition.findMany({
+          where: { userId: ctx.userId, status: "OPEN" },
+          select: { investedQuote: true },
+        });
+        const totalInvested = openPositions.reduce(
+          (sum, p) => sum + toNum(p.investedQuote),
+          0
+        );
+        const totalCapital = stable.totalStable + totalInvested;
+
         const tryOpen = await openPositionForSymbol({
           userId: ctx.userId,
           exchange: ctx.exchange,
           apiKey: ctx.apiKey,
           apiSecret: ctx.apiSecret,
           symbol: candidate.symbol,
-          budgetPerSymbol: ctx.budgetPerSymbol,
-          totalStable: stable.totalStable,
+          totalCapital,
           freeStable: stable.freeStable,
         });
 
