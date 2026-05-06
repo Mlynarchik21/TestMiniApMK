@@ -100,26 +100,28 @@ function formatDate(value: unknown) {
   if (!value) return "—";
   const d = safeDate(value);
   if (!d) return String(value);
-  return d.toLocaleDateString("ru-RU", {
+  return d.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 function formatUsd(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0";
-  return `$${n.toLocaleString("ru-RU", {
+  return `$${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function formatPct(v: unknown) {
+function formatPct(v: unknown, signed = false) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0%";
-  return `${n.toLocaleString("ru-RU", {
+  const sign = signed && n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   })}%`;
@@ -128,7 +130,7 @@ function formatPct(v: unknown) {
 function compactNumber(value: unknown, digits = 3) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("ru-RU", {
+  return n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });
@@ -314,19 +316,17 @@ export default function BotAccountHistoryPage() {
   const profitableCount = Number(stats?.profitableTrades ?? 0);
   const losingCount = Number(stats?.losingTrades ?? 0);
   const closedCount = Number(stats?.closedTrades ?? 0);
-  const manualClosed = useMemo(() => {
-    return sortedTrades.filter((t) => String(t?.closeReason || "").toUpperCase() === "MANUAL")
-      .length;
+  const withAveragingCount = useMemo(() => {
+    return sortedTrades.filter((t) => Number(t?.addsCount ?? 0) > 0).length;
   }, [sortedTrades]);
 
-  const tpClosed = useMemo(() => {
-    return sortedTrades.filter((t) => String(t?.closeReason || "").toUpperCase() === "TP")
-      .length;
+  const noAveragingCount = useMemo(() => {
+    return sortedTrades.filter((t) => Number(t?.addsCount ?? 0) === 0).length;
   }, [sortedTrades]);
 
   const totalProfit = Number(stats?.totalPnl ?? 0);
   const winLoseTotal = profitableCount + losingCount;
-  const closeReasonTotal = manualClosed + tpClosed;
+  const averagingTotal = withAveragingCount + noAveragingCount;
 
   return (
     <>
@@ -492,32 +492,32 @@ export default function BotAccountHistoryPage() {
 
               <div style={styles.statLineBlock}>
                 <div style={styles.statLineHeader}>
-                  <div style={styles.statLineTitle}>Вручную / По таргету</div>
+                  <div style={styles.statLineTitle}>Без усреднения / С усреднением</div>
                 </div>
 
                 <div style={styles.splitBar}>
                   <div
                     style={{
-                      ...styles.splitBarYellow,
-                      width: ratioWidth(manualClosed, closeReasonTotal || 1),
+                      ...styles.splitBarGreen,
+                      width: ratioWidth(noAveragingCount, averagingTotal || 1),
                     }}
                   />
                   <div
                     style={{
-                      ...styles.splitBarBlue,
-                      width: ratioWidth(tpClosed, closeReasonTotal || 1),
+                      ...styles.splitBarYellow,
+                      width: ratioWidth(withAveragingCount, averagingTotal || 1),
                     }}
                   />
                 </div>
 
                 <div style={styles.splitMeta}>
-                  <span style={{ color: UI.yellow }}>
-                    {formatPct(closeReasonTotal ? (manualClosed / closeReasonTotal) * 100 : 0)} ·{" "}
-                    {manualClosed} вручную
+                  <span style={{ color: UI.green }}>
+                    {formatPct(averagingTotal ? (noAveragingCount / averagingTotal) * 100 : 0)} ·{" "}
+                    {noAveragingCount} без усреднения
                   </span>
-                  <span style={{ color: UI.blue }}>
-                    {formatPct(closeReasonTotal ? (tpClosed / closeReasonTotal) * 100 : 0)} ·{" "}
-                    {tpClosed} по таргету
+                  <span style={{ color: UI.yellow }}>
+                    {formatPct(averagingTotal ? (withAveragingCount / averagingTotal) * 100 : 0)} ·{" "}
+                    {withAveragingCount} с усреднением
                   </span>
                 </div>
               </div>
@@ -544,7 +544,7 @@ export default function BotAccountHistoryPage() {
                         <div style={styles.tradeHeadLeft}>
                           <div style={styles.tradeAsset}>{assetName}</div>
                           <div style={styles.tradeOrder}>
-                            #{String(t.orderId ?? t.id).slice(0, 12)}
+                            #{String(t.botPositionId ?? t.id).slice(-10)}
                           </div>
                         </div>
 
@@ -563,7 +563,7 @@ export default function BotAccountHistoryPage() {
                               color: pnl >= 0 ? UI.green : UI.red,
                             }}
                           >
-                            {formatPct(t?.pnlPercent ?? 0)}
+                            {formatPct(t?.pnlPercent ?? 0, true)}
                           </div>
                         </div>
                       </button>
@@ -573,13 +573,8 @@ export default function BotAccountHistoryPage() {
                         <span style={styles.dot}>•</span>
                         <span>{formatDate(t?.closedAt)}</span>
                         <span style={styles.dot}>•</span>
-                        <span
-                          style={{
-                            color: reasonColor(t?.closeReason),
-                            fontWeight: 700,
-                          }}
-                        >
-                          {closeReasonLabel(t?.closeReason)}
+                        <span style={{ color: UI.textSoft, fontWeight: 700 }}>
+                          {String(t?.exchange ?? "—")}
                         </span>
                       </div>
 
@@ -629,14 +624,9 @@ export default function BotAccountHistoryPage() {
                           </div>
 
                           <div style={styles.reasonRow}>
-                            <span style={styles.reasonLabel}>Причина закрытия</span>
-                            <span
-                              style={{
-                                ...styles.reasonValue,
-                                color: reasonColor(t?.closeReason),
-                              }}
-                            >
-                              {closeReasonLabel(t?.closeReason)}
+                            <span style={styles.reasonLabel}>Биржа</span>
+                            <span style={{ ...styles.reasonValue, color: UI.textSoft }}>
+                              {String(t?.exchange ?? "—")}
                             </span>
                           </div>
                         </div>

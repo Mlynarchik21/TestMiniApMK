@@ -107,16 +107,17 @@ function reveal(index: number, mounted: boolean): CSSProperties {
 function formatUsd(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0";
-  return `$${n.toLocaleString("ru-RU", {
+  return `$${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function formatPct(v: unknown) {
+function formatPct(v: unknown, signed = false) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0%";
-  return `${n.toLocaleString("ru-RU", {
+  const sign = signed && n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}%`;
@@ -141,10 +142,11 @@ function formatDate(value: unknown) {
   if (!value) return "—";
   const d = safeDate(value);
   if (!d) return String(value);
-  return d.toLocaleDateString("ru-RU", {
+  return d.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -215,7 +217,7 @@ function ringStyle(percent: number, color: string): CSSProperties {
 function compactNumber(value: unknown, digits = 3) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("ru-RU", {
+  return n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });
@@ -995,7 +997,7 @@ export default function BotPage() {
                 <div style={styles.statsUnifiedMini}>
                   <span style={styles.statsUnifiedLabel}>profit factor</span>
                   <span style={{ ...styles.statsUnifiedValue, color: UI.blue }}>
-                    {Number(stats?.profitFactor ?? 0).toLocaleString("ru-RU", {
+                    {Number(stats?.profitFactor ?? 0).toLocaleString("en-US", {
                       maximumFractionDigits: 2,
                     })}
                   </span>
@@ -1219,7 +1221,7 @@ export default function BotPage() {
 
                       <div style={styles.tradeDenseMetaLine}>
                         <span style={styles.tradeDenseOrder}>
-                          #{String(p.orderId ?? p.id).slice(0, 10)}
+                          #{String(p.id).slice(-10)}
                         </span>
                         <span style={styles.tradeDenseDate}>
                           {formatDate(p.openedAt)}

@@ -99,17 +99,18 @@ function formatDate(value: unknown) {
   if (!value) return "—";
   const d = safeDate(value);
   if (!d) return String(value);
-  return d.toLocaleDateString("ru-RU", {
+  return d.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 function formatUsd(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$0";
-  return `$${n.toLocaleString("ru-RU", {
+  return `$${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
@@ -118,7 +119,7 @@ function formatUsd(v: unknown) {
 function compactNumber(value: unknown, digits = 3) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("ru-RU", {
+  return n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });
@@ -139,7 +140,7 @@ function ratioWidth(part: number, total: number) {
 function formatPct(v: unknown) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0%";
-  return `${n.toLocaleString("ru-RU", {
+  return `${n.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   })}%`;
@@ -460,7 +461,7 @@ export default function BotOpenPositionsPage() {
                         <div style={styles.tradeHeadLeft}>
                           <div style={styles.tradeAsset}>{assetName}</div>
                           <div style={styles.tradeOrder}>
-                            #{String(p.orderId ?? p.id).slice(0, 12)}
+                            #{String(p.id).slice(-10)}
                           </div>
                         </div>
 

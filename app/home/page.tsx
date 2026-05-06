@@ -90,12 +90,20 @@ function reveal(index: number, mounted: boolean): CSSProperties {
       };
 }
 
+function fearFillColor(value: number) {
+  if (value <= 25) return "#ff6a6a";
+  if (value <= 45) return "#ffb258";
+  if (value <= 55) return "#f3d709";
+  if (value <= 75) return "#a8e063";
+  return "#64d97b";
+}
+
 function fearFill(percent: number): CSSProperties {
   return {
     width: `${Math.max(0, Math.min(100, percent))}%`,
     height: "100%",
     borderRadius: 999,
-    background: "#ff6a6a",
+    background: fearFillColor(percent),
   };
 }
 
@@ -730,8 +738,11 @@ export default function HomePage() {
               </div>
 
               <div style={styles.bodyTextTight}>
-                Движение подтверждается в большей степени спотовым спросом, а
-                не перегретым деривативным потоком.
+                {spotShare != null && perpShare != null
+                  ? spotShare >= perpShare
+                    ? "Доминирует спотовый спрос — признак более устойчивого движения."
+                    : "Доминирует деривативный поток — возможен повышенный риск."
+                  : "Нет данных по активности."}
               </div>
             </div>
 
@@ -766,7 +777,11 @@ export default function HomePage() {
 
               <div style={styles.bodyTextTight}>
                 {longShortRatio != null
-                  ? `Текущий BTC Long / Short Ratio: ${longShortRatio}`
+                  ? longPercent != null && longPercent > 55
+                    ? `Ratio: ${longShortRatio} — лонги преобладают, рынок бычий.`
+                    : longPercent != null && longPercent < 45
+                    ? `Ratio: ${longShortRatio} — шорты преобладают, рынок медвежий.`
+                    : `Ratio: ${longShortRatio} — рынок сбалансирован.`
                   : "Нет актуальных данных по Long / Short Ratio"}
               </div>
             </div>
