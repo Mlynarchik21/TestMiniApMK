@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { runManage } from "@/lib/engine/runManage";
 import { runEngineTick } from "@/lib/engine/runEngineTick";
@@ -21,10 +22,22 @@ function fail(status: number, error: string, message?: string, extra?: AnyJson) 
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const token = String(url.searchParams.get("token") || "").trim();
+    // SECURITY: Берём токен из Authorization header (не из URL)
+    const authHeader = req.headers.get("authorization") || "";
+    const expectedPrefix = "Bearer ";
 
-    if (!process.env.CRON_SECRET || token !== process.env.CRON_SECRET) {
+    if (!authHeader.startsWith(expectedPrefix)) {
+      return fail(401, "UNAUTHORIZED", "Missing Bearer token");
+    }
+
+    const cronSecret = process.env.CRON_SECRET?.trim();
+    if (!cronSecret) {
+      return fail(500, "SERVER_ERROR", "CRON_SECRET not configured");
+    }
+
+    const token = authHeader.slice(expectedPrefix.length).trim();
+    if (token.length < 16 || token.length !== cronSecret.length ||
+        !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(cronSecret))) {
       return fail(401, "UNAUTHORIZED", "Invalid cron token");
     }
 

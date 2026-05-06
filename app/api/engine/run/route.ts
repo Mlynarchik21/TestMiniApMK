@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { runEngineTick } from "@/lib/engine/runEngineTick";
 import { runManage } from "@/lib/engine/runManage";
 
@@ -7,8 +8,11 @@ export const runtime = "nodejs";
 function isAuthorized(req: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim();
 
-  // если секрет не задан — разрешаем
-  if (!cronSecret) return true;
+  // SECURITY: Требуем CRON_SECRET обязательно (не опционально)
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured - endpoint is protected");
+    return false;
+  }
 
   const authHeader = req.headers.get("authorization") || "";
 
@@ -16,7 +20,8 @@ function isAuthorized(req: Request) {
     ? authHeader.slice("Bearer ".length).trim()
     : "";
 
-  return bearer === cronSecret;
+  if (bearer.length < 16 || bearer.length !== cronSecret.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(bearer), Buffer.from(cronSecret));
 }
 
 async function runEngine() {

@@ -2,47 +2,11 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { verifyTelegramInitData } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 
-function verifyTelegramInitData(initData: string, botToken: string) {
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
-  if (!hash) return { ok: false as const, reason: "no_hash" };
-
-  params.delete("hash");
-
-  const arr: string[] = [];
-  params.forEach((v, k) => arr.push(`${k}=${v}`));
-  arr.sort();
-  const dataCheckString = arr.join("\n");
-
-  const secretKey = crypto
-    .createHmac("sha256", "WebAppData")
-    .update(botToken)
-    .digest();
-
-  const hmac = crypto
-    .createHmac("sha256", secretKey)
-    .update(dataCheckString)
-    .digest("hex");
-
-  if (hmac !== hash) return { ok: false as const, reason: "bad_hash" };
-
-  const userStr = params.get("user");
-  if (!userStr) return { ok: false as const, reason: "no_user" };
-
-  let user: any;
-  try {
-    user = JSON.parse(userStr);
-  } catch {
-    return { ok: false as const, reason: "bad_user_json" };
-  }
-
-  if (!user?.id) return { ok: false as const, reason: "no_user_id" };
-
-  return { ok: true as const, user };
-}
+// SECURITY: Используем правильную функцию из lib/telegram.ts вместо локальной реализации
 
 async function isSubscribed(botToken: string, channelId: string, userId: number) {
   const url = `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${encodeURIComponent(
@@ -97,21 +61,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "initData empty" }, { status: 400 });
     }
 
-    // 1) validate initData
-    const v = verifyTelegramInitData(initData, botToken);
-    if (!v.ok) {
+    // 1) validate initData using lib function
+    const verified = verifyTelegramInitData(initData, botToken);
+    if (!verified || !verified.user?.id) {
       return NextResponse.json(
-        { ok: false, error: `initData_${v.reason}` },
+        { ok: false, error: "invalid_init_data" },
         { status: 401 }
       );
     }
 
-    const tgIdNumber = Number(v.user.id);
+    const tgIdNumber = Number(verified.user.id);
     if (!Number.isFinite(tgIdNumber)) {
       return NextResponse.json({ ok: false, error: "bad_tg_id" }, { status: 400 });
     }
 
-    const tgId = BigInt(v.user.id);
+    const tgId = BigInt(verified.user.id);
 
     // 2) subscription check
     const sub = await isSubscribed(botToken, channelId, tgIdNumber);
@@ -132,9 +96,9 @@ export async function POST(req: Request) {
     }
 
     // 3) upsert user
-    const username = typeof v.user.username === "string" ? v.user.username : null;
-    const firstName = typeof v.user.first_name === "string" ? v.user.first_name : null;
-    const lastName = typeof v.user.last_name === "string" ? v.user.last_name : null;
+    const username = typeof verified.user.username === "string" ? verified.user.username : null;
+    const firstName = typeof verified.user.first_name === "string" ? verified.user.first_name : null;
+    const lastName = typeof verified.user.last_name === "string" ? verified.user.last_name : null;
 
     const user = await prisma.user.upsert({
       where: { tgId },

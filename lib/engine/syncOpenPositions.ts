@@ -1,1383 +1,1214 @@
-"use client";
+﻿import crypto from "crypto";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { decryptString } from "@/lib/crypto/secretBox";
+import { getExchangeAdapter } from "@/lib/exchanges";
+import type { ExchangeAdapter, ExchangeName } from "@/lib/exchanges/types";
+import { notifyTradeClosed } from "@/lib/notifications/telegram";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../../lib/supabase";
+type AnyJson = any;
 
-const ACTIVE_BOOKING_STATUSES = ["new", "confirmed"];
+type RawBotOrder = {
+  id: string;
+  userId: string;
+  botPositionId: string | null;
+  exchange: string;
+  symbol: string;
+  kind: "ENTRY" | "GRID" | "TP";
+  side: "BUY" | "SELL";
+  status: string;
+  price: string | null;
+  qty: string;
+  exchangeOrderId: string | null;
+  clientOrderId: string | null;
+  meta: AnyJson;
+};
 
-export default function TripDetailsPage({ params }) {
-  const { id } = params;
+type BybitAssetBalance = {
+  coin: string;
+  qty: number;
+};
 
-  const [loading, setLoading] = useState(true);
-  const [trip, setTrip] = useState(null);
-  const [userData, setUserData] = useState(null);
+type ReconstructedPosition = {
+  symbol: string;
+  baseCoin: string;
+  qty: number;
+  avgPrice: number;
+  investedQuote: number;
+  addsCount: number;
+};
 
-  const [passengersCount, setPassengersCount] = useState("1");
-  const [bookingForOther, setBookingForOther] = useState(false);
+type FillLot = {
+  qty: number;
+  price: number;
+  time: number;
+};
 
-  const [contactName, setContactName] = useState("");
-  const [primaryPhone, setPrimaryPhone] = useState("");
+const BYBIT_BASE =
+  process.env.BYBIT_BASE_URL?.trim() || "https://api-demo.bybit.com";
 
-  const [guestName, setGuestName] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
+const STABLE_ASSETS = new Set([
+  "USDT",
+  "USDC",
+  "FDUSD",
+  "TUSD",
+  "BUSD",
+  "USDP",
+]);
 
-  const [pickupPoint, setPickupPoint] = useState("");
-  const [dropoffPoint, setDropoffPoint] = useState("");
+const BYBIT_MAX_RANGE_MS = 7 * 24 * 60 * 60 * 1000;
+const HISTORY_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
+const MIN_POSITION_NOTIONAL = 5;
+const EPS = 1e-12;
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+function toNum(v: unknown) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
-  useEffect(() => {
-    loadTripAndUser();
-  }, [id]);
+function upper(v: unknown) {
+  return String(v || "").toUpperCase();
+}
 
-  async function loadTripAndUser() {
-    try {
-      setLoading(true);
+function isFilledStatus(status: string) {
+  return upper(status) === "FILLED";
+}
 
-      const [tripResult, userResult] = await Promise.all([
-        loadTripWithActualSeats(id),
-        loadCurrentUser(),
-      ]);
+function isTerminalStatus(status: string) {
+  return ["FILLED", "CANCELED", "REJECTED", "EXPIRED"].includes(upper(status));
+}
 
-      setTrip(tripResult || null);
+function floorToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
+  return Math.floor(value / step) * step;
+}
 
-      if (userResult) {
-        setUserData(userResult);
-        setContactName(userResult.name || "");
-        setPrimaryPhone(userResult.phone || "");
-      } else {
-        const fallbackName =
-          window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name || "";
-        setContactName(fallbackName);
-      }
-    } catch (error) {
-      console.error("Ошибка страницы trip:", error);
-      setTrip(null);
-    } finally {
-      setLoading(false);
-    }
+function decimalsFromStep(step: number) {
+  const s = String(step);
+  if (!s.includes(".")) return 0;
+  return s.split(".")[1].replace(/0+$/, "").length;
+}
+
+function formatByStep(value: number, step: number) {
+  const d = decimalsFromStep(step);
+  return floorToStep(value, step).toFixed(d);
+}
+
+function buildQuery(params: Record<string, string | number | undefined | null>) {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    usp.set(k, String(v));
+  }
+  return usp.toString();
+}
+
+function signGet(
+  apiKey: string,
+  apiSecret: string,
+  recvWindow: string,
+  timestamp: string,
+  query: string
+) {
+  const payload = `${timestamp}${apiKey}${recvWindow}${query}`;
+  return crypto.createHmac("sha256", apiSecret).update(payload).digest("hex");
+}
+
+function isValidPositionSnapshot(snapshot: {
+  qty: number;
+  avgPrice: number;
+  investedQuote: number;
+}) {
+  if (!Number.isFinite(snapshot.qty) || snapshot.qty <= 0) return false;
+  if (!Number.isFinite(snapshot.avgPrice) || snapshot.avgPrice <= 0) return false;
+  if (!Number.isFinite(snapshot.investedQuote) || snapshot.investedQuote <= 0) return false;
+
+  const notionalByMarket = snapshot.qty * snapshot.avgPrice;
+  if (!Number.isFinite(notionalByMarket) || notionalByMarket < MIN_POSITION_NOTIONAL) {
+    return false;
   }
 
-  async function loadCurrentUser() {
-    const telegramId = getTelegramUserId();
-
-    if (!telegramId) {
-      console.warn("Telegram user id не найден");
-      return null;
-    }
-
-    const { data, error } = await supabase
-      .from("users")
-      .select(
-        "id, telegram_id, name, phone, phone_secondary, notifications_enabled"
-      )
-      .eq("telegram_id", telegramId)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Ошибка загрузки user:", error);
-      return null;
-    }
-
-    return data || null;
+  if (snapshot.investedQuote < MIN_POSITION_NOTIONAL) {
+    return false;
   }
 
-  async function loadTripWithActualSeats(tripId) {
-    const { data: tripData, error: tripError } = await supabase
-      .from("trips")
-      .select("*")
-      .eq("id", tripId)
-      .single();
+  return true;
+}
 
-    if (tripError) {
-      console.error("Ошибка загрузки trip:", tripError);
-      return null;
-    }
+async function bybitPrivateGet<T = AnyJson>(params: {
+  apiKey: string;
+  apiSecret: string;
+  path: string;
+  query?: Record<string, string | number | undefined | null>;
+}): Promise<T> {
+  const recvWindow = "5000";
+  const timestamp = String(Date.now());
+  const query = buildQuery(params.query || {});
+  const sign = signGet(params.apiKey, params.apiSecret, recvWindow, timestamp, query);
+  const url = `${BYBIT_BASE}${params.path}${query ? `?${query}` : ""}`;
 
-    const bookedSeats = await getActiveBookedSeats(tripId);
-    const seatsTotal = Number(tripData?.seats_total || 15);
-    const freeSeats = Math.max(seatsTotal - bookedSeats, 0);
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-BAPI-API-KEY": params.apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN": sign,
+    },
+    cache: "no-store",
+  });
 
-    return {
-      ...tripData,
-      booked_seats: bookedSeats,
-      free_seats: freeSeats,
-    };
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || `Bybit GET error: ${res.status}`);
   }
 
-  async function getActiveBookedSeats(tripId) {
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("passengers_count, status")
-      .eq("trip_id", tripId)
-      .in("status", ACTIVE_BOOKING_STATUSES);
+  return json as T;
+}
 
-    if (error) {
-      console.error("Ошибка загрузки bookings:", error);
-      return 0;
-    }
+async function fetchBybitSpotBalances(apiKey: string, apiSecret: string) {
+  const json: AnyJson = await bybitPrivateGet({
+    apiKey,
+    apiSecret,
+    path: "/v5/account/wallet-balance",
+    query: {
+      accountType: "UNIFIED",
+    },
+  });
 
-    return (data || []).reduce((sum, item) => {
-      return sum + Number(item.passengers_count || 0);
-    }, 0);
+  const accounts = Array.isArray(json?.result?.list) ? json.result.list : [];
+  const first = accounts[0];
+  const coins = Array.isArray(first?.coin) ? first.coin : [];
+
+  const balances: BybitAssetBalance[] = [];
+
+  for (const c of coins) {
+    const coin = upper(c?.coin);
+    const walletBalance = toNum(c?.walletBalance);
+
+    if (!coin) continue;
+    if (STABLE_ASSETS.has(coin)) continue;
+    if (walletBalance <= 0) continue;
+
+    balances.push({
+      coin,
+      qty: walletBalance,
+    });
   }
 
-  async function handleSubmitBooking() {
-    if (!trip) return;
-
-    if (!pickupPoint) {
-      alert("Выберите точку посадки");
-      return;
-    }
-
-    if (!dropoffPoint) {
-      alert("Выберите точку высадки");
-      return;
-    }
-
-    if (!bookingForOther) {
-      if (!contactName.trim() || !primaryPhone.trim()) {
-        alert("Заполните имя и основной номер телефона");
-        return;
-      }
-    }
-
-    if (bookingForOther) {
-      if (!guestName.trim() || !guestPhone.trim()) {
-        alert("Заполните имя и телефон пассажира");
-        return;
-      }
-    }
-
-    const seatsToBook = Number(passengersCount);
-    const currentAvailableSeats = Number(trip.free_seats || 0);
-
-    if (seatsToBook < 1) {
-      alert("Некорректное количество пассажиров");
-      return;
-    }
-
-    if (seatsToBook > currentAvailableSeats) {
-      alert("Недостаточно свободных мест");
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-
-      const freshBookedSeats = await getActiveBookedSeats(trip.id);
-      const freshTotalSeats = Number(trip.seats_total || 15);
-      const freshAvailableSeats = Math.max(
-        freshTotalSeats - freshBookedSeats,
-        0
-      );
-
-      if (seatsToBook > freshAvailableSeats) {
-        alert(
-          "Пока вы оформляли бронь, свободных мест стало меньше. Обновите страницу."
-        );
-
-        const refreshedTrip = {
-          ...trip,
-          booked_seats: freshBookedSeats,
-          free_seats: freshAvailableSeats,
-        };
-
-        setTrip(refreshedTrip);
-
-        if (
-          freshAvailableSeats > 0 &&
-          Number(passengersCount) > freshAvailableSeats
-        ) {
-          setPassengersCount(String(freshAvailableSeats));
-        }
-
-        return;
-      }
-
-      const telegramId = getTelegramUserId();
-
-      const resolvedContactName = bookingForOther
-        ? guestName.trim()
-        : contactName.trim();
-
-      const bookingPayload = {
-        trip_id: trip.id,
-        telegram_id: telegramId,
-        user_id: userData?.id || null,
-        passengers_count: seatsToBook,
-        booking_for_other: bookingForOther,
-        contact_name: resolvedContactName,
-        contact_phone: bookingForOther
-          ? guestPhone.trim()
-          : primaryPhone.trim(),
-        contact_phone_secondary: null,
-        pickup_point: pickupPoint,
-        dropoff_point: dropoffPoint,
-        driver_message: null,
-        status: "new",
-      };
-
-      const { data: insertedBooking, error: insertError } = await supabase
-        .from("bookings")
-        .insert([bookingPayload])
-        .select("id")
-        .single();
-
-      if (insertError) {
-        console.error("Ошибка создания заказа:", insertError);
-        alert("Не удалось создать бронирование");
-        return;
-      }
-
-      const bookingId = insertedBooking?.id;
-
-      if (telegramId && bookingId) {
-        try {
-          const notificationResponse = await fetch(
-            "/api/send-booking-notification",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                bookingId,
-                telegramId,
-                routeName: `${trip.from_city} → ${trip.to_city}`,
-                tripDate: trip.trip_date,
-                departureTime: normalizeTime(trip.departure_time),
-                passengersCount: seatsToBook,
-                pickupPoint,
-                dropoffPoint,
-                contactName: resolvedContactName,
-              }),
-            }
-          );
-
-          if (!notificationResponse.ok) {
-            const notificationData = await notificationResponse
-              .json()
-              .catch(() => null);
-
-            console.error(
-              "Ошибка ответа send-booking-notification:",
-              notificationData || notificationResponse.status
-            );
-          }
-        } catch (notificationError) {
-          console.error(
-            "Ошибка отправки Telegram-уведомления:",
-            notificationError
-          );
-        }
-      }
-
-      alert("Бронирование успешно создано");
-      window.location.href = "/";
-    } catch (error) {
-      console.error("Ошибка при подтверждении бронирования:", error);
-      alert("Не удалось подтвердить бронирование");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const departureTime = normalizeTime(trip?.departure_time);
-  const arrivalTime = getArrivalTime(
-    trip?.trip_date,
-    trip?.departure_time,
-    trip?.travel_duration
-  );
-
-  const durationLabel = formatTravelDurationCompact(
-    trip?.travel_duration || "~9 ч"
-  );
-
-  const isDepartureDay = trip?.trip_date === getTodayString();
-  const availableSeats = Number(trip?.free_seats || 0);
-
-  const passengerOptions = Array.from(
-    { length: Math.max(availableSeats, 0) },
-    (_, index) => index + 1
-  );
-
-  const points = useMemo(() => {
-    if (!trip) return null;
-    return getRoutePoints(trip.from_city, trip.to_city);
-  }, [trip]);
-
-  const driverName = isDepartureDay
-    ? trip?.driver_name || "Данные будут доступны в день отправления"
-    : "Данные будут доступны в день отправления";
-
-  const vehicleModel = isDepartureDay
-    ? trip?.vehicle_model || "Данные будут доступны в день отправления"
-    : "Данные будут доступны в день отправления";
-
-  const vehiclePlate = isDepartureDay
-    ? trip?.vehicle_plate || "Данные будут доступны в день отправления"
-    : "Данные будут доступны в день отправления";
-
-  const shortFrom = getCityCode(trip?.from_city);
-  const shortTo = getCityCode(trip?.to_city);
-
-  if (loading) {
-    return (
-      <PageWrap>
-        <StatusCard
-          title="Загрузка данных поездки..."
-          text="Подготавливаем информацию по рейсу"
-        />
-      </PageWrap>
-    );
-  }
-
-  if (!trip || !points) {
-    return (
-      <PageWrap>
-        <StatusCard
-          title="Рейс не найден"
-          text="Возможно, рейс был удалён или ссылка устарела"
-          action={
-            <Link href="/" style={backButtonStyle}>
-              Вернуться на главную
-            </Link>
-          }
-        />
-      </PageWrap>
-    );
-  }
-
-  if (availableSeats <= 0) {
-    return (
-      <PageWrap>
-        <StatusCard
-          title="Свободных мест нет"
-          text="На этот рейс сейчас нельзя оформить бронирование"
-          action={
-            <Link href="/" style={backButtonStyle}>
-              Вернуться на главную
-            </Link>
-          }
-        />
-      </PageWrap>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f5f7fb",
-        padding: "14px 12px 20px",
-        boxSizing: "border-box",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "520px",
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "18px",
-          paddingBottom: "20px",
-        }}
-      >
-        <div
-          style={{
-            padding: "4px 2px 2px",
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              minHeight: "42px",
-              marginBottom: "18px",
-            }}
-          >
-            <Link href="/" style={topBackLinkStyle}>
-              ←
-            </Link>
-
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                minHeight: "34px",
-                padding: "0 16px",
-                borderRadius: "999px",
-                backgroundColor: "#1b3fb5",
-                color: "#ffffff",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "14px",
-                fontWeight: "800",
-                textAlign: "center",
-                whiteSpace: "nowrap",
-                boxShadow: "0 8px 18px rgba(27,63,181,0.18)",
-              }}
-            >
-              {formatDateRu(trip.trip_date)}
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "4px",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: "34px",
-                  lineHeight: 1,
-                  fontWeight: "900",
-                  color: "#111827",
-                  letterSpacing: "-0.8px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {shortFrom}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                minWidth: "84px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "18px",
-                  color: "#111827",
-                  lineHeight: 1,
-                  fontWeight: "700",
-                }}
-              >
-                ←
-              </span>
-
-              <span
-                style={{
-                  fontSize: "10px",
-                  color: "#6b7280",
-                  lineHeight: 1,
-                }}
-              >
-                ●
-              </span>
-
-              <span
-                style={{
-                  fontSize: "18px",
-                  color: "#111827",
-                  lineHeight: 1,
-                  fontWeight: "700",
-                }}
-              >
-                →
-              </span>
-            </div>
-
-            <div style={{ minWidth: 0, textAlign: "right" }}>
-              <div
-                style={{
-                  fontSize: "34px",
-                  lineHeight: 1,
-                  fontWeight: "900",
-                  color: "#111827",
-                  letterSpacing: "-0.8px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {shortTo}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              alignItems: "start",
-              gap: "8px",
-              marginBottom: "20px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#6b7280",
-                lineHeight: 1.2,
-                wordBreak: "break-word",
-              }}
-            >
-              {trip.from_city}
-            </div>
-
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#6b7280",
-                lineHeight: 1.2,
-                fontWeight: "600",
-                textAlign: "center",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {durationLabel}
-            </div>
-
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#6b7280",
-                lineHeight: 1.2,
-                textAlign: "right",
-                wordBreak: "break-word",
-              }}
-            >
-              {trip.to_city}
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-              marginBottom: "4px",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#6b7280",
-                  marginBottom: "4px",
-                  fontWeight: "600",
-                }}
-              >
-                Отправление
-              </div>
-
-              <div
-                style={{
-                  fontSize: "28px",
-                  fontWeight: "900",
-                  lineHeight: 1,
-                  color: "#111827",
-                  letterSpacing: "-0.6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {departureTime}
-              </div>
-            </div>
-
-            <div style={{ minWidth: 0, textAlign: "right" }}>
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#6b7280",
-                  marginBottom: "4px",
-                  fontWeight: "600",
-                }}
-              >
-                Прибытие
-              </div>
-
-              <div
-                style={{
-                  fontSize: "28px",
-                  fontWeight: "900",
-                  lineHeight: 1,
-                  color: "#111827",
-                  letterSpacing: "-0.6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {arrivalTime}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmitBooking();
-          }}
-          style={{
-            backgroundColor: "#ffffff",
-            borderRadius: "30px",
-            padding: "20px 16px 18px",
-            border: "1px solid #e8edf6",
-            boxShadow: "0 14px 30px rgba(17,24,39,0.06)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "16px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              textAlign: "center",
-              fontSize: "18px",
-              fontWeight: "800",
-              color: "#111827",
-              marginBottom: "2px",
-            }}
-          >
-            Настройки поездки
-          </div>
-
-          <div>
-            <div style={labelStyle}>
-              Количество пассажиров{" "}
-              <span style={labelHintStyle}>(доступно {availableSeats})</span>
-            </div>
-
-            <FieldRow icon={<UserIcon />} rightIcon={<ChevronRightIcon />}>
-              <select
-                value={passengersCount}
-                onChange={(e) => setPassengersCount(e.target.value)}
-                style={fieldNativeSelectStyle}
-              >
-                {passengerOptions.map((count) => (
-                  <option key={count} value={String(count)}>
-                    {count} {getPassengerWord(count)}
-                  </option>
-                ))}
-              </select>
-            </FieldRow>
-          </div>
-
-          <div>
-            <div style={labelStyle}>Имя</div>
-            <FieldRow icon={<ProfileIcon />}>
-              <input
-                type="text"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                placeholder="Введите имя"
-                style={fieldNativeInputStyle}
-              />
-            </FieldRow>
-          </div>
-
-          <div>
-            <div style={labelStyle}>Основной телефон</div>
-            <FieldRow icon={<PhoneIcon />}>
-              <input
-                type="tel"
-                value={primaryPhone}
-                onChange={(e) => setPrimaryPhone(e.target.value)}
-                placeholder="+7 ..."
-                style={fieldNativeInputStyle}
-              />
-            </FieldRow>
-          </div>
-
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "10px",
-              cursor: "pointer",
-              userSelect: "none",
-              marginTop: "-2px",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={bookingForOther}
-              onChange={(e) => setBookingForOther(e.target.checked)}
-              style={{
-                width: "18px",
-                height: "18px",
-                accentColor: "#2457F5",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            />
-            <span
-              style={{
-                fontSize: "15px",
-                fontWeight: "700",
-                color: "#111827",
-                lineHeight: 1.3,
-              }}
-            >
-              Заказать не себе
-            </span>
-          </label>
-
-          {bookingForOther ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: "10px",
-              }}
-            >
-              <div>
-                <div style={labelStyle}>Имя пассажира</div>
-                <FieldRow icon={<ProfileIcon />}>
-                  <input
-                    type="text"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="На кого бронируем"
-                    style={fieldNativeInputStyle}
-                  />
-                </FieldRow>
-              </div>
-
-              <div>
-                <div style={labelStyle}>Телефон пассажира</div>
-                <FieldRow icon={<PhoneIcon />}>
-                  <input
-                    type="tel"
-                    value={guestPhone}
-                    onChange={(e) => setGuestPhone(e.target.value)}
-                    placeholder="+7 ..."
-                    style={fieldNativeInputStyle}
-                  />
-                </FieldRow>
-              </div>
-            </div>
-          ) : null}
-
-          <div style={dividerStyle} />
-
-          <div>
-            <div style={labelStyle}>Посадка</div>
-            <FieldRow icon={<PinIcon />}>
-              <select
-                value={pickupPoint}
-                onChange={(e) => setPickupPoint(e.target.value)}
-                style={fieldNativeSelectStyle}
-              >
-                <option value="" disabled>
-                  Выберите точку посадки
-                </option>
-
-                <optgroup label="Основная">
-                  <option value={points.pickup.main}>{points.pickup.main}</option>
-                </optgroup>
-
-                <optgroup label="Дополнительные точки посадки">
-                  {points.pickup.additional.map((point) => (
-                    <option key={point} value={point}>
-                      {point}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </FieldRow>
-          </div>
-
-          <div>
-            <div style={labelStyle}>Высадка</div>
-            <FieldRow icon={<PinIcon />}>
-              <select
-                value={dropoffPoint}
-                onChange={(e) => setDropoffPoint(e.target.value)}
-                style={fieldNativeSelectStyle}
-              >
-                <option value="" disabled>
-                  Выберите точку высадки
-                </option>
-
-                <optgroup label="Основная">
-                  <option value={points.dropoff.main}>
-                    {points.dropoff.main}
-                  </option>
-                </optgroup>
-
-                <optgroup label="Дополнительные точки высадки">
-                  {points.dropoff.additional.map((point) => (
-                    <option key={point} value={point}>
-                      {point}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </FieldRow>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "14px",
-              marginTop: "2px",
-            }}
-          >
-            <div style={{ flex: 1, height: "1px", backgroundColor: "#e6ecf4" }} />
-            <div
-              style={{
-                fontSize: "17px",
-                fontWeight: "800",
-                color: "#111827",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Информация о маршруте
-            </div>
-            <div style={{ flex: 1, height: "1px", backgroundColor: "#e6ecf4" }} />
-          </div>
-
-          <RouteInfoBox
-            icon={<CarIcon />}
-            title="Марка машины"
-            value={vehicleModel}
-          />
-
-          <RouteInfoBox icon={<CarIcon />} value={vehiclePlate} />
-
-          <RouteInfoBox
-            icon={<ProfileIcon />}
-            title="Водитель"
-            value={driverName}
-          />
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              marginTop: "6px",
-              height: "58px",
-              border: "none",
-              borderRadius: "20px",
-              background:
-                "linear-gradient(135deg, #0c1430 0%, #10206C 45%, #081224 100%)",
-              color: "#ffffff",
-              fontSize: "17px",
-              fontWeight: "800",
-              cursor: isSubmitting ? "default" : "pointer",
-              opacity: isSubmitting ? 0.72 : 1,
-              boxShadow: "0 14px 28px rgba(16,32,108,0.24)",
-            }}
-          >
-            {isSubmitting ? "Сохранение..." : "Подтвердить бронирование"}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+  return balances;
 }
 
-function PageWrap({ children }) {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f5f7fb",
-        padding: "16px",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ maxWidth: "520px", margin: "0 auto" }}>{children}</div>
-    </div>
-  );
-}
+async function fetchBybitFilledOrdersChunk(
+  apiKey: string,
+  apiSecret: string,
+  startTime: number,
+  endTime: number
+) {
+  let cursor: string | undefined = undefined;
+  const rows: AnyJson[] = [];
 
-function StatusCard({ title, text, action }) {
-  return (
-    <div
-      style={{
-        backgroundColor: "#ffffff",
-        borderRadius: "24px",
-        padding: "24px",
-        boxShadow: "0 14px 30px rgba(17,24,39,0.07)",
-        border: "1px solid #e8edf6",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "24px",
-          fontWeight: "800",
-          color: "#111827",
-          marginBottom: "8px",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          fontSize: "14px",
-          color: "#6b7280",
-          lineHeight: "1.5",
-          marginBottom: action ? "18px" : 0,
-        }}
-      >
-        {text}
-      </div>
-
-      {action}
-    </div>
-  );
-}
-
-function FieldRow({ icon, rightIcon = null, children }) {
-  return (
-    <div
-      style={{
-        minHeight: "54px",
-        borderRadius: "16px",
-        backgroundColor: "#f4f6fa",
-        border: "1px solid #e8edf5",
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-        padding: "0 14px",
-        boxSizing: "border-box",
-        width: "100%",
-      }}
-    >
-      <div
-        style={{
-          width: "18px",
-          height: "18px",
-          flexShrink: 0,
-          color: "#111827",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {icon}
-      </div>
-
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: "flex",
-          alignItems: "center",
-          overflow: "hidden",
-        }}
-      >
-        {children}
-      </div>
-
-      {rightIcon ? (
-        <div
-          style={{
-            width: "16px",
-            height: "16px",
-            flexShrink: 0,
-            color: "#7c8798",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {rightIcon}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function RouteInfoBox({ icon, title, value }) {
-  return (
-    <div
-      style={{
-        borderRadius: "16px",
-        backgroundColor: "#f4f6fa",
-        border: "1px solid #e8edf5",
-        padding: "14px",
-        display: "flex",
-        gap: "12px",
-        alignItems: title ? "flex-start" : "center",
-      }}
-    >
-      <div
-        style={{
-          width: "20px",
-          height: "20px",
-          flexShrink: 0,
-          color: "#111827",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: title ? "2px" : 0,
-        }}
-      >
-        {icon}
-      </div>
-
-      <div style={{ minWidth: 0 }}>
-        {title ? (
-          <div
-            style={{
-              fontSize: "13px",
-              color: "#6b7280",
-              marginBottom: "4px",
-              fontWeight: "700",
-            }}
-          >
-            {title}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            fontSize: "15px",
-            fontWeight: "700",
-            color: "#111827",
-            lineHeight: "1.35",
-            wordBreak: "break-word",
-          }}
-        >
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ProfileIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-      <circle
-        cx="12"
-        cy="8"
-        r="3.5"
-        stroke="currentColor"
-        strokeWidth="1.9"
-      />
-      <path
-        d="M5 19c1.7-3.2 4.4-4.8 7-4.8s5.3 1.6 7 4.8"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function UserIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-      <circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.9" />
-      <path
-        d="M5.5 19c1.6-3.1 4.1-4.7 6.5-4.7s4.9 1.6 6.5 4.7"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PhoneIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-      <path
-        d="M7.5 4.8h2.1c.4 0 .7.3.8.7l.8 3.1c.1.3 0 .6-.2.8l-1.4 1.4a13 13 0 0 0 3.8 3.8l1.4-1.4c.2-.2.5-.3.8-.2l3.1.8c.4.1.7.4.7.8v2.1c0 .5-.4.9-.9 1-6 .6-12.1-5.5-11.5-11.5.1-.5.5-.9 1-.9Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PinIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-      <path
-        d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="10" r="2.3" stroke="currentColor" strokeWidth="1.9" />
-    </svg>
-  );
-}
-
-function CarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-      <path
-        d="M6.4 9.2 8 6.6c.3-.5.8-.8 1.4-.8h5.2c.6 0 1.1.3 1.4.8l1.6 2.6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M5.2 17.4h13.6a1 1 0 0 0 1-1v-4.2c0-1.5-1.2-2.7-2.7-2.7H7.9c-1.5 0-2.7 1.2-2.7 2.7v4.2a1 1 0 0 0 1 1Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <circle cx="8.1" cy="14.1" r="1.1" fill="currentColor" />
-      <circle cx="15.9" cy="14.1" r="1.1" fill="currentColor" />
-      <path
-        d="M7.2 17.5v1.5M16.8 17.5v1.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function getRoutePoints(fromCity, toCity) {
-  if (fromCity === "Санкт-Петербург" && toCity === "Москва") {
-    return {
-      pickup: {
-        main: "м. Московская",
-        additional: [
-          "Московский вокзал / пл. Восстания",
-          "м. Купчино",
-          "м. Звёздная",
-          "КАД / южный выезд",
-        ],
+  for (let page = 0; page < 30; page++) {
+    const json: AnyJson = await bybitPrivateGet({
+      apiKey,
+      apiSecret,
+      path: "/v5/order/history",
+      query: {
+        category: "spot",
+        startTime,
+        endTime,
+        limit: 50,
+        cursor,
       },
-      dropoff: {
-        main: "м. Ховрино",
-        additional: [
-          "м. Речной вокзал",
-          "м. Комсомольская",
-          "МКАД / северный въезд",
-        ],
-      },
-    };
+    });
+
+    const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+    rows.push(...list);
+
+    const next = String(json?.result?.nextPageCursor || "").trim();
+    if (!next) break;
+    cursor = next;
   }
+
+  return rows.filter((row) => isFilledStatus(String(row?.orderStatus || "")));
+}
+
+async function fetchBybitFilledOrders(
+  apiKey: string,
+  apiSecret: string,
+  startTime: number,
+  endTime: number
+) {
+  const allRows: AnyJson[] = [];
+  let chunkStart = startTime;
+
+  while (chunkStart < endTime) {
+    const chunkEnd = Math.min(chunkStart + BYBIT_MAX_RANGE_MS - 1, endTime);
+
+    const chunkRows = await fetchBybitFilledOrdersChunk(
+      apiKey,
+      apiSecret,
+      chunkStart,
+      chunkEnd
+    );
+
+    allRows.push(...chunkRows);
+    chunkStart = chunkEnd + 1;
+  }
+
+  const unique = new Map<string, AnyJson>();
+
+  for (const row of allRows) {
+    const orderId = String(row?.orderId || "");
+    const updatedTime = String(row?.updatedTime || row?.createdTime || "");
+    const symbol = upper(row?.symbol);
+    const side = upper(row?.side);
+    const qty = String(row?.cumExecQty || row?.qty || "");
+    const key = [orderId, updatedTime, symbol, side, qty].join("|");
+    unique.set(key, row);
+  }
+
+  return Array.from(unique.values()).sort((a, b) => {
+    const ta = Number(a?.updatedTime || a?.createdTime || 0);
+    const tb = Number(b?.updatedTime || b?.createdTime || 0);
+    return ta - tb;
+  });
+}
+
+async function getPositionOrders(positionId: string) {
+  const rows = await prisma.$queryRaw<RawBotOrder[]>(Prisma.sql`
+    SELECT
+      "id",
+      "userId",
+      "botPositionId",
+      "exchange",
+      "symbol",
+      "kind",
+      "side",
+      "status",
+      "price",
+      "qty",
+      "exchangeOrderId",
+      "clientOrderId",
+      "meta"
+    FROM "BotOrder"
+    WHERE "botPositionId" = ${positionId}
+    ORDER BY "createdAt" ASC
+  `);
+
+  return rows;
+}
+
+async function updateBotOrderStatus(orderId: string, status: string, meta?: AnyJson) {
+  const metaJson = meta == null ? null : JSON.stringify(meta);
+
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "BotOrder"
+    SET
+      "status" = ${status},
+      "meta" = CASE
+        WHEN ${metaJson}::text IS NULL THEN "meta"
+        ELSE ${metaJson}::jsonb
+      END,
+      "updatedAt" = CURRENT_TIMESTAMP,
+      "filledAt" = CASE
+        WHEN ${status} = 'FILLED' THEN CURRENT_TIMESTAMP
+        ELSE "filledAt"
+      END
+    WHERE "id" = ${orderId}
+  `);
+}
+
+function countFilledGridOrders(orders: RawBotOrder[]) {
+  return orders.filter((o) => o.kind === "GRID" && isFilledStatus(o.status)).length;
+}
+
+async function syncPositionAddsCount(positionId: string) {
+  const freshOrders = await getPositionOrders(positionId);
+  const filledGridCount = countFilledGridOrders(freshOrders);
+
+  const updated = await prisma.botPosition.update({
+    where: { id: positionId },
+    data: {
+      addsCount: filledGridCount,
+    },
+    select: {
+      id: true,
+      addsCount: true,
+    },
+  });
 
   return {
-    pickup: {
-      main: "м. Ховрино",
-      additional: [
-        "м. Речной вокзал",
-        "м. Комсомольская",
-        "МКАД / северный въезд",
-      ],
+    addsCount: updated.addsCount ?? 0,
+    filledGridCount,
+  };
+}
+
+async function createBotTrade(args: {
+  userId: string;
+  botPositionId: string;
+  exchange: ExchangeName;
+  symbol: string;
+  entryValue: number;
+  exitValue: number;
+  qty: number;
+  avgEntryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  addsCount: number;
+  openedAt: Date;
+  closedAt: Date;
+}) {
+  const existing = await prisma.botTrade.findFirst({
+    where: { botPositionId: args.botPositionId },
+    select: { id: true },
+  });
+
+  if (existing) return;
+
+  await prisma.botTrade.create({
+    data: {
+      user: { connect: { id: args.userId } },
+      botPosition: { connect: { id: args.botPositionId } },
+      exchange: args.exchange,
+      symbol: args.symbol,
+      entryValue: new Prisma.Decimal(args.entryValue.toFixed(18)),
+      exitValue: new Prisma.Decimal(args.exitValue.toFixed(18)),
+      qty: new Prisma.Decimal(args.qty.toFixed(18)),
+      avgEntryPrice: new Prisma.Decimal(args.avgEntryPrice.toFixed(18)),
+      exitPrice: new Prisma.Decimal(args.exitPrice.toFixed(18)),
+      pnl: new Prisma.Decimal(args.pnl.toFixed(18)),
+      pnlPercent: new Prisma.Decimal(args.pnlPercent.toFixed(18)),
+      addsCount: args.addsCount,
+      openedAt: args.openedAt,
+      closedAt: args.closedAt,
     },
-    dropoff: {
-      main: "м. Московская",
-      additional: [
-        "Московский вокзал / пл. Восстания",
-        "м. Купчино",
-        "м. Звёздная",
-        "КАД / южный выезд",
-      ],
+  });
+}
+
+async function insertCooldown(userId: string, exchange: ExchangeName, symbol: string) {
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "CooldownSymbol" (
+      "id",
+      "userId",
+      "exchange",
+      "symbol",
+      "reason",
+      "cooldownUntil",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      gen_random_uuid()::text,
+      ${userId},
+      ${exchange}::"Exchange",
+      ${symbol},
+      'TP_CLOSED',
+      CURRENT_TIMESTAMP + interval '12 hours',
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT ("userId", "exchange", "symbol")
+    DO UPDATE SET
+      "reason" = 'TP_CLOSED',
+      "cooldownUntil" = CURRENT_TIMESTAMP + interval '12 hours',
+      "updatedAt" = CURRENT_TIMESTAMP
+  `);
+}
+
+async function cancelTrackedOrdersForPosition(args: {
+  exchange: ExchangeAdapter;
+  apiKey: string;
+  apiSecret: string;
+  positionId: string;
+  symbol: string;
+  excludeOrderId?: string;
+}) {
+  const orders = await getPositionOrders(args.positionId);
+  const canceled: AnyJson[] = [];
+
+  for (const ord of orders) {
+    if (args.excludeOrderId && ord.id === args.excludeOrderId) continue;
+    if (upper(ord.symbol) !== upper(args.symbol)) continue;
+
+    if (isTerminalStatus(ord.status)) continue;
+    if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
+
+    try {
+      const cancelRes = await args.exchange.cancelOrder({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol: args.symbol,
+        exchangeOrderId: ord.exchangeOrderId ?? undefined,
+        clientOrderId: ord.clientOrderId ?? undefined,
+      });
+
+      await updateBotOrderStatus(ord.id, "CANCELED", {
+        ...(ord.meta ?? {}),
+        cancelRes,
+      });
+
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        status: "CANCELED",
+      });
+    } catch (e: any) {
+      canceled.push({
+        id: ord.id,
+        kind: ord.kind,
+        status: "CANCEL_ERROR",
+        message: String(e?.message || e),
+      });
+    }
+  }
+
+  return canceled;
+}
+
+async function closePositionAsTpFilled(args: {
+  userId: string;
+  exchangeName: ExchangeName;
+  apiKey: string;
+  apiSecret: string;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+  };
+  tpOrder: {
+    row: RawBotOrder;
+    live: AnyJson;
+  };
+}) {
+  const exchange = getExchangeAdapter(args.exchangeName);
+
+  const live = args.tpOrder.live ?? {};
+  const closeTime = new Date();
+
+  const finalQty = toNum(live.executedQty || args.position.qty);
+  const finalExitValue =
+    toNum(live.cumQuote) || finalQty * toNum(args.position.tpPrice);
+  const exitPrice =
+    finalQty > 0 ? finalExitValue / finalQty : toNum(args.position.tpPrice);
+
+  const entryValue = toNum(args.position.investedQuote);
+  const avgEntryPrice = toNum(args.position.avgPrice);
+  const pnl = finalExitValue - entryValue;
+  const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+  const canceledOrders = await cancelTrackedOrdersForPosition({
+    exchange,
+    apiKey: args.apiKey,
+    apiSecret: args.apiSecret,
+    positionId: args.position.id,
+    symbol: args.position.symbol,
+    excludeOrderId: args.tpOrder.row.id,
+  });
+
+  const syncedAdds = await syncPositionAddsCount(args.position.id);
+
+  await createBotTrade({
+    userId: args.userId,
+    botPositionId: args.position.id,
+    exchange: args.exchangeName,
+    symbol: args.position.symbol,
+    entryValue,
+    exitValue: finalExitValue,
+    qty: finalQty,
+    avgEntryPrice,
+    exitPrice,
+    pnl,
+    pnlPercent,
+    addsCount: syncedAdds.addsCount,
+    openedAt: args.position.openedAt,
+    closedAt: closeTime,
+  });
+
+  await prisma.botPosition.update({
+    where: { id: args.position.id },
+    data: {
+      status: "CLOSED",
+      closedAt: closeTime,
+      addsCount: syncedAdds.addsCount,
+    },
+  });
+
+  await insertCooldown(args.userId, args.exchangeName, args.position.symbol);
+
+  try {
+    await notifyTradeClosed({
+      userId: args.userId,
+      symbol: args.position.symbol,
+      positionId: args.position.id,
+      avgEntryPrice,
+      exitPrice,
+      qty: finalQty,
+      entryValue,
+      exitValue: finalExitValue,
+      pnl,
+    });
+  } catch {}
+
+  return {
+    positionId: args.position.id,
+    symbol: args.position.symbol,
+    action: "CLOSED_BY_FILLED_TP",
+    trade: {
+      entryValue,
+      exitValue: finalExitValue,
+      qty: finalQty,
+      avgEntryPrice,
+      exitPrice,
+      pnl,
+      pnlPercent,
+      addsCount: syncedAdds.addsCount,
+    },
+    canceledOrders,
+  };
+}
+
+async function finalizeClosedPosition(args: {
+  userId: string;
+  exchangeName: ExchangeName;
+  apiKey: string;
+  apiSecret: string;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+    status: string;
+  };
+  closeReason:
+    | "TP_FILLED"
+    | "NOT_FOUND_ON_EXCHANGE"
+    | "INVALID_OR_DUST"
+    | "STEP_ROUNDING_DUST";
+}) {
+  const exchange = getExchangeAdapter(args.exchangeName);
+  const symbol = upper(args.position.symbol);
+  const orders = await getPositionOrders(args.position.id);
+
+  for (const ord of orders) {
+    if (isTerminalStatus(ord.status)) continue;
+    if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
+
+    try {
+      await exchange.cancelOrder({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol,
+        exchangeOrderId: ord.exchangeOrderId ?? undefined,
+        clientOrderId: ord.clientOrderId ?? undefined,
+      });
+    } catch {}
+  }
+
+  const refreshedOrders: Array<{
+    row: RawBotOrder;
+    liveStatus: string;
+    live: AnyJson;
+  }> = [];
+
+  for (const ord of orders) {
+    let liveStatus = ord.status;
+    let liveRaw: AnyJson = null;
+
+    if (ord.exchangeOrderId || ord.clientOrderId) {
+      try {
+        const live = await exchange.getOrderStatus({
+          apiKey: args.apiKey,
+          apiSecret: args.apiSecret,
+          symbol,
+          exchangeOrderId: ord.exchangeOrderId ?? undefined,
+          clientOrderId: ord.clientOrderId ?? undefined,
+        });
+
+        liveStatus = String(live.status || ord.status);
+        liveRaw = live.raw;
+      } catch {}
+    }
+
+    if (!isTerminalStatus(liveStatus)) {
+      liveStatus = ord.kind === "TP" ? "FILLED" : "CANCELED";
+    }
+
+    await updateBotOrderStatus(ord.id, liveStatus, {
+      ...(ord.meta ?? {}),
+      finalizedBySync: true,
+      closeReason: args.closeReason,
+      live: liveRaw,
+    });
+
+    refreshedOrders.push({
+      row: ord,
+      liveStatus,
+      live: liveRaw,
+    });
+  }
+
+  const syncedAdds = await syncPositionAddsCount(args.position.id);
+
+  const finalQty = toNum(args.position.qty);
+  const avgEntryPrice = toNum(args.position.avgPrice);
+  const entryValue = toNum(args.position.investedQuote);
+
+  const tpOrder = refreshedOrders.find(
+    (x) => x.row.kind === "TP" && x.liveStatus === "FILLED"
+  );
+
+  const exitPrice = tpOrder?.row?.price ? toNum(tpOrder.row.price) : toNum(args.position.tpPrice || args.position.avgPrice);
+  const exitValue = finalQty > 0 ? finalQty * exitPrice : entryValue;
+  const pnl = exitValue - entryValue;
+  const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+  const closeTime = new Date();
+
+  await createBotTrade({
+    userId: args.userId,
+    botPositionId: args.position.id,
+    exchange: args.exchangeName,
+    symbol,
+    entryValue,
+    exitValue,
+    qty: finalQty,
+    avgEntryPrice,
+    exitPrice,
+    pnl,
+    pnlPercent,
+    addsCount: syncedAdds.addsCount,
+    openedAt: args.position.openedAt,
+    closedAt: closeTime,
+  });
+
+  await prisma.botPosition.update({
+    where: { id: args.position.id },
+    data: {
+      status: "CLOSED",
+      closedAt: closeTime,
+      addsCount: syncedAdds.addsCount,
+    },
+  });
+
+  await insertCooldown(args.userId, args.exchangeName, symbol);
+
+  try {
+    await notifyTradeClosed({
+      userId: args.userId,
+      symbol,
+      positionId: args.position.id,
+      avgEntryPrice,
+      exitPrice,
+      qty: finalQty,
+      entryValue,
+      exitValue,
+      pnl,
+    });
+  } catch {}
+
+  return {
+    positionId: args.position.id,
+    symbol,
+    action: `FINALIZED_${args.closeReason}`,
+    trade: {
+      entryValue,
+      exitValue,
+      qty: finalQty,
+      avgEntryPrice,
+      exitPrice,
+      pnl,
+      pnlPercent,
+      addsCount: syncedAdds.addsCount,
     },
   };
 }
 
-function getTelegramUserId() {
-  if (typeof window === "undefined") return null;
-  return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null;
-}
+function reconstructPositionsFromExchange(args: {
+  balances: BybitAssetBalance[];
+  filledOrders: AnyJson[];
+}) {
+  const reconstructed: ReconstructedPosition[] = [];
 
-function getTodayString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+  for (const balance of args.balances) {
+    const symbol = `${balance.coin}USDT`;
+    const rows = args.filledOrders
+      .filter((row) => upper(row?.symbol) === symbol)
+      .sort((a, b) => {
+        const ta = Number(a?.updatedTime || a?.createdTime || 0);
+        const tb = Number(b?.updatedTime || b?.createdTime || 0);
+        return ta - tb;
+      });
 
-function normalizeTime(timeString) {
-  return String(timeString || "").slice(0, 5);
-}
+    const lots: FillLot[] = [];
 
-function formatDateRu(dateString) {
-  if (!dateString) return "";
-  const [year, month, day] = String(dateString).split("-");
-  if (!year || !month || !day) return dateString;
-  return `${day}.${month}.${year}`;
-}
+    for (const row of rows) {
+      const side = upper(row?.side);
+      const qty = toNum(row?.cumExecQty);
+      const quote = toNum(row?.cumExecValue);
+      const price =
+        toNum(row?.avgPrice) || (qty > 0 ? quote / qty : 0);
+      const time = Number(row?.updatedTime || row?.createdTime || 0);
 
-function parseTravelDurationMinutes(value) {
-  if (!value) return 9 * 60;
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      if (!Number.isFinite(price) || price <= 0) continue;
 
-  if (typeof value === "number") {
-    return value > 0 ? value : 9 * 60;
+      if (side === "BUY") {
+        lots.push({
+          qty,
+          price,
+          time,
+        });
+        continue;
+      }
+
+      if (side === "SELL") {
+        let remainingSellQty = qty;
+
+        while (remainingSellQty > EPS && lots.length > 0) {
+          const lot = lots[0];
+          const takeQty = Math.min(remainingSellQty, lot.qty);
+
+          lot.qty -= takeQty;
+          remainingSellQty -= takeQty;
+
+          if (lot.qty <= EPS) {
+            lots.shift();
+          }
+        }
+      }
+    }
+
+    const balanceQty = balance.qty;
+    if (!Number.isFinite(balanceQty) || balanceQty <= EPS) continue;
+    if (!lots.length) continue;
+
+    let remainingBalanceToMatch = balanceQty;
+    let matchedQty = 0;
+    let matchedCost = 0;
+    let matchedBuyCount = 0;
+
+    for (let i = lots.length - 1; i >= 0 && remainingBalanceToMatch > EPS; i--) {
+      const lot = lots[i];
+      if (lot.qty <= EPS) continue;
+
+      const takeQty = Math.min(remainingBalanceToMatch, lot.qty);
+      if (takeQty <= EPS) continue;
+
+      matchedQty += takeQty;
+      matchedCost += takeQty * lot.price;
+      matchedBuyCount += 1;
+      remainingBalanceToMatch -= takeQty;
+    }
+
+    if (matchedQty <= EPS || matchedCost <= 0) continue;
+
+    const qty = matchedQty;
+    const investedQuote = matchedCost;
+    const avgPrice = investedQuote / qty;
+    const addsCount = Math.max(0, matchedBuyCount - 1);
+
+    const snapshot: ReconstructedPosition = {
+      symbol,
+      baseCoin: balance.coin,
+      qty,
+      avgPrice,
+      investedQuote,
+      addsCount,
+    };
+
+    if (!isValidPositionSnapshot(snapshot)) {
+      continue;
+    }
+
+    reconstructed.push(snapshot);
   }
 
-  const text = String(value).toLowerCase().trim();
-
-  const hourMatch = text.match(/(\d+)\s*ч/);
-  const minuteMatch = text.match(/(\d+)\s*м/);
-
-  const hours = hourMatch ? Number(hourMatch[1]) : 0;
-  const minutes = minuteMatch ? Number(minuteMatch[1]) : 0;
-
-  const total = hours * 60 + minutes;
-  return total > 0 ? total : 9 * 60;
+  return reconstructed.filter((p) => isValidPositionSnapshot(p));
 }
 
-function formatTravelDurationCompact(value) {
-  const minutes = parseTravelDurationMinutes(value);
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+async function ensureExistingPositionMatchesExchange(args: {
+  userId: string;
+  exchangeName: ExchangeName;
+  apiKey: string;
+  apiSecret: string;
+  position: {
+    id: string;
+    symbol: string;
+    avgPrice: any;
+    qty: any;
+    tpPrice: any;
+    addsCount: number;
+    investedQuote: any;
+    openedAt: Date;
+    status: string;
+  };
+  exchangeSnapshot: ReconstructedPosition | null;
+}) {
+  const exchange = getExchangeAdapter(args.exchangeName);
+  const symbol = upper(args.position.symbol);
+  const filters = await exchange.getSymbolFilters(symbol);
+  const orders = await getPositionOrders(args.position.id);
 
-  if (mins === 0) {
-    return `${hours} часов`;
+  const liveOrders: Array<{
+    row: RawBotOrder;
+    live: AnyJson;
+  }> = [];
+
+  for (const ord of orders) {
+    if (!ord.exchangeOrderId && !ord.clientOrderId) continue;
+
+    if (isTerminalStatus(ord.status)) {
+      liveOrders.push({
+        row: ord,
+        live: { status: ord.status },
+      });
+      continue;
+    }
+
+    try {
+      const live = await exchange.getOrderStatus({
+        apiKey: args.apiKey,
+        apiSecret: args.apiSecret,
+        symbol,
+        exchangeOrderId: ord.exchangeOrderId ?? undefined,
+        clientOrderId: ord.clientOrderId ?? undefined,
+      });
+
+      if (live.status && live.status !== ord.status) {
+        await updateBotOrderStatus(ord.id, String(live.status), {
+          ...(ord.meta ?? {}),
+          live: live.raw,
+        });
+      }
+
+      liveOrders.push({
+        row: {
+          ...ord,
+          status: String(live.status || ord.status),
+        },
+        live,
+      });
+    } catch {
+      liveOrders.push({
+        row: ord,
+        live: { status: ord.status },
+      });
+    }
   }
 
-  return `${hours} ч ${mins} м`;
-}
+  const filledTpOrders = liveOrders.filter(
+    (x) => x.row.kind === "TP" && isFilledStatus(x.row.status)
+  );
 
-function getArrivalTime(dateString, timeString, travelDuration) {
-  const start = buildTripDateTime(dateString, timeString);
-  if (!start) return "--:--";
-
-  const durationMinutes = parseTravelDurationMinutes(travelDuration);
-  const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
-
-  const hours = String(end.getHours()).padStart(2, "0");
-  const minutes = String(end.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function buildTripDateTime(dateString, timeString) {
-  if (!dateString || !timeString) return null;
-  const normalizedTime = normalizeTime(timeString);
-  return new Date(`${dateString}T${normalizedTime}:00`);
-}
-
-function getPassengerWord(count) {
-  const n = Number(count);
-
-  if (n % 10 === 1 && n % 100 !== 11) return "пассажир";
-  if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) {
-    return "пассажира";
+  if (filledTpOrders.length > 0) {
+    return closePositionAsTpFilled({
+      userId: args.userId,
+      exchangeName: args.exchangeName,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      position: args.position,
+      tpOrder: filledTpOrders[0],
+    });
   }
 
-  return "пассажиров";
+  if (!args.exchangeSnapshot) {
+    return finalizeClosedPosition({
+      userId: args.userId,
+      exchangeName: args.exchangeName,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      position: args.position,
+      closeReason: "NOT_FOUND_ON_EXCHANGE",
+    });
+  }
+
+  if (!isValidPositionSnapshot(args.exchangeSnapshot)) {
+    return finalizeClosedPosition({
+      userId: args.userId,
+      exchangeName: args.exchangeName,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      position: args.position,
+      closeReason: "INVALID_OR_DUST",
+    });
+  }
+
+  const activeTpOrders = liveOrders.filter(
+    (x) => x.row.kind === "TP" && !isTerminalStatus(x.row.status)
+  );
+
+  const finalQtyNum = floorToStep(args.exchangeSnapshot.qty, filters.stepSize);
+  const finalTpPrice = formatByStep(args.exchangeSnapshot.avgPrice * 1.05, filters.tickSize);
+  const finalNotional = finalQtyNum * args.exchangeSnapshot.avgPrice;
+
+  if (
+    !Number.isFinite(finalQtyNum) ||
+    finalQtyNum <= 0 ||
+    !Number.isFinite(finalNotional) ||
+    finalNotional < MIN_POSITION_NOTIONAL ||
+    args.exchangeSnapshot.investedQuote < MIN_POSITION_NOTIONAL
+  ) {
+    return finalizeClosedPosition({
+      userId: args.userId,
+      exchangeName: args.exchangeName,
+      apiKey: args.apiKey,
+      apiSecret: args.apiSecret,
+      position: args.position,
+      closeReason: "STEP_ROUNDING_DUST",
+    });
+  }
+
+  const updated = await prisma.botPosition.update({
+    where: { id: args.position.id },
+    data: {
+      status: "OPEN",
+      closedAt: null,
+      avgPrice: new Prisma.Decimal(args.exchangeSnapshot.avgPrice.toFixed(18)),
+      qty: new Prisma.Decimal(finalQtyNum.toFixed(18)),
+      tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
+      investedQuote: new Prisma.Decimal(args.exchangeSnapshot.investedQuote.toFixed(18)),
+      addsCount: args.exchangeSnapshot.addsCount,
+    },
+    select: {
+      id: true,
+      symbol: true,
+      avgPrice: true,
+      qty: true,
+      tpPrice: true,
+      investedQuote: true,
+      addsCount: true,
+    },
+  });
+
+  return {
+    positionId: updated.id,
+    symbol: updated.symbol,
+    action: activeTpOrders.length ? "SYNCED_POSITION" : "SYNCED_POSITION_NO_ACTIVE_TP_IN_DB",
+    avgPrice: updated.avgPrice.toString(),
+    qty: updated.qty.toString(),
+    investedQuote: updated.investedQuote.toString(),
+    addsCount: updated.addsCount,
+  };
 }
 
-function getCityCode(city) {
-  const value = String(city || "").toLowerCase().trim();
+async function createImportedPosition(args: {
+  userId: string;
+  exchangeName: ExchangeName;
+  snapshot: ReconstructedPosition;
+}) {
+  const exchange = getExchangeAdapter(args.exchangeName);
+  const filters = await exchange.getSymbolFilters(args.snapshot.symbol);
 
-  if (value.includes("моск")) return "MSK";
-  if (value.includes("санкт") || value.includes("петер")) return "SPB";
+  if (!isValidPositionSnapshot(args.snapshot)) {
+    return {
+      positionId: null,
+      symbol: args.snapshot.symbol,
+      action: "SKIPPED_DUST_OR_INVALID_IMPORT",
+    };
+  }
 
-  return String(city || "").slice(0, 3).toUpperCase();
+  const finalQtyNum = floorToStep(args.snapshot.qty, filters.stepSize);
+  const finalTpPrice = formatByStep(args.snapshot.avgPrice * 1.05, filters.tickSize);
+  const finalNotional = finalQtyNum * args.snapshot.avgPrice;
+
+  if (
+    !Number.isFinite(finalQtyNum) ||
+    finalQtyNum <= 0 ||
+    !Number.isFinite(finalNotional) ||
+    finalNotional < MIN_POSITION_NOTIONAL ||
+    args.snapshot.investedQuote < MIN_POSITION_NOTIONAL
+  ) {
+    return {
+      positionId: null,
+      symbol: args.snapshot.symbol,
+      action: "SKIPPED_DUST_AFTER_STEP_ROUNDING",
+    };
+  }
+
+  const created = await prisma.botPosition.create({
+    data: {
+      user: { connect: { id: args.userId } },
+      exchange: args.exchangeName,
+      symbol: args.snapshot.symbol,
+      status: "OPEN",
+      avgPrice: new Prisma.Decimal(args.snapshot.avgPrice.toFixed(18)),
+      qty: new Prisma.Decimal(finalQtyNum.toFixed(18)),
+      tpPrice: new Prisma.Decimal(Number(finalTpPrice).toFixed(18)),
+      investedQuote: new Prisma.Decimal(args.snapshot.investedQuote.toFixed(18)),
+      addsCount: args.snapshot.addsCount,
+    },
+    select: {
+      id: true,
+      symbol: true,
+      avgPrice: true,
+      qty: true,
+      tpPrice: true,
+      investedQuote: true,
+      addsCount: true,
+    },
+  });
+
+  return {
+    positionId: created.id,
+    symbol: created.symbol,
+    action: "IMPORTED_FROM_EXCHANGE",
+    avgPrice: created.avgPrice.toString(),
+    qty: created.qty.toString(),
+    investedQuote: created.investedQuote.toString(),
+    addsCount: created.addsCount,
+  };
 }
 
-function formatPrice(value) {
-  const number = Number(value || 0);
-  return new Intl.NumberFormat("ru-RU").format(number);
+export async function syncOpenPositionsForUser(userId: string) {
+  const config = await prisma.botConfig.findUnique({
+    where: { userId },
+    select: {
+      exchange: true,
+      keyId: true,
+    },
+  });
+
+  if (!config?.keyId) {
+    return {
+      ok: false,
+      message: "No bot config or API key",
+      synced: [],
+    };
+  }
+
+  const key = await prisma.userKey.findFirst({
+    where: {
+      id: config.keyId,
+      userId,
+    },
+    select: {
+      apiKey: true,
+      secretEnc: true,
+    },
+  });
+
+  if (!key) {
+    return {
+      ok: false,
+      message: "User key not found",
+      synced: [],
+    };
+  }
+
+  const exchangeName = config.exchange as ExchangeName;
+  const apiSecret = decryptString(key.secretEnc);
+
+  if (exchangeName !== "BYBIT") {
+    return {
+      ok: false,
+      message: "syncOpenPositionsForUser currently supports BYBIT only",
+      synced: [],
+    };
+  }
+
+  const balances = await fetchBybitSpotBalances(key.apiKey, apiSecret);
+
+  const now = Date.now();
+  const startTime = now - HISTORY_LOOKBACK_MS;
+  const filledOrders = await fetchBybitFilledOrders(
+    key.apiKey,
+    apiSecret,
+    startTime,
+    now
+  );
+
+  const exchangePositions = reconstructPositionsFromExchange({
+    balances,
+    filledOrders,
+  });
+
+  const exchangeMap = new Map<string, ReconstructedPosition>();
+  for (const p of exchangePositions) {
+    exchangeMap.set(p.symbol, p);
+  }
+
+  const dbPositions = await prisma.botPosition.findMany({
+    where: {
+      userId,
+      exchange: exchangeName,
+      status: "OPEN",
+    },
+    select: {
+      id: true,
+      symbol: true,
+      avgPrice: true,
+      qty: true,
+      tpPrice: true,
+      addsCount: true,
+      investedQuote: true,
+      openedAt: true,
+      status: true,
+    },
+  });
+
+  const synced: AnyJson[] = [];
+  const seenSymbols = new Set<string>();
+
+  for (const position of dbPositions) {
+    const symbol = upper(position.symbol);
+    const snapshot = exchangeMap.get(symbol) ?? null;
+
+    const result = await ensureExistingPositionMatchesExchange({
+      userId,
+      exchangeName,
+      apiKey: key.apiKey,
+      apiSecret,
+      position,
+      exchangeSnapshot: snapshot,
+    });
+
+    synced.push(result);
+
+    if (snapshot) {
+      seenSymbols.add(symbol);
+    }
+  }
+
+  for (const snapshot of exchangePositions) {
+    const symbol = upper(snapshot.symbol);
+    if (seenSymbols.has(symbol)) continue;
+
+    const imported = await createImportedPosition({
+      userId,
+      exchangeName,
+      snapshot,
+    });
+
+    synced.push(imported);
+  }
+
+  await prisma.botState.updateMany({
+    where: { userId },
+    data: {
+      lastError: null,
+    },
+  });
+
+  return {
+    ok: true,
+    synced,
+    exchangeOpenCount: exchangePositions.length,
+    dbOpenCountAfter: await prisma.botPosition.count({
+      where: {
+        userId,
+        exchange: exchangeName,
+        status: "OPEN",
+      },
+    }),
+  };
 }
-
-const labelStyle = {
-  display: "block",
-  fontSize: "14px",
-  color: "#111827",
-  marginBottom: "6px",
-  fontWeight: "700",
-  lineHeight: 1.35,
-};
-
-const labelHintStyle = {
-  fontSize: "13px",
-  color: "#6b7280",
-  fontWeight: "700",
-};
-
-const dividerStyle = {
-  height: "1px",
-  backgroundColor: "#e6ecf4",
-};
-
-const fieldNativeInputStyle = {
-  width: "100%",
-  height: "100%",
-  minHeight: "52px",
-  border: "none",
-  outline: "none",
-  backgroundColor: "transparent",
-  fontSize: "15px",
-  fontWeight: "600",
-  color: "#394150",
-  padding: "0",
-  margin: "0",
-  boxSizing: "border-box",
-};
-
-const fieldNativeSelectStyle = {
-  width: "100%",
-  height: "100%",
-  minHeight: "52px",
-  border: "none",
-  outline: "none",
-  backgroundColor: "transparent",
-  fontSize: "15px",
-  fontWeight: "700",
-  color: "#111827",
-  padding: "0",
-  margin: "0",
-  boxSizing: "border-box",
-  appearance: "none",
-  WebkitAppearance: "none",
-  MozAppearance: "none",
-};
-
-const topBackLinkStyle = {
-  width: "42px",
-  height: "42px",
-  borderRadius: "14px",
-  backgroundColor: "#ffffff",
-  color: "#111827",
-  textDecoration: "none",
-  fontSize: "22px",
-  fontWeight: "800",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  border: "1px solid #e8edf6",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.06)",
-};
-
-const backButtonStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: "46px",
-  padding: "0 18px",
-  borderRadius: "14px",
-  backgroundColor: "#111827",
-  color: "#ffffff",
-  textDecoration: "none",
-  fontSize: "14px",
-  fontWeight: "700",
-};

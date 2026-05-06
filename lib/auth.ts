@@ -39,5 +39,11 @@ export async function getAuthUser(req: Request) {
   });
 
   if (!session) return null;
+
+  // SECURITY: Проверяем что сессия не истекла
+  if (session.expiresAt && new Date(session.expiresAt).getTime() < Date.now()) {
+    return null;  // Session expired
+  }
+
   return session.user;
 }
