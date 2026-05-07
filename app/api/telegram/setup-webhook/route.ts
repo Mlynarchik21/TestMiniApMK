@@ -12,9 +12,8 @@ export async function GET(req: Request) {
   }
 
   const botToken = process.env.BOT_TOKEN;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : null;
+  const rawUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  const appUrl = rawUrl ? rawUrl.replace(/\/$/, "") : null;
 
   if (!botToken) return NextResponse.json({ ok: false, error: "BOT_TOKEN missing" }, { status: 500 });
   if (!appUrl) return NextResponse.json({ ok: false, error: "NEXT_PUBLIC_APP_URL or VERCEL_URL missing" }, { status: 500 });
