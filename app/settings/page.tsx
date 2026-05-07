@@ -1,300 +1,295 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/lib/useTheme";
+import type { ThemeName } from "@/lib/useTheme";
 
 type Settings = {
   timezone: string;
   currency: string;
   riskMode: "normal" | "conservative" | "aggressive";
-  createdAt?: string | null;
-  updatedAt?: string | null;
+  theme: "dark" | "light";
+  notifyTradeOpen: boolean;
+  notifyTradeClose: boolean;
+  notifyBotStop: boolean;
+  notifyBotError: boolean;
+  notifySubscription: boolean;
 };
 
-type ApiOk = { ok: true; settings: Settings };
-type ApiFail = { ok: false; error: string; extra?: any };
-type ApiResp = ApiOk | ApiFail;
+const DEFAULT: Settings = {
+  timezone: "UTC", currency: "USD", riskMode: "normal", theme: "dark",
+  notifyTradeOpen: true, notifyTradeClose: true, notifyBotStop: true,
+  notifyBotError: true, notifySubscription: true,
+};
 
 function getToken() {
-  try {
-    return localStorage.getItem("sessionToken") || "";
-  } catch {
-    return "";
-  }
+  try { return localStorage.getItem("sessionToken") || ""; } catch { return ""; }
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; json: T }> {
+async function api(path: string, init?: RequestInit) {
   const token = getToken();
   const res = await fetch(path, {
-    cache: "no-store",
-    ...init,
-    headers: {
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    cache: "no-store", ...init,
+    headers: { "content-type": "application/json", ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
-  const json = (await res.json()) as T;
-  return { status: res.status, json };
+  return res.json().catch(() => ({ ok: false, error: "BAD_JSON" }));
+}
+
+function ArrowLeft() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path d="M14.7 5.3a1 1 0 0 1 0 1.4L10.41 11H20a1 1 0 1 1 0 2h-9.59l4.3 4.3a1 1 0 0 1-1.42 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      style={{
+        width: 44,
+        height: 26,
+        borderRadius: 999,
+        border: "none",
+        background: on ? "#2979ff" : "rgba(255,255,255,0.12)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        position: "relative",
+        transition: "background 0.2s",
+        flexShrink: 0,
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span style={{
+        position: "absolute",
+        top: 3,
+        left: on ? 21 : 3,
+        width: 20,
+        height: 20,
+        borderRadius: 999,
+        background: "#fff",
+        transition: "left 0.2s",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+      }} />
+    </button>
+  );
 }
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { T, theme: currentTheme, setTheme } = useTheme();
 
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [status, setStatus] = useState<number | null>(null);
+  const [settings, setSettings] = useState<Settings>(DEFAULT);
   const [msg, setMsg] = useState("");
+  const [msgOk, setMsgOk] = useState(false);
+  const [pagePaddingTop, setPagePaddingTop] = useState("calc(env(safe-area-inset-top,0px) + 15px)");
 
-  const [settings, setSettings] = useState<Settings>({
-    timezone: "UTC",
-    currency: "USD",
-    riskMode: "normal",
-    createdAt: null,
-    updatedAt: null,
-  });
-
-  const tokenPreview = useMemo(() => {
-    const t = getToken();
-    return t ? `${t.slice(0, 6)}…${t.slice(-6)} (len=${t.length})` : "нет токена";
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const json = await api("/api/settings");
+      if (json.ok) setSettings({ ...DEFAULT, ...(json.settings ?? {}) });
+    } finally { setLoading(false); }
   }, []);
 
-  const load = async () => {
-    setLoading(true);
-    setMsg("");
-
+  async function save(patch?: Partial<Settings>) {
+    const data = patch ?? settings;
+    setSaving(true); setMsg("");
     try {
-      const { status, json } = await api<ApiResp>("/api/settings", { method: "GET" });
-      setStatus(status);
-
-      if (!json || typeof json !== "object") {
-        setMsg("Некорректный ответ сервера");
-        return;
+      const json = await api("/api/settings", { method: "PATCH", body: JSON.stringify(data) });
+      if (json.ok) {
+        setSettings((s) => ({ ...s, ...(json.settings ?? {}) }));
+        setMsg("Сохранено"); setMsgOk(true);
+        setTimeout(() => setMsg(""), 2500);
+      } else {
+        setMsg(json.extra?.message || json.error || "Ошибка"); setMsgOk(false);
       }
+    } catch (e: any) { setMsg(e?.message ?? "Ошибка"); setMsgOk(false); }
+    finally { setSaving(false); }
+  }
 
-      if ((json as ApiFail).ok === false) {
-        setMsg((json as ApiFail).error || "ERROR");
-        return;
-      }
+  async function toggleBool(field: keyof Settings) {
+    const val = !settings[field];
+    const updated = { ...settings, [field]: val };
+    setSettings(updated);
+    await save({ [field]: val });
+  }
 
-      setSettings((json as ApiOk).settings);
-    } catch (e: any) {
-      setMsg(e?.message ?? "fetch error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    setMsg("");
-
-    try {
-      const { status, json } = await api<ApiResp>("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          timezone: settings.timezone,
-          currency: settings.currency,
-          riskMode: settings.riskMode,
-        }),
-      });
-
-      setStatus(status);
-
-      if ((json as ApiFail).ok === false) {
-        setMsg((json as ApiFail).error || "ERROR");
-        return;
-      }
-
-      setSettings((json as ApiOk).settings);
-      setMsg("Сохранено ✅");
-    } catch (e: any) {
-      setMsg(e?.message ?? "fetch error");
-    } finally {
-      setSaving(false);
-    }
-  };
+  function handleTheme(t: ThemeName) {
+    setSettings((s) => ({ ...s, theme: t }));
+    setTheme(t);
+    save({ theme: t });
+  }
 
   useEffect(() => {
     load();
-  }, []);
+    const tg = (window as any)?.Telegram?.WebApp;
+    try {
+      tg?.ready?.(); tg?.expand?.();
+      tg?.setHeaderColor?.("#000000"); tg?.setBackgroundColor?.("#000000");
+      if (tg?.isFullscreen) setPagePaddingTop("calc(env(safe-area-inset-top,0px) + 88px)");
+    } catch {}
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [load]);
+
+  function reveal(i: number): CSSProperties {
+    return mounted
+      ? { opacity: 1, animationName: "fadeUp", animationDuration: "560ms", animationTimingFunction: "cubic-bezier(0.22,1,0.36,1)", animationFillMode: "both", animationDelay: `${i * 60}ms` }
+      : { opacity: 0, transform: "translate3d(0,14px,0)" };
+  }
+
+  const font = 'Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif';
+  const block: CSSProperties = { padding: 16, borderRadius: 22, border: `1px solid ${T.border}`, background: `linear-gradient(180deg,${T.card} 0%,rgba(255,255,255,0.02) 100%)`, marginBottom: 16 };
+  const row: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${T.borderSoft}` };
+  const rowLast: CSSProperties = { ...row, borderBottom: "none" };
+
+  const isBool = (f: keyof Settings) => settings[f] as boolean;
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        background: "#000",
-        color: "#fff",
-        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-      }}
-    >
-      <div style={{ maxWidth: 520, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <button
-            onClick={() => router.replace("/home")}
-            style={btnGhost()}
-            disabled={saving}
-          >
-            ← Home
-          </button>
-          <div style={{ fontSize: 20, fontWeight: 900 }}>Settings</div>
-        </div>
+    <>
+      <style jsx global>{`
+        *{box-sizing:border-box}
+        html,body{margin:0;padding:0;background:${T.bg};overflow-x:hidden}
+        select,input,button,textarea{font:inherit}
+        @keyframes fadeUp{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+      `}</style>
 
-        <div style={{ opacity: 0.85, fontSize: 13, marginBottom: 12 }}>
-          <div>
-            <b>sessionToken:</b> {tokenPreview}
-          </div>
-          <div>
-            <b>HTTP статус:</b> {status ?? "—"}
-          </div>
-        </div>
+      <main style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: font, paddingBottom: "calc(env(safe-area-inset-bottom,0px)+32px)", paddingTop: pagePaddingTop }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", padding: "0 16px" }}>
 
-        <div style={card()}>
-          <label style={label()}>
-            Timezone
-            <input
-              value={settings.timezone}
-              onChange={(e) => setSettings((s) => ({ ...s, timezone: e.target.value }))}
-              placeholder="UTC"
-              style={input()}
-              disabled={loading || saving}
-            />
-          </label>
-
-          <label style={label()}>
-            Currency
-            <select
-              value={settings.currency}
-              onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))}
-              style={input()}
-              disabled={loading || saving}
-            >
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="UAH">UAH</option>
-              <option value="RUB">RUB</option>
-            </select>
-          </label>
-
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Risk mode</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <button
-                onClick={() => setSettings((s) => ({ ...s, riskMode: "normal" }))}
-                style={pill(settings.riskMode === "normal")}
-                disabled={loading || saving}
-              >
-                normal
-              </button>
-              <button
-                onClick={() => setSettings((s) => ({ ...s, riskMode: "conservative" }))}
-                style={pill(settings.riskMode === "conservative")}
-                disabled={loading || saving}
-              >
-                conservative
-              </button>
-              <button
-                onClick={() => setSettings((s) => ({ ...s, riskMode: "aggressive" }))}
-                style={pill(settings.riskMode === "aggressive")}
-                disabled={loading || saving}
-              >
-                aggressive
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-            <button onClick={save} style={btnPrimary()} disabled={loading || saving}>
-              {saving ? "Сохраняю…" : "Сохранить"}
+          {/* Header */}
+          <section style={{ ...reveal(0), marginBottom: 22, display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 12, marginTop: 8 }}>
+            <button type="button" onClick={() => router.replace("/home")} style={{ width: 44, height: 44, borderRadius: 999, border: `1px solid ${T.borderHard}`, background: T.card, color: T.textMain, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+              <ArrowLeft />
             </button>
+            <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, letterSpacing: "-0.025em", color: T.textMain }}>Настройки</div>
+            <div />
+          </section>
 
-            <button onClick={load} style={btnGhost()} disabled={loading || saving}>
-              Обновить
-            </button>
+          {loading ? (
+            <div style={{ textAlign: "center", color: T.textMuted, padding: "40px 0" }}>Загрузка…</div>
+          ) : (
+            <>
+              {/* Theme */}
+              <section style={{ ...reveal(1), ...block }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Тема</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {(["dark", "light"] as ThemeName[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleTheme(t)}
+                      style={{
+                        padding: "12px 0",
+                        borderRadius: 14,
+                        border: `1px solid ${settings.theme === t ? T.brand : T.border}`,
+                        background: settings.theme === t ? `${T.brand}18` : T.card,
+                        color: settings.theme === t ? T.brand : T.textSoft,
+                        fontWeight: 700,
+                        fontSize: 14,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                        WebkitTapHighlightColor: "transparent",
+                      }}
+                    >
+                      {t === "dark" ? "🌙 Тёмная" : "☀️ Светлая"}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-            {msg && (
-              <div style={{ fontSize: 13, opacity: 0.9, textAlign: "center" }}>{msg}</div>
-            )}
-          </div>
+              {/* General */}
+              <section style={{ ...reveal(2), ...block }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Основные</div>
+
+                <div style={{ ...row }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Часовой пояс</div>
+                    <div style={{ fontSize: 12, color: T.textFaint, marginTop: 2 }}>Используется для отображения дат</div>
+                  </div>
+                  <input
+                    value={settings.timezone}
+                    onChange={(e) => setSettings((s) => ({ ...s, timezone: e.target.value }))}
+                    placeholder="UTC"
+                    disabled={saving}
+                    style={{ width: 100, height: 36, borderRadius: 10, border: `1px solid ${T.borderHard}`, background: T.surface, color: T.textMain, padding: "0 10px", fontSize: 13, outline: "none", textAlign: "center" }}
+                  />
+                </div>
+
+                <div style={{ ...row }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Валюта</div>
+                  <select
+                    value={settings.currency}
+                    onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))}
+                    disabled={saving}
+                    style={{ height: 36, borderRadius: 10, border: `1px solid ${T.borderHard}`, background: T.surface, color: T.textMain, padding: "0 10px", fontSize: 13, outline: "none" }}
+                  >
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="UAH">UAH</option>
+                    <option value="RUB">RUB</option>
+                  </select>
+                </div>
+
+                <div style={{ ...rowLast }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Риск режим</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {(["normal", "conservative", "aggressive"] as const).map((m) => (
+                      <button key={m} type="button" onClick={() => setSettings((s) => ({ ...s, riskMode: m }))} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${settings.riskMode === m ? T.brand : T.border}`, background: settings.riskMode === m ? `${T.brand}18` : T.card, color: settings.riskMode === m ? T.brand : T.textMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                        {m === "normal" ? "Normal" : m === "conservative" ? "Safe" : "Aggr"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              {/* Notifications */}
+              <section style={{ ...reveal(3), ...block }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Уведомления Telegram</div>
+                <div style={{ fontSize: 12, color: T.textFaint, marginBottom: 14 }}>Что отправлять в ваш Telegram</div>
+
+                {([
+                  ["notifyTradeOpen", "Открытие позиции"],
+                  ["notifyTradeClose", "Закрытие позиции"],
+                  ["notifyBotStop", "Остановка бота"],
+                  ["notifyBotError", "Ошибки бота"],
+                  ["notifySubscription", "Подписка / система"],
+                ] as [keyof Settings, string][]).map(([field, label], i, arr) => (
+                  <div key={field} style={i === arr.length - 1 ? rowLast : row}>
+                    <div style={{ fontSize: 14, color: T.textMain }}>{label}</div>
+                    <Toggle on={isBool(field)} onChange={() => toggleBool(field)} disabled={saving} />
+                  </div>
+                ))}
+              </section>
+
+              {/* Save button */}
+              <section style={{ ...reveal(4), marginBottom: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => save()}
+                  disabled={saving}
+                  style={{ width: "100%", height: 50, borderRadius: 999, border: "none", background: T.brand, color: "#fff", fontSize: 16, fontWeight: 800, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1, WebkitTapHighlightColor: "transparent" }}
+                >
+                  {saving ? "Сохраняю…" : "Сохранить"}
+                </button>
+                {msg && (
+                  <div style={{ textAlign: "center", fontSize: 13, marginTop: 10, color: msgOk ? T.green : T.red }}>{msg}</div>
+                )}
+              </section>
+            </>
+          )}
         </div>
-
-        <div style={{ opacity: 0.6, fontSize: 12, marginTop: 12, textAlign: "center" }}>
-          createdAt: {settings.createdAt ?? "—"} <br />
-          updatedAt: {settings.updatedAt ?? "—"}
-        </div>
-      </div>
-    </main>
+      </main>
+    </>
   );
-}
-
-function card(): React.CSSProperties {
-  return {
-    background: "#111",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 16,
-    padding: 14,
-  };
-}
-
-function label(): React.CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    fontSize: 13,
-    fontWeight: 700,
-    marginBottom: 12,
-  };
-}
-
-function input(): React.CSSProperties {
-  return {
-    width: "100%",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "#0a0a0a",
-    color: "#fff",
-    padding: "10px 12px",
-    outline: "none",
-    fontSize: 14,
-  };
-}
-
-function btnPrimary(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "12px 14px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "#fff",
-    color: "#000",
-    fontWeight: 900,
-    cursor: "pointer",
-  };
-}
-
-function btnGhost(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "12px 14px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-  };
-}
-
-function pill(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: active ? "#fff" : "transparent",
-    color: active ? "#000" : "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-  };
 }

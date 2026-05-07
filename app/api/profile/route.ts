@@ -59,6 +59,7 @@ export async function GET(req: Request) {
         username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
+        createdAt: user.createdAt.toISOString(),
       },
     });
   } catch (e: any) {

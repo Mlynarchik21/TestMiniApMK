@@ -241,6 +241,8 @@ export default function HomePage() {
     "calc(env(safe-area-inset-top, 0px) + 5px)"
   );
 
+  const [unreadCount, setUnreadCount] = useState(0);
+
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
     setStatus(null);
@@ -378,6 +380,14 @@ export default function HomePage() {
     loadHomeMarket();
     loadBotWidget();
 
+    const token = getToken();
+    if (token) {
+      fetch("/api/notifications", { cache: "no-store", headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((j) => { if (j?.unreadCount != null) setUnreadCount(Number(j.unreadCount)); })
+        .catch(() => {});
+    }
+
     const tg = (window as any)?.Telegram?.WebApp;
 
     const updateLayout = () => {
@@ -487,10 +497,15 @@ export default function HomePage() {
                   <button
                     type="button"
                     aria-label="Уведомления"
-                    style={styles.iconButton}
+                    style={{ ...styles.iconButton, position: "relative" }}
                     onClick={() => router.replace("/notifications")}
                   >
                     <BellIcon />
+                    {unreadCount > 0 && (
+                      <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 999, background: "#2979ff", color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", lineHeight: 1 }}>
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
                   </button>
 
                   <button
