@@ -21,6 +21,30 @@ type SubData = {
   createdAt: string;
 };
 
+type ReferredUser = {
+  id: string;
+  name: string;
+  username: string | null;
+  joinedAt: string;
+  plan: string;
+  subscribed: boolean;
+  lastPaymentPlan: string | null;
+};
+
+type ReferralStats = {
+  totalReferred: number;
+  paidThisMonth: number;
+  proThisMonth: number;
+  nextReward: string | null;
+};
+
+type ReferralData = {
+  referralCode: string;
+  referralLink: string;
+  stats: ReferralStats;
+  referred: ReferredUser[];
+};
+
 function getToken() {
   try { return localStorage.getItem("sessionToken") || ""; } catch { return ""; }
 }
@@ -54,8 +78,13 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+function formatDateShort(iso: string) {
+  return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
 function planLabel(plan: string) {
   if (plan === "pro") return "Pro";
+  if (plan === "basic") return "Basic";
   if (plan === "trial") return "Trial";
   return "Free";
 }
@@ -74,6 +103,22 @@ function ArrowLeft() {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { T } = useTheme();
@@ -82,21 +127,28 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserData | null>(null);
   const [sub, setSub] = useState<SubData | null>(null);
+  const [referral, setReferral] = useState<ReferralData | null>(null);
   const [err, setErr] = useState("");
   const [deleteStep, setDeleteStep] = useState<"idle" | "confirm" | "deleting">("idle");
   const [deleteErr, setDeleteErr] = useState("");
   const [pagePaddingTop, setPagePaddingTop] = useState("calc(env(safe-area-inset-top,0px) + 15px)");
+  const [buyingPlan, setBuyingPlan] = useState<"basic" | "pro" | null>(null);
+  const [buyMsg, setBuyMsg] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [showReferredList, setShowReferredList] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [profileRes, subRes] = await Promise.all([
+      const [profileRes, subRes, refRes] = await Promise.all([
         api("/api/profile"),
         api("/api/subscription"),
+        api("/api/referral"),
       ]);
       if (profileRes.ok) setUser(profileRes.user);
       else setErr(profileRes.error || "Не удалось загрузить профиль");
       if (subRes.ok) setSub(subRes.subscription);
+      if (refRes.ok) setReferral(refRes as ReferralData);
     } finally { setLoading(false); }
   }, []);
 
@@ -115,6 +167,50 @@ export default function ProfilePage() {
     } catch (e: any) {
       setDeleteErr(e?.message ?? "Ошибка");
       setDeleteStep("confirm");
+    }
+  }
+
+  async function buyPlan(plan: "basic" | "pro") {
+    setBuyingPlan(plan);
+    setBuyMsg("");
+    try {
+      const json = await api("/api/payments/create-invoice", { method: "POST", body: JSON.stringify({ plan }) });
+      if (!json.ok) {
+        setBuyMsg(json.message || json.error || "Ошибка создания счёта");
+        return;
+      }
+      const tg = (window as any)?.Telegram?.WebApp;
+      if (!tg?.openInvoice) {
+        setBuyMsg("Оплата доступна только внутри Telegram");
+        return;
+      }
+      tg.openInvoice(json.invoiceLink, (status: string) => {
+        if (status === "paid") {
+          setBuyMsg("Оплата прошла! Подписка активируется в течение минуты.");
+          setTimeout(() => load(), 3000);
+        } else if (status === "cancelled") {
+          setBuyMsg("");
+        } else if (status === "failed") {
+          setBuyMsg("Ошибка оплаты. Попробуйте ещё раз.");
+        }
+      });
+    } catch (e: any) {
+      setBuyMsg(e?.message ?? "Ошибка");
+    } finally {
+      setBuyingPlan(null);
+    }
+  }
+
+  function copyLink() {
+    const link = referral?.referralLink;
+    if (!link) return;
+    try {
+      navigator.clipboard.writeText(link).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } catch {
+      setCopied(false);
     }
   }
 
@@ -141,8 +237,10 @@ export default function ProfilePage() {
   const infoRow: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.borderSoft}` };
   const infoRowLast: CSSProperties = { ...infoRow, borderBottom: "none" };
 
-  const planColor = sub?.plan === "pro" ? T.brand : sub?.plan === "trial" ? T.yellow : T.textMuted;
+  const planColor = sub?.plan === "pro" ? T.brand : sub?.plan === "basic" ? T.green : sub?.plan === "trial" ? T.yellow : T.textMuted;
   const statusOk = sub?.status === "active" || sub?.status === "trial";
+  const isPro = sub?.plan === "pro" && statusOk;
+  const isBasic = sub?.plan === "basic" && statusOk;
 
   return (
     <>
@@ -203,19 +301,137 @@ export default function ProfilePage() {
                   <span style={{ fontSize: 14, color: T.textMain }}>{sub?.expiresAt ? formatDate(sub.expiresAt) : "Бессрочно"}</span>
                 </div>
 
-                {sub?.plan === "free" && (
+                {buyMsg && (
+                  <div style={{ marginTop: 10, fontSize: 13, color: buyMsg.includes("прошла") ? T.green : T.red, textAlign: "center" }}>{buyMsg}</div>
+                )}
+
+                {/* Plan purchase buttons */}
+                {!isPro && (
+                  <div style={{ display: "grid", gridTemplateColumns: isBasic ? "1fr" : "1fr 1fr", gap: 8, marginTop: 14 }}>
+                    {!isBasic && (
+                      <button
+                        type="button"
+                        disabled={!!buyingPlan}
+                        onClick={() => buyPlan("basic")}
+                        style={{ height: 44, borderRadius: 999, border: `1px solid ${T.green}`, background: `${T.green}18`, color: T.green, fontWeight: 700, fontSize: 13, cursor: buyingPlan ? "not-allowed" : "pointer", opacity: buyingPlan === "basic" ? 0.6 : 1, WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                      >
+                        <StarIcon /> Basic — 100 ⭐
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!!buyingPlan}
+                      onClick={() => buyPlan("pro")}
+                      style={{ height: 44, borderRadius: 999, border: `1px solid ${T.brand}`, background: `${T.brand}18`, color: T.brand, fontWeight: 700, fontSize: 13, cursor: buyingPlan ? "not-allowed" : "pointer", opacity: buyingPlan === "pro" ? 0.6 : 1, WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                    >
+                      <StarIcon /> Pro — 2500 ⭐
+                    </button>
+                  </div>
+                )}
+
+                {isPro && (
                   <button
                     type="button"
-                    style={{ width: "100%", marginTop: 14, height: 44, borderRadius: 999, border: `1px solid ${T.brand}`, background: `${T.brand}18`, color: T.brand, fontWeight: 700, fontSize: 14, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
-                    onClick={() => {}}
+                    disabled={!!buyingPlan}
+                    onClick={() => buyPlan("pro")}
+                    style={{ width: "100%", marginTop: 14, height: 44, borderRadius: 999, border: `1px solid ${T.brand}`, background: `${T.brand}18`, color: T.brand, fontWeight: 700, fontSize: 13, cursor: buyingPlan ? "not-allowed" : "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
                   >
-                    Улучшить до Pro
+                    <StarIcon /> Продлить Pro — 2500 ⭐
+                  </button>
+                )}
+
+                {isBasic && !isPro && (
+                  <button
+                    type="button"
+                    disabled={!!buyingPlan}
+                    onClick={() => buyPlan("pro")}
+                    style={{ width: "100%", marginTop: 8, height: 44, borderRadius: 999, border: `1px solid ${T.brand}`, background: `${T.brand}18`, color: T.brand, fontWeight: 700, fontSize: 13, cursor: buyingPlan ? "not-allowed" : "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                  >
+                    <StarIcon /> Улучшить до Pro — 2500 ⭐
                   </button>
                 )}
               </section>
 
+              {/* Referral system */}
+              {referral && (
+                <section style={{ ...reveal(3), ...block }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Реферальная программа</div>
+
+                  {/* Stats bar */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                    {[
+                      { label: "Приглашено", value: referral.stats.totalReferred },
+                      { label: "Оплатили", value: referral.stats.paidThisMonth },
+                      { label: "Pro купили", value: referral.stats.proThisMonth },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{ background: T.surface, borderRadius: 14, padding: "10px 8px", textAlign: "center", border: `1px solid ${T.border}` }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: T.textMain }}>{value}</div>
+                        <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Next reward hint */}
+                  {referral.stats.nextReward && (
+                    <div style={{ fontSize: 12, color: T.brand, background: `${T.brand}10`, borderRadius: 10, padding: "8px 12px", marginBottom: 12, lineHeight: 1.4 }}>
+                      🎯 {referral.stats.nextReward}
+                    </div>
+                  )}
+
+                  {/* Reward explanation */}
+                  <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 12, lineHeight: 1.5 }}>
+                    5 приглашённых с любой подпиской = <span style={{ color: T.green }}>Basic на месяц</span><br />
+                    5 приглашённых с Pro = <span style={{ color: T.brand }}>Pro на месяц</span>
+                  </div>
+
+                  {/* Referral link */}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ flex: 1, background: T.surface, border: `1px solid ${T.borderHard}`, borderRadius: 12, padding: "10px 12px", fontSize: 12, color: T.textSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {referral.referralLink}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyLink}
+                      style={{ height: 40, paddingInline: 14, borderRadius: 12, border: `1px solid ${T.borderHard}`, background: copied ? `${T.green}18` : T.card, color: copied ? T.green : T.textSoft, fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0, WebkitTapHighlightColor: "transparent" }}
+                    >
+                      <CopyIcon />
+                      {copied ? "Скопировано" : "Копировать"}
+                    </button>
+                  </div>
+
+                  {/* Referred users list toggle */}
+                  {referral.referred.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowReferredList((v) => !v)}
+                        style={{ fontSize: 13, color: T.brand, background: "none", border: "none", padding: 0, cursor: "pointer", fontWeight: 600 }}
+                      >
+                        {showReferredList ? "Скрыть" : `Показать приглашённых (${referral.referred.length})`}
+                      </button>
+
+                      {showReferredList && (
+                        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                          {referral.referred.map((r) => (
+                            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.borderSoft}` }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: T.textMain }}>{r.name}</div>
+                                <div style={{ fontSize: 11, color: T.textFaint }}>{formatDateShort(r.joinedAt)}</div>
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: r.plan === "pro" ? `${T.brand}18` : r.plan === "basic" ? `${T.green}18` : `${T.textMuted}18`, color: r.plan === "pro" ? T.brand : r.plan === "basic" ? T.green : T.textMuted }}>
+                                {planLabel(r.plan)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* Account info */}
-              <section style={{ ...reveal(3), ...block }}>
+              <section style={{ ...reveal(4), ...block }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Аккаунт</div>
 
                 <div style={infoRow}>
@@ -229,7 +445,7 @@ export default function ProfilePage() {
               </section>
 
               {/* Danger zone */}
-              <section style={{ ...reveal(4), padding: "14px 16px", borderRadius: 22, border: `1px solid rgba(255,106,106,0.18)`, background: "rgba(255,106,106,0.04)", marginBottom: 14 }}>
+              <section style={{ ...reveal(5), padding: "14px 16px", borderRadius: 22, border: `1px solid rgba(255,106,106,0.18)`, background: "rgba(255,106,106,0.04)", marginBottom: 14 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.red, marginBottom: 8 }}>Опасная зона</div>
 
                 {deleteStep === "idle" && (

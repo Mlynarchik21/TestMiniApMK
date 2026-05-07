@@ -20,8 +20,8 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         take: 100,
         select: { id: true, type: true, title: true, body: true, read: true, createdAt: true },
-      }),
-      prisma.notification.count({ where: { userId: user.id, read: false } }),
+      }).catch(() => []),
+      prisma.notification.count({ where: { userId: user.id, read: false } }).catch(() => 0),
     ]);
 
     return ok({ notifications, unreadCount });

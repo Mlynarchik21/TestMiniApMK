@@ -100,10 +100,33 @@ export async function POST(req: Request) {
     const firstName = typeof verified.user.first_name === "string" ? verified.user.first_name : null;
     const lastName = typeof verified.user.last_name === "string" ? verified.user.last_name : null;
 
+    // Extract referral code from start_param (e.g. ref_ABCD1234)
+    const startParam = typeof verified.data?.start_param === "string" ? verified.data.start_param : null;
+    const refCode = startParam?.startsWith("ref_") ? startParam.slice(4) : null;
+
+    // Find referrer if code present
+    let referredById: string | undefined;
+    if (refCode) {
+      const referrer = await prisma.user.findUnique({
+        where: { referralCode: refCode },
+        select: { id: true },
+      });
+      if (referrer) referredById = referrer.id;
+    }
+
+    const existing = await prisma.user.findUnique({ where: { tgId }, select: { id: true, referredById: true } });
+
     const user = await prisma.user.upsert({
       where: { tgId },
-      create: { tgId, username, firstName, lastName },
-      update: { username, firstName, lastName },
+      create: {
+        tgId, username, firstName, lastName,
+        ...(referredById ? { referredById } : {}),
+      },
+      update: {
+        username, firstName, lastName,
+        // Only set referredById once — don't overwrite if already set
+        ...(referredById && !existing?.referredById ? { referredById } : {}),
+      },
       select: { id: true, tgId: true, username: true, firstName: true, lastName: true },
     });
 

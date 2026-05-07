@@ -8,8 +8,6 @@ import type { ThemeName } from "@/lib/useTheme";
 
 type Settings = {
   timezone: string;
-  currency: string;
-  riskMode: "normal" | "conservative" | "aggressive";
   theme: "dark" | "light";
   notifyTradeOpen: boolean;
   notifyTradeClose: boolean;
@@ -19,9 +17,13 @@ type Settings = {
 };
 
 const DEFAULT: Settings = {
-  timezone: "UTC", currency: "USD", riskMode: "normal", theme: "dark",
-  notifyTradeOpen: true, notifyTradeClose: true, notifyBotStop: true,
-  notifyBotError: true, notifySubscription: true,
+  timezone: "UTC",
+  theme: "dark",
+  notifyTradeOpen: true,
+  notifyTradeClose: true,
+  notifyBotStop: true,
+  notifyBotError: true,
+  notifySubscription: true,
 };
 
 function getToken() {
@@ -54,28 +56,17 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean
       disabled={disabled}
       onClick={() => onChange(!on)}
       style={{
-        width: 44,
-        height: 26,
-        borderRadius: 999,
-        border: "none",
-        background: on ? "#2979ff" : "rgba(255,255,255,0.12)",
+        width: 44, height: 26, borderRadius: 999, border: "none",
+        background: on ? "#2979ff" : "rgba(128,128,128,0.25)",
         cursor: disabled ? "not-allowed" : "pointer",
-        position: "relative",
-        transition: "background 0.2s",
-        flexShrink: 0,
+        position: "relative", transition: "background 0.2s", flexShrink: 0,
         WebkitTapHighlightColor: "transparent",
       }}
     >
       <span style={{
-        position: "absolute",
-        top: 3,
-        left: on ? 21 : 3,
-        width: 20,
-        height: 20,
-        borderRadius: 999,
-        background: "#fff",
-        transition: "left 0.2s",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+        position: "absolute", top: 3, left: on ? 21 : 3,
+        width: 20, height: 20, borderRadius: 999, background: "#fff",
+        transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
       }} />
     </button>
   );
@@ -154,6 +145,7 @@ export default function SettingsPage() {
   const rowLast: CSSProperties = { ...row, borderBottom: "none" };
 
   const isBool = (f: keyof Settings) => settings[f] as boolean;
+  const isDark = settings.theme === "dark";
 
   return (
     <>
@@ -182,29 +174,19 @@ export default function SettingsPage() {
             <>
               {/* Theme */}
               <section style={{ ...reveal(1), ...block }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Тема</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {(["dark", "light"] as ThemeName[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => handleTheme(t)}
-                      style={{
-                        padding: "12px 0",
-                        borderRadius: 14,
-                        border: `1px solid ${settings.theme === t ? T.brand : T.border}`,
-                        background: settings.theme === t ? `${T.brand}18` : T.card,
-                        color: settings.theme === t ? T.brand : T.textSoft,
-                        fontWeight: 700,
-                        fontSize: 14,
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                        WebkitTapHighlightColor: "transparent",
-                      }}
-                    >
-                      {t === "dark" ? "🌙 Тёмная" : "☀️ Светлая"}
-                    </button>
-                  ))}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.textMain }}>
+                      {isDark ? "🌙 Тёмная тема" : "☀️ Светлая тема"}
+                    </div>
+                    <div style={{ fontSize: 12, color: T.textFaint, marginTop: 2 }}>
+                      {isDark ? "Переключить на светлую" : "Переключить на тёмную"}
+                    </div>
+                  </div>
+                  <Toggle
+                    on={isDark}
+                    onChange={(v) => handleTheme(v ? "dark" : "light")}
+                  />
                 </div>
               </section>
 
@@ -212,10 +194,10 @@ export default function SettingsPage() {
               <section style={{ ...reveal(2), ...block }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Основные</div>
 
-                <div style={{ ...row }}>
+                <div style={{ ...rowLast }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Часовой пояс</div>
-                    <div style={{ fontSize: 12, color: T.textFaint, marginTop: 2 }}>Используется для отображения дат</div>
+                    <div style={{ fontSize: 12, color: T.textFaint, marginTop: 2 }}>Для отображения дат и времени</div>
                   </div>
                   <input
                     value={settings.timezone}
@@ -224,32 +206,6 @@ export default function SettingsPage() {
                     disabled={saving}
                     style={{ width: 100, height: 36, borderRadius: 10, border: `1px solid ${T.borderHard}`, background: T.surface, color: T.textMain, padding: "0 10px", fontSize: 13, outline: "none", textAlign: "center" }}
                   />
-                </div>
-
-                <div style={{ ...row }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Валюта</div>
-                  <select
-                    value={settings.currency}
-                    onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))}
-                    disabled={saving}
-                    style={{ height: 36, borderRadius: 10, border: `1px solid ${T.borderHard}`, background: T.surface, color: T.textMain, padding: "0 10px", fontSize: 13, outline: "none" }}
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="UAH">UAH</option>
-                    <option value="RUB">RUB</option>
-                  </select>
-                </div>
-
-                <div style={{ ...rowLast }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: T.textMain }}>Риск режим</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {(["normal", "conservative", "aggressive"] as const).map((m) => (
-                      <button key={m} type="button" onClick={() => setSettings((s) => ({ ...s, riskMode: m }))} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${settings.riskMode === m ? T.brand : T.border}`, background: settings.riskMode === m ? `${T.brand}18` : T.card, color: settings.riskMode === m ? T.brand : T.textMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-                        {m === "normal" ? "Normal" : m === "conservative" ? "Safe" : "Aggr"}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </section>
 

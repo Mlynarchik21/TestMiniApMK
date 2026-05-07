@@ -31,6 +31,12 @@ model User {
   notifications Notification[]
   supportMsgs   SupportMessage[]
   subscription  Subscription?
+  payments      Payment[]
+
+  referralCode  String?  @unique
+  referredById  String?
+  referredBy    User?    @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals     User[]   @relation("Referrals")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -109,6 +115,23 @@ model Subscription {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan             String
+  stars            Int
+  telegramChargeId String   @unique
+  status           String   @default("completed")
+  payload          String?
+
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
 }
 
 enum Exchange {

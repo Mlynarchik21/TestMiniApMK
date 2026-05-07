@@ -244,8 +244,6 @@ export default function GatePage() {
   return (
     <div className="page">
       <div className="wrap">
-        <div className="title">Gate / Проверка доступа</div>
-
         {status === "loading" && (
           <>
             <div className="ring" aria-label="Loading progress">
@@ -289,7 +287,6 @@ export default function GatePage() {
               </div>
             )}
 
-            <div className="hint">Это займёт несколько секунд</div>
           </>
         )}
 
@@ -349,13 +346,6 @@ export default function GatePage() {
         .wrap {
           width: 100%;
           max-width: 420px;
-        }
-
-        .title {
-          font-size: 26px;
-          font-weight: 700;
-          margin-bottom: 18px;
-          letter-spacing: 0.2px;
         }
 
         .ring {
@@ -477,12 +467,6 @@ export default function GatePage() {
             transform: translateY(-4px);
             opacity: 1;
           }
-        }
-
-        .hint {
-          font-size: 12px;
-          color: var(--muted);
-          margin-bottom: 14px;
         }
 
         .msgStatic {
