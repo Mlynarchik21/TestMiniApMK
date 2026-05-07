@@ -18,6 +18,7 @@ type SubData = {
   plan: string;
   status: string;
   expiresAt: string | null;
+  vipExpiresAt: string | null;
   createdAt: string;
 };
 
@@ -134,6 +135,8 @@ export default function ProfilePage() {
   const [pagePaddingTop, setPagePaddingTop] = useState("calc(env(safe-area-inset-top,0px) + 15px)");
   const [buyingPlan, setBuyingPlan] = useState<"basic" | "pro" | null>(null);
   const [buyMsg, setBuyMsg] = useState("");
+  const [buyingVip, setBuyingVip] = useState(false);
+  const [vipBuyMsg, setVipBuyMsg] = useState("");
   const [copied, setCopied] = useState(false);
   const [showReferredList, setShowReferredList] = useState(false);
 
@@ -201,6 +204,37 @@ export default function ProfilePage() {
     }
   }
 
+  async function buyVip() {
+    setBuyingVip(true);
+    setVipBuyMsg("");
+    try {
+      const json = await api("/api/payments/create-invoice", { method: "POST", body: JSON.stringify({ plan: "vip" }) });
+      if (!json.ok) {
+        setVipBuyMsg(json.message || json.error || "Ошибка создания счёта");
+        return;
+      }
+      const tg = (window as any)?.Telegram?.WebApp;
+      if (!tg?.openInvoice) {
+        setVipBuyMsg("Оплата доступна только внутри Telegram");
+        return;
+      }
+      tg.openInvoice(json.invoiceLink, (status: string) => {
+        if (status === "paid") {
+          setVipBuyMsg("Оплата прошла! Ссылка придёт в бот.");
+          setTimeout(() => load(), 3000);
+        } else if (status === "cancelled") {
+          setVipBuyMsg("");
+        } else if (status === "failed") {
+          setVipBuyMsg("Ошибка оплаты. Попробуйте ещё раз.");
+        }
+      });
+    } catch (e: any) {
+      setVipBuyMsg(e?.message ?? "Ошибка");
+    } finally {
+      setBuyingVip(false);
+    }
+  }
+
   function copyLink() {
     const link = referral?.referralLink;
     if (!link) return;
@@ -241,6 +275,7 @@ export default function ProfilePage() {
   const statusOk = sub?.status === "active" || sub?.status === "trial";
   const isPro = sub?.plan === "pro" && statusOk;
   const isBasic = sub?.plan === "basic" && statusOk;
+  const vipActive = sub?.vipExpiresAt ? new Date(sub.vipExpiresAt) > new Date() : false;
 
   return (
     <>
@@ -350,6 +385,43 @@ export default function ProfilePage() {
                     <StarIcon /> Улучшить до Pro — 2500 ⭐
                   </button>
                 )}
+
+                {/* VIP channel section */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.borderSoft}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.yellow, marginBottom: 10 }}>VIP Канал</div>
+                  {vipActive ? (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.borderSoft}` }}>
+                        <span style={{ fontSize: 14, color: T.textSoft }}>VIP доступ</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, padding: "3px 10px", borderRadius: 999, background: "rgba(243,215,9,0.12)", color: T.yellow }}>Активен</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                        <span style={{ fontSize: 14, color: T.textSoft }}>До</span>
+                        <span style={{ fontSize: 14, color: T.textMain }}>{formatDate(sub!.vipExpiresAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={buyingVip}
+                        onClick={buyVip}
+                        style={{ width: "100%", marginTop: 6, height: 40, borderRadius: 999, border: `1px solid ${T.yellow}`, background: `${T.yellow}18`, color: T.yellow, fontWeight: 700, fontSize: 13, cursor: buyingVip ? "not-allowed" : "pointer", opacity: buyingVip ? 0.6 : 1, WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                      >
+                        <StarIcon /> Продлить VIP — 250 ⭐
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={buyingVip}
+                      onClick={buyVip}
+                      style={{ width: "100%", height: 44, borderRadius: 999, border: `1px solid ${T.yellow}`, background: `${T.yellow}18`, color: T.yellow, fontWeight: 700, fontSize: 13, cursor: buyingVip ? "not-allowed" : "pointer", opacity: buyingVip ? 0.6 : 1, WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                    >
+                      <StarIcon /> VIP Канал — 250 ⭐/месяц
+                    </button>
+                  )}
+                  {vipBuyMsg && (
+                    <div style={{ marginTop: 8, fontSize: 13, color: vipBuyMsg.includes("прошла") ? T.green : T.yellow, textAlign: "center" }}>{vipBuyMsg}</div>
+                  )}
+                </div>
               </section>
 
               {/* Referral system */}

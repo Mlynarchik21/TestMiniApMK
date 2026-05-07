@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
+import { getPlanInfo } from "@/lib/auth/requirePlan";
 import { runManage } from "@/lib/engine/runManage";
 import { syncOpenPositionsForUser } from "@/lib/engine/syncOpenPositions";
 
@@ -20,6 +21,11 @@ function fail(status: number, error: string, message?: string, extra?: any) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
+
+    const planInfo = await getPlanInfo(user.id);
+    if (!planInfo.canRunBot) {
+      return fail(403, "PLAN_REQUIRED", "Для использования бота необходима подписка Basic или Pro");
+    }
 
     const config = await prisma.botConfig.findUnique({
       where: { userId: user.id },

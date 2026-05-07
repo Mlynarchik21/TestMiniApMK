@@ -242,6 +242,10 @@ export default function HomePage() {
   );
 
   const [unreadCount, setUnreadCount] = useState(0);
+  const [subPlan, setSubPlan] = useState<string>("free");
+  const [vipBuying, setVipBuying] = useState(false);
+  const [vipMsg, setVipMsg] = useState<string | null>(null);
+  const [homeCourses, setHomeCourses] = useState<{ id: string; title: string; description: string; totalLessons: number; completedLessons: number }[]>([]);
 
   async function run(path: string, init?: RequestInit) {
     setLoading(true);
@@ -368,6 +372,37 @@ export default function HomePage() {
     }
   }
 
+  async function buyVip() {
+    const token = getToken();
+    const tg = (window as any)?.Telegram?.WebApp;
+    setVipBuying(true);
+    setVipMsg(null);
+    try {
+      const res = await fetch("/api/payments/create-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ plan: "vip" }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setVipMsg(json.message || "Ошибка создания счёта");
+        return;
+      }
+      tg?.openInvoice(json.invoiceLink, (status: string) => {
+        if (status === "paid") setVipMsg("Оплачено! Ссылка придёт в бот.");
+        else if (status === "cancelled") setVipMsg(null);
+        else setVipMsg(`Статус: ${status}`);
+      });
+    } catch (e: any) {
+      setVipMsg(e?.message || "Ошибка");
+    } finally {
+      setVipBuying(false);
+    }
+  }
+
   const checkMe = () => run("/api/me", { method: "GET" });
 
   useEffect(() => {
@@ -386,7 +421,17 @@ export default function HomePage() {
         .then((r) => r.json())
         .then((j) => { if (j?.unreadCount != null) setUnreadCount(Number(j.unreadCount)); })
         .catch(() => {});
+
+      fetch("/api/subscription", { cache: "no-store", headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((j) => { if (j?.subscription?.plan) setSubPlan(j.subscription.plan); })
+        .catch(() => {});
     }
+
+    fetch("/api/course", { cache: "no-store", headers: { Authorization: `Bearer ${getToken()}` } })
+      .then((r) => r.json())
+      .then((j) => { if (j?.ok && Array.isArray(j.courses)) setHomeCourses(j.courses); })
+      .catch(() => {});
 
     const tg = (window as any)?.Telegram?.WebApp;
 
@@ -786,6 +831,12 @@ export default function HomePage() {
               />
             </div>
 
+            {subPlan === "free" && (
+              <div style={styles.botFreePlanHint}>
+                Для запуска бота необходима подписка Basic или Pro
+              </div>
+            )}
+
             <button
               type="button"
               style={styles.blockButtonBlue}
@@ -795,8 +846,68 @@ export default function HomePage() {
             </button>
           </section>
 
+          <section style={{ ...styles.vipBlock, ...reveal(5, mounted) }}>
+            <div style={styles.vipEyebrow}>ЭКСКЛЮЗИВ</div>
+            <div style={styles.vipTitle}>VIP Канал</div>
+            <div style={styles.vipDesc}>Закрытый канал с аналитикой и сигналами</div>
+            {vipMsg && <div style={styles.vipMsg}>{vipMsg}</div>}
+            <button
+              type="button"
+              style={{ ...styles.blockButtonVip, opacity: vipBuying ? 0.7 : 1 }}
+              disabled={vipBuying}
+              onClick={buyVip}
+            >
+              {vipBuying ? "Загрузка..." : "⭐ VIP Канал — 250 ⭐/месяц"}
+            </button>
+          </section>
+
+          <section style={{ ...styles.coursesBlock, ...reveal(6, mounted) }}>
+            <div style={styles.coursesTopRow}>
+              <div>
+                <div style={styles.coursesEyebrow}>ОБУЧЕНИЕ</div>
+                <div style={styles.coursesTitle}>Курсы</div>
+              </div>
+              <button type="button" style={styles.coursesAllBtn} onClick={() => router.replace("/course")}>
+                Все курсы →
+              </button>
+            </div>
+
+            {homeCourses.length === 0 ? (
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", textAlign: "center", padding: "14px 0" }}>Загрузка…</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {homeCourses.map((c) => {
+                  const pct = c.totalLessons > 0 ? Math.round((c.completedLessons / c.totalLessons) * 100) : 0;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => router.push(`/course/${c.id}`)}
+                      style={styles.courseCard}
+                    >
+                      <div style={styles.courseCardBanner}>
+                        <span style={{ fontSize: 36 }}>📚</span>
+                      </div>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", marginBottom: 4, textAlign: "left" }}>{c.title}</div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 10, textAlign: "left", lineHeight: 1.4 }}>{c.description}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Прогресс</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: pct === 100 ? "#64d97b" : "#8eb2ff" }}>{c.completedLessons}/{c.totalLessons} уроков</span>
+                        </div>
+                        <div style={{ width: "100%", height: 5, borderRadius: 999, background: "rgba(255,255,255,0.10)" }}>
+                          <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: pct === 100 ? "#64d97b" : "#2979ff", transition: "width 0.4s ease" }} />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {SHOW_DEBUG_PANEL ? (
-            <section style={{ ...styles.debugCard, ...reveal(6, mounted) }}>
+            <section style={{ ...styles.debugCard, ...reveal(7, mounted) }}>
               <div style={styles.debugHeader}>
                 <div>
                   <div style={styles.debugTitle}>Технический статус</div>
@@ -1550,6 +1661,70 @@ const styles = {
     boxShadow: "0 10px 24px rgba(41, 121, 255, 0.18)",
   } satisfies CSSProperties,
 
+  botFreePlanHint: {
+    marginTop: 12,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "rgba(243,215,9,0.08)",
+    border: "1px solid rgba(243,215,9,0.18)",
+    color: UI.yellow,
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1.4,
+    textAlign: "center",
+  } satisfies CSSProperties,
+
+  vipBlock: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 22,
+    border: "1px solid rgba(243,215,9,0.22)",
+    background: "linear-gradient(180deg, rgba(243,215,9,0.06) 0%, rgba(243,155,9,0.03) 100%)",
+  } satisfies CSSProperties,
+
+  vipEyebrow: {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "rgba(243,215,9,0.72)",
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  vipTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    color: UI.textMain,
+    marginBottom: 4,
+  } satisfies CSSProperties,
+
+  vipDesc: {
+    fontSize: 13,
+    color: UI.textMuted,
+    lineHeight: 1.4,
+  } satisfies CSSProperties,
+
+  vipMsg: {
+    marginTop: 10,
+    fontSize: 13,
+    color: UI.yellow,
+    lineHeight: 1.4,
+  } satisfies CSSProperties,
+
+  blockButtonVip: {
+    width: "100%",
+    height: 42,
+    borderRadius: 14,
+    border: "none",
+    background: UI.yellow,
+    color: "#000",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    marginTop: 14,
+  } satisfies CSSProperties,
+
   debugCard: {
     marginTop: 20,
     background: "transparent",
@@ -1613,5 +1788,74 @@ const styles = {
     lineHeight: 1.4,
     overflowX: "auto",
     color: UI.textMuted,
+  } satisfies CSSProperties,
+
+  coursesBlock: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 22,
+    border: "1px solid rgba(41,121,255,0.18)",
+    background: "linear-gradient(180deg, rgba(41,121,255,0.07) 0%, rgba(0,0,0,0) 100%)",
+  } satisfies CSSProperties,
+
+  coursesTopRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  } satisfies CSSProperties,
+
+  coursesEyebrow: {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "rgba(41,121,255,0.72)",
+    marginBottom: 6,
+  } satisfies CSSProperties,
+
+  coursesTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    color: UI.textMain,
+  } satisfies CSSProperties,
+
+  coursesAllBtn: {
+    height: 32,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+    flexShrink: 0,
+    alignSelf: "center",
+  } satisfies CSSProperties,
+
+  courseCard: {
+    display: "block",
+    width: "100%",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+    overflow: "hidden",
+    textAlign: "left",
+    padding: 0,
+  } satisfies CSSProperties,
+
+  courseCardBanner: {
+    width: "100%",
+    height: 80,
+    background: "linear-gradient(135deg, rgba(41,121,255,0.35) 0%, rgba(100,217,123,0.18) 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   } satisfies CSSProperties,
 };

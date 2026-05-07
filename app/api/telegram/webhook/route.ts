@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-const PLAN_MONTHS: Record<string, number> = { basic: 1, pro: 1 };
+const PLAN_MONTHS: Record<string, number> = { basic: 1, pro: 1, vip: 1 };
+const VIP_CHANNEL_ID = -1003821817849;
 
 async function answerPreCheckout(botToken: string, queryId: string, ok: boolean, errorMessage?: string) {
   await fetch(`https://api.telegram.org/bot${botToken}/answerPreCheckoutQuery`, {
@@ -67,6 +68,51 @@ async function checkAndGrantReferralReward(referrerId: string) {
   });
 }
 
+async function handleVipPayment(botToken: string, userId: string, tgId: number) {
+  const now = new Date();
+
+  // Extend vipExpiresAt by 30 days
+  const existing = await prisma.subscription.findUnique({ where: { userId }, select: { vipExpiresAt: true } });
+  const base = existing?.vipExpiresAt && existing.vipExpiresAt > now ? existing.vipExpiresAt : now;
+  const vipExpiresAt = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  await prisma.subscription.upsert({
+    where: { userId },
+    create: { userId, plan: "free", status: "active", vipExpiresAt },
+    update: { vipExpiresAt },
+  });
+
+  // Create single-use invite link valid 24h
+  const expireDate = Math.floor(now.getTime() / 1000) + 24 * 60 * 60;
+  const linkRes = await fetch(`https://api.telegram.org/bot${botToken}/createChatInviteLink`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: VIP_CHANNEL_ID, member_limit: 1, expire_date: expireDate }),
+  });
+  const linkJson = await linkRes.json().catch(() => null);
+  const inviteLink: string | null = linkJson?.result?.invite_link ?? null;
+
+  // Send link to user
+  const msg = inviteLink
+    ? `✅ VIP доступ активирован!\n\nВаша личная ссылка для входа в VIP канал (действует 24 часа):\n${inviteLink}`
+    : "✅ VIP доступ активирован! Ссылка для вступления будет отправлена в ближайшее время.";
+
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: tgId, text: msg }),
+  });
+
+  await prisma.notification.create({
+    data: {
+      userId,
+      type: "SUBSCRIPTION",
+      title: "VIP канал активирован",
+      body: `Добро пожаловать в VIP канал! Доступ активен до ${vipExpiresAt.toLocaleDateString("ru-RU")}.`,
+    },
+  }).catch(() => {});
+}
+
 async function handleSuccessfulPayment(botToken: string, update: any) {
   const payment = update.message?.successful_payment;
   const tgId = update.message?.from?.id;
@@ -101,6 +147,12 @@ async function handleSuccessfulPayment(botToken: string, update: any) {
     });
   } catch {
     // Duplicate — already processed
+    return;
+  }
+
+  // VIP channel: separate flow
+  if (plan === "vip") {
+    await handleVipPayment(botToken, userId, tgId);
     return;
   }
 

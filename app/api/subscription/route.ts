@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       where: { userId: user.id },
       create: { userId: user.id, plan: "free", status: "active" },
       update: {},
-      select: { id: true, plan: true, status: true, expiresAt: true, createdAt: true, updatedAt: true },
+      select: { id: true, plan: true, status: true, expiresAt: true, vipExpiresAt: true, createdAt: true, updatedAt: true },
     });
 
     return ok({ subscription: sub });

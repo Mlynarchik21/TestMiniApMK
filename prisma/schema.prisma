@@ -38,6 +38,8 @@ model User {
   referredBy    User?    @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals     User[]   @relation("Referrals")
 
+  lessonProgress LessonProgress[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -109,9 +111,10 @@ model Subscription {
   userId    String @unique
   user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  plan      String    @default("free")
-  status    String    @default("active")
-  expiresAt DateTime?
+  plan         String    @default("free")
+  status       String    @default("active")
+  expiresAt    DateTime?
+  vipExpiresAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -453,4 +456,62 @@ model EngineCycle {
   @@index([userId])
   @@index([userId, exchange, createdAt])
   @@index([status])
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  order       Int      @default(0)
+  published   Boolean  @default(true)
+  lessons     Lesson[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([order])
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  moduleTitle String?
+  order       Int      @default(0)
+  slides      Json     @default("[]")
+  questions   Question[]
+  progress    LessonProgress[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([courseId, order])
+}
+
+model Question {
+  id       String  @id @default(cuid())
+  lessonId String
+  lesson   Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  text     String  @db.Text
+  options  Json    @default("[]")
+  answer   String
+  order    Int     @default(0)
+
+  @@index([lessonId])
+}
+
+model LessonProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  passed      Boolean  @default(true)
+  score       Int      @default(0)
+  total       Int      @default(0)
+  completedAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
 }

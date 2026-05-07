@@ -5,8 +5,9 @@ import { requireUser } from "@/lib/auth/requireUser";
 export const runtime = "nodejs";
 
 const PLANS = {
-  basic: { stars: 100, title: "Basic Plan — 1 месяц", description: "Доступ к базовым функциям бота на 1 месяц" },
-  pro:   { stars: 2500, title: "Pro Plan — 1 месяц", description: "Полный доступ ко всем функциям бота на 1 месяц" },
+  basic: { stars: 100,  title: "Basic Plan — 1 месяц",  description: "Доступ к базовым функциям бота на 1 месяц" },
+  pro:   { stars: 2500, title: "Pro Plan — 1 месяц",    description: "Полный доступ ко всем функциям бота на 1 месяц" },
+  vip:   { stars: 250,  title: "VIP Канал — 1 месяц",   description: "Доступ к закрытому VIP каналу с аналитикой на 1 месяц" },
 } as const;
 
 type Plan = keyof typeof PLANS;
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
     const plan = (body?.plan ?? "") as Plan;
 
     if (!PLANS[plan]) {
-      return fail(400, "INVALID_PLAN", "Plan must be basic or pro");
+      return fail(400, "INVALID_PLAN", "Plan must be basic, pro, or vip");
     }
 
     const botToken = process.env.BOT_TOKEN;

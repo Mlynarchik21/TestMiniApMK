@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
+import { getPlanInfo } from "@/lib/auth/requirePlan";
 import { Exchange, Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -186,13 +187,16 @@ export async function PATCH(req: Request) {
       }
     }
 
+    const planInfo = await getPlanInfo(user.id);
+    const planLimit = planInfo.maxActiveSymbols || 10;
+
     let maxActiveSymbols: number | undefined;
     if (body.maxActiveSymbols != null) {
       const n = parseIntSafe(body.maxActiveSymbols);
       if (n == null || n < 1 || n > 10) {
         return fail(400, "BAD_REQUEST", "maxActiveSymbols must be integer 1..10");
       }
-      maxActiveSymbols = n;
+      maxActiveSymbols = Math.min(n, planLimit);
     }
 
     let budgetPerSymbol: Prisma.Decimal | undefined;
