@@ -713,3 +713,57 @@ export const bybitAdapter: ExchangeAdapter = {
     return closed;
   },
 };
+
+export type BybitApiPermissions = {
+  readOnly: boolean;
+  canSpotTrade: boolean;
+  hasWithdraw: boolean;
+  permissions: Record<string, string[]>;
+};
+
+const WITHDRAW_PERMS = new Set([
+  "AccountTransfer",
+  "SubMemberTransfer",
+  "SubMemberTransferList",
+  "Withdraw",
+]);
+
+export async function getBybitApiPermissions(
+  apiKey: string,
+  apiSecret: string,
+  isDemo: boolean
+): Promise<BybitApiPermissions> {
+  const base = isDemo ? "https://api-demo.bybit.com" : "https://api.bybit.com";
+  const timestamp = String(Date.now());
+  const recvWindow = "5000";
+  const query = "";
+  const sign = signGet(apiKey, apiSecret, recvWindow, timestamp, query);
+
+  const res = await fetch(`${base}/v5/user/query-api`, {
+    method: "GET",
+    headers: {
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN": sign,
+    },
+    cache: "no-store",
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.retCode !== 0) {
+    throw new Error(json?.retMsg || `Bybit error ${res.status}`);
+  }
+
+  const result = json.result ?? {};
+  const permissions: Record<string, string[]> = result.permissions ?? {};
+  const spotPerms: string[] = Array.isArray(permissions.Spot) ? permissions.Spot : [];
+  const walletPerms: string[] = Array.isArray(permissions.Wallet) ? permissions.Wallet : [];
+
+  return {
+    readOnly: result.readOnly === 1,
+    canSpotTrade: spotPerms.includes("SpotTrade"),
+    hasWithdraw: walletPerms.some((p) => WITHDRAW_PERMS.has(p)),
+    permissions,
+  };
+}

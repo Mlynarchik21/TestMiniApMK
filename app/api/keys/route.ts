@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { encryptString } from "@/lib/crypto/secretBox";
 import { Exchange } from "@prisma/client";
+import { getBybitApiPermissions } from "@/lib/exchanges/bybit";
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as Partial<CreateBody> | null;
 
     if (!body?.exchange) return fail(400, "BAD_REQUEST", "exchange required");
+    if (body.exchange !== "BYBIT") return fail(400, "UNSUPPORTED_EXCHANGE", "Сейчас поддерживается только Bybit.");
     if (!body?.apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
     if (!body?.apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
 
@@ -73,6 +75,42 @@ export async function POST(req: Request) {
 
     if (!apiKey) return fail(400, "BAD_REQUEST", "apiKey required");
     if (!apiSecret) return fail(400, "BAD_REQUEST", "apiSecret required");
+
+    // Validate Bybit API key permissions before saving
+    const isDemo = /demo/i.test(label || "");
+    try {
+      const perms = await getBybitApiPermissions(apiKey, apiSecret, isDemo);
+
+      if (perms.hasWithdraw) {
+        return fail(
+          400,
+          "WITHDRAW_PERMISSION_DETECTED",
+          "Ключ содержит права на вывод или перевод средств. В целях безопасности такой ключ не принимается. Пересоздай API ключ на Bybit с правами только на Spot Trading."
+        );
+      }
+
+      if (perms.readOnly) {
+        return fail(
+          400,
+          "READ_ONLY_KEY",
+          "Ключ имеет только права на чтение (read-only). Для торговли нужно включить «Spot Trading» в настройках API ключа на Bybit."
+        );
+      }
+
+      if (!perms.canSpotTrade) {
+        return fail(
+          400,
+          "NO_SPOT_TRADE",
+          "У ключа нет прав на спот-торговлю. Включи «Spot Trading» в настройках API ключа на Bybit."
+        );
+      }
+    } catch (e: any) {
+      return fail(
+        400,
+        "PERMISSION_CHECK_FAILED",
+        `Не удалось проверить ключ на бирже: ${e?.message ?? String(e)}`
+      );
+    }
 
     const dataEncrypted = {
       exchange: body.exchange,

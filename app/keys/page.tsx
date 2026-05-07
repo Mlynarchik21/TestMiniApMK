@@ -9,7 +9,6 @@ type AnyResp =
   | { ok: true; [k: string]: any }
   | { ok: false; error: string; message?: string; [k: string]: any };
 
-type ExchangeOption = "NONE" | "BYBIT" | "BINGX";
 type SyncPreset = "1D" | "7D" | "30D" | "90D" | "CUSTOM";
 
 type KeyRow = {
@@ -26,6 +25,12 @@ type BalanceRow = {
   locked: string;
 };
 
+type PermissionsMeta = {
+  readOnly: boolean;
+  canSpotTrade: boolean;
+  hasWithdraw: boolean;
+};
+
 type KeyMetaState = {
   loading: boolean;
   loaded: boolean;
@@ -34,6 +39,7 @@ type KeyMetaState = {
   updatedAt: number | null;
   balances: BalanceRow[];
   raw: any;
+  permissions: PermissionsMeta | null;
 };
 
 type SyncErrorItem = {
@@ -195,7 +201,7 @@ function cleanDisplayLabel(label: string | null | undefined) {
 
 function buildStoredLabel(
   rawLabel: string,
-  exchange: ExchangeOption,
+  exchange: string,
   opts: { isDemo: boolean }
 ): string | null {
   const clean = rawLabel.trim();
@@ -209,9 +215,7 @@ function buildStoredLabel(
   return clean || null;
 }
 
-function getExchangeUiLabel(value: Exchange | ExchangeOption) {
-  if (value === "NONE") return "Нет";
-  if (value === "BINGX") return "BingX";
+function getExchangeUiLabel(value: Exchange | string) {
   if (value === "BYBIT") return "Bybit";
   return String(value);
 }
@@ -277,13 +281,12 @@ export default function KeysPage() {
   const [syncByKey, setSyncByKey] = useState<Record<string, KeySyncState>>({});
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
 
-  const [exchange, setExchange] = useState<ExchangeOption>("BYBIT");
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [isDemo, setIsDemo] = useState(false);
 
-  const canSave = exchange === "BYBIT" && !!apiKey.trim() && !!apiSecret.trim() && !loading;
+  const canSave = !!apiKey.trim() && !!apiSecret.trim() && !loading;
 
   function getSyncState(keyId: string): KeySyncState {
     return syncByKey[keyId] ?? defaultSyncState();
@@ -319,11 +322,6 @@ export default function KeysPage() {
   }
 
   async function addKey() {
-    if (exchange === "NONE" || exchange === "BINGX") {
-      setErr("Сейчас подключение доступно только для Bybit.");
-      return;
-    }
-
     if (!apiKey.trim() || !apiSecret.trim()) {
       setErr("Заполни API key и API secret key.");
       return;
@@ -333,12 +331,12 @@ export default function KeysPage() {
     setErr("");
 
     try {
-      const storedLabel = buildStoredLabel(label, exchange, { isDemo });
+      const storedLabel = buildStoredLabel(label, "BYBIT", { isDemo });
 
       const r = await api("/api/keys", {
         method: "POST",
         body: JSON.stringify({
-          exchange,
+          exchange: "BYBIT",
           label: storedLabel,
           apiKey: apiKey.trim(),
           apiSecret: apiSecret.trim(),
@@ -411,6 +409,7 @@ export default function KeysPage() {
         updatedAt: prev[keyId]?.updatedAt ?? null,
         balances: prev[keyId]?.balances ?? [],
         raw: prev[keyId]?.raw ?? null,
+        permissions: prev[keyId]?.permissions ?? null,
       },
     }));
 
@@ -432,6 +431,7 @@ export default function KeysPage() {
             updatedAt: Date.now(),
             balances: [],
             raw: null,
+            permissions: null,
           },
         }));
         return;
@@ -447,6 +447,7 @@ export default function KeysPage() {
           updatedAt: Date.now(),
           balances: (((r.json as any).balances ?? []) as BalanceRow[]) || [],
           raw: (r.json as any).raw ?? null,
+          permissions: (r.json as any).permissions ?? null,
         },
       }));
     } catch (e: any) {
@@ -460,6 +461,7 @@ export default function KeysPage() {
           updatedAt: Date.now(),
           balances: [],
           raw: null,
+          permissions: null,
         },
       }));
     }
@@ -624,19 +626,9 @@ export default function KeysPage() {
 
             <div style={styles.formGrid}>
               <Field label="Биржа">
-                <div style={styles.selectWrap}>
-                  <select
-                    value={exchange}
-                    onChange={(e) => setExchange(e.target.value as ExchangeOption)}
-                    style={styles.inputSelect}
-                  >
-                    <option value="NONE">Нет</option>
-                    <option value="BYBIT">Bybit</option>
-                    <option value="BINGX">BingX</option>
-                  </select>
-                  <span style={styles.selectIcon}>
-                    <ChevronDownIcon />
-                  </span>
+                <div style={{ ...styles.input, display: "flex", alignItems: "center", gap: 8, color: UI.textMain }}>
+                  <span style={{ fontWeight: 700 }}>Bybit</span>
+                  <span style={{ fontSize: 11, color: UI.textMuted, fontWeight: 500 }}>Spot</span>
                 </div>
               </Field>
 
@@ -645,17 +637,16 @@ export default function KeysPage() {
                   type="checkbox"
                   checked={isDemo}
                   onChange={(e) => setIsDemo(e.target.checked)}
-                  disabled={exchange !== "BYBIT"}
                   style={styles.checkbox}
                 />
-                <span style={styles.checkboxText}>Демо</span>
+                <span style={styles.checkboxText}>Демо аккаунт</span>
               </label>
 
-              <Field label="Label">
+              <Field label="Label (название ключа)">
                 <input
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Например: TestByBitapi"
+                  placeholder="Например: My Bybit Key"
                   style={styles.input}
                 />
               </Field>
@@ -681,12 +672,9 @@ export default function KeysPage() {
                 />
               </Field>
 
-              {exchange !== "BYBIT" ? (
-                <div style={styles.inlineHint}>
-                  Сейчас подключение доступно только для Bybit. Пункты «Нет» и «BingX» оставлены
-                  под будущее расширение.
-                </div>
-              ) : null}
+              <div style={styles.inlineHint}>
+                Требуется только разрешение <strong>Spot Trading</strong>. Ключи с правами на вывод средств не принимаются.
+              </div>
 
               <button
                 type="button"
@@ -698,7 +686,7 @@ export default function KeysPage() {
                   cursor: canSave ? "pointer" : "not-allowed",
                 }}
               >
-                {loading ? "..." : "Сохранить"}
+                {loading ? "Проверка и сохранение..." : "Подключить"}
               </button>
             </div>
           </section>
@@ -831,23 +819,29 @@ export default function KeysPage() {
                               <PermissionPill
                                 label="Чтение баланса"
                                 active={!!meta?.ok}
+                                unknown={!meta?.loaded}
                               />
                               <PermissionPill
-                                label="Торговля"
-                                active={false}
-                                unknown
+                                label="Спот торговля"
+                                active={!!meta?.permissions?.canSpotTrade}
+                                unknown={!meta?.loaded || meta?.permissions == null}
                               />
                               <PermissionPill
                                 label="Вывод средств"
-                                active={false}
-                                unknown
+                                active={meta?.loaded && meta?.permissions != null ? !meta.permissions.hasWithdraw : false}
+                                unknown={!meta?.loaded || meta?.permissions == null}
                               />
                             </div>
 
-                            <div style={styles.permissionHint}>
-                              Сейчас точно определяется только успешное чтение баланса.
-                              Проверку торговых и withdrawal permissions добавим следующим этапом.
-                            </div>
+                            {meta?.permissions?.hasWithdraw ? (
+                              <div style={{ ...styles.permissionHint, color: UI.red }}>
+                                Внимание: у ключа есть права на вывод/перевод средств. Рекомендуется пересоздать ключ с правами только на Spot Trading.
+                              </div>
+                            ) : meta?.permissions?.readOnly ? (
+                              <div style={{ ...styles.permissionHint, color: UI.yellow }}>
+                                Ключ имеет только права на чтение. Торговля недоступна — нужно включить Spot Trading в настройках ключа на Bybit.
+                              </div>
+                            ) : null}
                           </div>
 
                           {meta?.error ? (

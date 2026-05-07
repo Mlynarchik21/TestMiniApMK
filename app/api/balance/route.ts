@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/requireUser";
 import { decryptString } from "@/lib/crypto/secretBox";
+import { getBybitApiPermissions } from "@/lib/exchanges/bybit";
 
 export const runtime = "nodejs";
 
@@ -257,12 +258,23 @@ export async function GET(req: Request) {
           return free !== 0 || locked !== 0;
         });
 
+      let permissions: AnyJson = null;
+      try {
+        const p = await getBybitApiPermissions(key.apiKey, apiSecret, isDemo);
+        permissions = {
+          readOnly: p.readOnly,
+          canSpotTrade: p.canSpotTrade,
+          hasWithdraw: p.hasWithdraw,
+        };
+      } catch {}
+
       return ok({
         exchange: "BYBIT",
         network: isDemo ? "DEMO" : "MAINNET",
         keyId: key.id,
         label: key.label ?? null,
         balances: nonZero,
+        permissions,
         raw: {
           accountType: firstAccount?.accountType ?? "UNIFIED",
           totalEquity: firstAccount?.totalEquity ?? null,
