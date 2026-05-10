@@ -1,4 +1,5 @@
 import Script from "next/script";
+import "./globals.css";
 
 export default function RootLayout({
   children,
@@ -8,6 +9,8 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#000000" />
         <style dangerouslySetInnerHTML={{
           __html: `
             :root {
@@ -46,7 +49,7 @@ export default function RootLayout({
               --yellow: #d97706;
               --brand: #1d4ed8;
             }
-            html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+            html, body { background: var(--bg); color: var(--text); }
           `
         }} />
         {/* Apply theme from localStorage before first paint to prevent flash */}
@@ -54,7 +57,7 @@ export default function RootLayout({
           __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}})()`
         }} />
       </head>
-      <body style={{ margin: 0, padding: 0, background: "#000" }}>
+      <body>
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"

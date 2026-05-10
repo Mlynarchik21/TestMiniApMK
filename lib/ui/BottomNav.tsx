@@ -13,9 +13,16 @@ type NavItem = {
   icon: (props: { size?: number; strokeWidth?: number }) => ReactNode;
 };
 
-const ITEMS: NavItem[] = [
+type ActiveMatcher = (path: string) => boolean;
+
+const ITEMS: Array<NavItem & { active?: ActiveMatcher }> = [
   { href: "/home", label: "Главная", icon: (p) => <Home {...p} /> },
-  { href: "/bot", label: "Робот", icon: (p) => <Bot {...p} /> },
+  {
+    href: "/robot",
+    label: "Робот",
+    icon: (p) => <Bot {...p} />,
+    active: (p) => p === "/robot" || p.startsWith("/robot/") || p === "/bot" || p.startsWith("/bot/"),
+  },
   { href: "/course", label: "Курсы", icon: (p) => <BookOpen {...p} /> },
   { href: "/profile", label: "Профиль", icon: (p) => <User {...p} /> },
 ];
@@ -54,7 +61,9 @@ export function BottomNav() {
         }}
       >
         {ITEMS.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const active = item.active
+            ? item.active(pathname)
+            : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <li key={item.href}>
               <button

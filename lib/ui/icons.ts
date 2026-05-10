@@ -11,6 +11,8 @@ export {
   Minus,
   Bell,
   BellRing,
+  BellOff,
+  Globe,
   MessageCircle,
   Settings,
   User,

@@ -1,20 +1,65 @@
+/* ───────── Reset / base ───────── */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
 html, body {
   padding: 0;
   margin: 0;
   background: #000;
   color: #fff;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+  overflow-x: hidden;
 }
 
 * { box-sizing: border-box; }
 
-button { font: inherit; }
+button, input, select, textarea {
+  font: inherit;
+  letter-spacing: inherit;
+}
 
 ::selection {
   background: rgba(41, 121, 255, 0.32);
   color: #fff;
 }
 
-/* Motion tokens (used by inline styles and skeletons) */
+/* Visible keyboard focus ring */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--brand, #2979ff);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Numeric tables: align digits */
+.num, [data-num] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Webkit scrollbar — slim, theme-aware */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); background-clip: content-box; }
+
+[data-theme="light"] *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.14); background-clip: content-box; }
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); background-clip: content-box; }
+
+/* ───────── Motion tokens ───────── */
 :root {
   --motion-xs: 120ms;
   --motion-sm: 180ms;
@@ -25,32 +70,38 @@ button { font: inherit; }
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Existing reveal animation kept for back-compat with home/profile */
+/* ───────── Animations ───────── */
+
 @keyframes fadeUp {
   from { opacity: 0; transform: translate3d(0, 14px, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-/* Skeleton shimmer */
+@keyframes slideIn {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
 @keyframes skeletonShine {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* Spinner used by Button loading state */
-@keyframes miniSpin {
-  to { transform: rotate(360deg); }
-}
+@keyframes miniSpin { to { transform: rotate(360deg); } }
 
-/* Subtle pulse for active status dots */
 @keyframes statusPulse {
   0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
   50%      { box-shadow: 0 0 0 6px rgba(0,0,0,0); opacity: 0.85; }
 }
 
-/* Respect user reduced-motion preference */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ───────── Reduced motion ───────── */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

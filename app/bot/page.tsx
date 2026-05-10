@@ -1510,8 +1510,7 @@ const styles = {
     padding: 16,
     borderRadius: 22,
     border: "1px solid rgba(100,217,123,0.16)",
-    background:
-      "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
+    background: "rgba(100,217,123,0.05)",
   } satisfies CSSProperties,
 
   botTopRow: {
@@ -1740,8 +1739,7 @@ const styles = {
     border: `1px solid ${UI.border}`,
     borderRadius: 20,
     padding: 16,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,0,0,0.03) 100%)",
+    background: "rgba(255,106,106,0.05)",
     display: "grid",
     gridTemplateColumns: "1.05fr 0.95fr",
     gap: 12,
@@ -1987,8 +1985,7 @@ const styles = {
   } satisfies CSSProperties,
 
   tradeCardCompactDense: {
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.025) 100%)",
+    background: "rgba(255,255,255,0.04)",
     border: `1px solid ${UI.border}`,
     borderRadius: 16,
     padding: 12,
@@ -2080,8 +2077,7 @@ const styles = {
     border: `1px solid ${UI.border}`,
     borderRadius: 20,
     padding: 16,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(41,121,255,0.03) 100%)",
+    background: "rgba(41,121,255,0.05)",
   } satisfies CSSProperties,
 
   accountLeft: {

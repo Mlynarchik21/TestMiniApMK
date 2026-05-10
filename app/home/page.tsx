@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { haptics } from "@/lib/ui/haptics";
 import { Skeleton } from "@/lib/ui/Skeleton";
+import { BottomNav } from "@/lib/ui/BottomNav";
 
 type AnyResp =
   | { ok: true; [k: string]: any }
@@ -971,6 +972,7 @@ export default function HomePage() {
           ) : null}
         </div>
       </main>
+      <BottomNav />
     </>
   );
 }
@@ -1063,7 +1065,7 @@ const styles = {
     color: UI.text,
     fontFamily:
       'Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif',
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)",
     overflowX: "hidden",
   } satisfies CSSProperties,
 

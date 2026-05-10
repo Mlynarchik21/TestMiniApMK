@@ -1157,8 +1157,7 @@ const styles = {
     padding: 16,
     borderRadius: 22,
     border: `1px solid ${UI.border}`,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+    background: "rgba(255,255,255,0.04)",
   } satisfies CSSProperties,
 
   keysBlock: {
@@ -1289,8 +1288,7 @@ const styles = {
   keyCard: {
     border: `1px solid ${UI.border}`,
     borderRadius: 20,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+    background: "rgba(255,255,255,0.035)",
     overflow: "hidden",
   } satisfies CSSProperties,
 

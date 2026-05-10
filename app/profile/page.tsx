@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/useTheme";
 import { ArrowLeft as LArrowLeft, Copy as LCopy, Star as LStar } from "lucide-react";
 import { haptics } from "@/lib/ui/haptics";
+import { BottomNav } from "@/lib/ui/BottomNav";
 
 type UserData = {
   id: string;
@@ -277,7 +278,7 @@ export default function ProfilePage() {
         @keyframes fadeUp{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
       `}</style>
 
-      <main style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: font, paddingBottom: "calc(env(safe-area-inset-bottom,0px)+40px)", paddingTop: pagePaddingTop }}>
+      <main style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: font, paddingBottom: "calc(env(safe-area-inset-bottom,0px)+92px)", paddingTop: pagePaddingTop }}>
         <div style={{ maxWidth: 560, margin: "0 auto", padding: "0 16px" }}>
 
           {/* Header */}
@@ -554,6 +555,7 @@ export default function ProfilePage() {
           )}
         </div>
       </main>
+      <BottomNav />
     </>
   );
 }

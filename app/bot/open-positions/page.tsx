@@ -652,8 +652,7 @@ const styles = {
     border: `1px solid ${UI.border}`,
     borderRadius: 22,
     padding: 16,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+    background: "rgba(255,255,255,0.035)",
     display: "grid",
     gap: 16,
   } satisfies CSSProperties,
@@ -773,8 +772,7 @@ const styles = {
   tradeCard: {
     border: `1px solid ${UI.border}`,
     borderRadius: 18,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+    background: "rgba(255,255,255,0.035)",
     overflow: "hidden",
   } satisfies CSSProperties,
 
