@@ -1,2 +1,59 @@
-html, body { padding: 0; margin: 0; background: #000; color: #fff; }
+html, body {
+  padding: 0;
+  margin: 0;
+  background: #000;
+  color: #fff;
+}
+
 * { box-sizing: border-box; }
+
+button { font: inherit; }
+
+::selection {
+  background: rgba(41, 121, 255, 0.32);
+  color: #fff;
+}
+
+/* Motion tokens (used by inline styles and skeletons) */
+:root {
+  --motion-xs: 120ms;
+  --motion-sm: 180ms;
+  --motion-md: 240ms;
+  --motion-lg: 320ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Existing reveal animation kept for back-compat with home/profile */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Skeleton shimmer */
+@keyframes skeletonShine {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Spinner used by Button loading state */
+@keyframes miniSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Subtle pulse for active status dots */
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50%      { box-shadow: 0 0 0 6px rgba(0,0,0,0); opacity: 0.85; }
+}
+
+/* Respect user reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

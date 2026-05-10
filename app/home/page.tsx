@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Bell as LBell,
+  MessageCircle as LMessageCircle,
+  Settings as LSettings,
+} from "lucide-react";
+import { haptics } from "@/lib/ui/haptics";
+import { Skeleton } from "@/lib/ui/Skeleton";
 
 type AnyResp =
   | { ok: true; [k: string]: any }
@@ -186,36 +193,15 @@ function pnlColor(v: unknown) {
 }
 
 function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M12 4a4 4 0 0 0-4 4v2.1c0 .7-.2 1.4-.6 2L6 14.5c-.4.7.1 1.5.9 1.5h10.2c.8 0 1.3-.8.9-1.5l-1.4-2.4c-.4-.6-.6-1.3-.6-2V8a4 4 0 0 0-4-4Zm0 16a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 20Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <LBell size={18} strokeWidth={1.8} aria-hidden />;
 }
 
 function ChatIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M6 6.5h12a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 17.5H10l-4.2 3c-.7.5-1.8 0-1.8-.9v-2.1A2.5 2.5 0 0 1 3.5 15V9A2.5 2.5 0 0 1 6 6.5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <LMessageCircle size={18} strokeWidth={1.8} aria-hidden />;
 }
 
 function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path
-        d="M19.4 13a7.8 7.8 0 0 0 .1-1 7.8 7.8 0 0 0-.1-1l2-1.6a.6.6 0 0 0 .1-.8l-1.9-3.3a.6.6 0 0 0-.8-.2L16.4 6a7.8 7.8 0 0 0-1.7-1l-.4-2.6a.6.6 0 0 0-.6-.4H10.3a.6.6 0 0 0-.6.4L9.3 5a7.8 7.8 0 0 0-1.7 1L5.2 4.1a.6.6 0 0 0-.8.2L2.5 7.6a.6.6 0 0 0 .1.8l2 1.6a7.8 7.8 0 0 0-.1 1 7.8 7.8 0 0 0 .1 1l-2 1.6a.6.6 0 0 0-.1.8l1.9 3.3a.6.6 0 0 0 .8.2l2.4-1a7.8 7.8 0 0 0 1.7 1l.4 2.6a.6.6 0 0 0 .6.4h3.4a.6.6 0 0 0 .6-.4l.4-2.6a7.8 7.8 0 0 0 1.7-1l2.4 1a.6.6 0 0 0 .8-.2l1.9-3.3a.6.6 0 0 0-.1-.8l-2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <LSettings size={18} strokeWidth={1.8} aria-hidden />;
 }
 
 export default function HomePage() {
@@ -1556,8 +1542,7 @@ const styles = {
     padding: 16,
     borderRadius: 22,
     border: "1px solid rgba(100,217,123,0.16)",
-    background:
-      "linear-gradient(180deg, rgba(100,217,123,0.06) 0%, rgba(41,121,255,0.035) 100%)",
+    background: "rgba(100,217,123,0.05)",
   } satisfies CSSProperties,
 
   botTopRow: {
@@ -1679,7 +1664,7 @@ const styles = {
     padding: 16,
     borderRadius: 22,
     border: "1px solid rgba(243,215,9,0.22)",
-    background: "linear-gradient(180deg, rgba(243,215,9,0.06) 0%, rgba(243,155,9,0.03) 100%)",
+    background: "rgba(243,215,9,0.05)",
   } satisfies CSSProperties,
 
   vipEyebrow: {
@@ -1795,7 +1780,7 @@ const styles = {
     padding: 16,
     borderRadius: 22,
     border: "1px solid rgba(41,121,255,0.18)",
-    background: "linear-gradient(180deg, rgba(41,121,255,0.07) 0%, rgba(0,0,0,0) 100%)",
+    background: "rgba(41,121,255,0.05)",
   } satisfies CSSProperties,
 
   coursesTopRow: {
@@ -1853,7 +1838,8 @@ const styles = {
   courseCardBanner: {
     width: "100%",
     height: 80,
-    background: "linear-gradient(135deg, rgba(41,121,255,0.35) 0%, rgba(100,217,123,0.18) 100%)",
+    background: "rgba(41,121,255,0.18)",
+    borderBottom: "1px solid rgba(41,121,255,0.28)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",

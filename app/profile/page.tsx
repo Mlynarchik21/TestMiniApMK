@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/useTheme";
+import { ArrowLeft as LArrowLeft, Copy as LCopy, Star as LStar } from "lucide-react";
+import { haptics } from "@/lib/ui/haptics";
 
 type UserData = {
   id: string;
@@ -97,27 +99,15 @@ function statusLabel(status: string) {
 }
 
 function ArrowLeft() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
-      <path d="M14.7 5.3a1 1 0 0 1 0 1.4L10.41 11H20a1 1 0 1 1 0 2h-9.59l4.3 4.3a1 1 0 0 1-1.42 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z" fill="currentColor" />
-    </svg>
-  );
+  return <LArrowLeft size={18} strokeWidth={2} aria-hidden />;
 }
 
 function CopyIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
-      <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z" fill="currentColor" />
-    </svg>
-  );
+  return <LCopy size={14} strokeWidth={2} aria-hidden />;
 }
 
 function StarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z" fill="currentColor" />
-    </svg>
-  );
+  return <LStar size={14} strokeWidth={2} aria-hidden />;
 }
 
 export default function ProfilePage() {
@@ -240,6 +230,7 @@ export default function ProfilePage() {
     if (!link) return;
     try {
       navigator.clipboard.writeText(link).then(() => {
+        haptics.notify("success");
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       });
@@ -267,7 +258,7 @@ export default function ProfilePage() {
   }
 
   const font = 'Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif';
-  const block: CSSProperties = { padding: 16, borderRadius: 22, border: `1px solid ${T.border}`, background: `linear-gradient(180deg,${T.card} 0%,rgba(255,255,255,0.02) 100%)`, marginBottom: 14 };
+  const block: CSSProperties = { padding: 16, borderRadius: 22, border: `1px solid ${T.border}`, background: T.card, marginBottom: 14 };
   const infoRow: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.borderSoft}` };
   const infoRowLast: CSSProperties = { ...infoRow, borderBottom: "none" };
 
